@@ -1,0 +1,486 @@
+import React, { useState, useEffect } from 'react';
+import { 
+  StyleSheet, 
+  SafeAreaView, 
+  View, 
+  StatusBar, 
+  Text, 
+  TouchableOpacity, 
+  FlatList, 
+  ActivityIndicator,
+  RefreshControl,
+  Dimensions
+} from 'react-native';
+import serverUrl from '../config'; 
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import axios from 'axios';
+import { useFocusEffect } from '@react-navigation/native';
+import { BackHandler } from 'react-native';
+
+const { width } = Dimensions.get('window');
+
+const maskPhoneNumber = (phoneNumber) => {
+  if (!phoneNumber) return '';
+  const firstTwelve = phoneNumber.substring(0, 12);
+  const masked = `${firstTwelve.substring(0, 6)}***${firstTwelve.substring(9, 12)}`;
+  return masked;
+};
+
+const maskNamer = (phoneNumber) => {
+  if (!phoneNumber) return '';
+  const parts = phoneNumber.split('-');
+  if (parts.length < 2) return '';
+  return parts[1].trim();
+};
+
+const getRandomColor = () => {
+  const colors = ['#FFE5E5', '#E5F3FF', '#E8F8EC', '#FFF5E6', '#F0F5FF', '#FFE5F1', '#E5FFE5'];
+  return colors[Math.floor(Math.random() * colors.length)];
+};
+
+const formatDate = (dateString) => {
+  const date = new Date(dateString);
+  const now = new Date();
+  const diffTime = Math.abs(now - date);
+  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  
+  if (diffDays === 1) return 'Today';
+  if (diffDays === 2) return 'Yesterday';
+  if (diffDays <= 7) return `${diffDays} days ago`;
+  
+  return date.toLocaleDateString('en-US', { 
+    month: 'short', 
+    day: 'numeric',
+    year: date.getFullYear() !== now.getFullYear() ? 'numeric' : undefined
+  });
+};
+
+const formatTime = (dateString) => {
+  const date = new Date(dateString);
+  return date.toLocaleTimeString('en-US', { 
+    hour: 'numeric', 
+    minute: '2-digit',
+    hour12: true 
+  });
+};
+
+function MyTips() {
+  const [transactions, setTransactions] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [totalAmount, setTotalAmount] = useState(0);
+
+  useFocusEffect(
+    React.useCallback(() => {
+      fetTransactions();
+
+      const backAction = () => {
+        fetTransactions();
+        return false;
+      };
+
+      const backHandler = BackHandler.addEventListener(
+        'hardwareBackPress',
+        backAction
+      );
+
+      return () => backHandler.remove();
+    }, [])
+  );
+
+  useEffect(() => {
+    fetTransactions();
+  }, []);
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await fetTransactions();
+    setRefreshing(false);
+  };
+
+  const fetTransactions = async () => {
+    try {
+      const token = await AsyncStorage.getItem('accessToken');
+      const userId = await AsyncStorage.getItem('id');
+
+      if (!token || !userId) {
+        console.error('No token or user ID found');
+        return;
+      }
+
+      if (!refreshing) {
+        setLoading(true);
+      }
+
+      const response = await axios.get(`${serverUrl}/SalesOrder/getSalesOrderByCreatedBy?createdBy=${userId}&docstatus=33`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      const data = response.data;
+      let total = 0;
+
+      const salesOrders = data.map((item) => {
+        total += item.grandTotal;
+        return {
+          id: item.sales_order_id.toString(),
+          initials: item.name ? item.name.substring(0, 2).toUpperCase() : 'TIP',
+          name: item.phoneNumber ? item.phoneNumber : 'Anonymous',
+          account: item.phoneNumber ? maskPhoneNumber(item.phoneNumber) : 'N/A',
+          amount: item.grandTotal,
+          time: item.updatedAt,
+          color: getRandomColor(),
+          status: item.processed ? 'completed' : 'pending',
+        };
+      });
+
+      setTransactions(salesOrders);
+      setTotalAmount(total);
+    } catch (error) {
+      console.error('Failed to fetch transactions:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const renderTransaction = ({ item, index }) => (
+    <View style={styles.transactionCard}>
+      <View style={styles.transactionHeader}>
+        <View style={styles.leftSection}>
+          <View style={[styles.avatar, { backgroundColor: item.color }]}>
+            <Text style={styles.avatarText}>{item.initials}</Text>
+          </View>
+          <View style={styles.transactionInfo}>
+            <Text style={styles.transactionTitle}>Tip Received</Text>
+            <Text style={styles.transactionSubtitle}>{item.account}</Text>
+          </View>
+        </View>
+        <View style={styles.rightSection}>
+          <Text style={styles.amountText}>+KSH {item.amount.toLocaleString()}</Text>
+          <View style={styles.statusContainer}>
+            <View style={[
+              styles.statusDot, 
+              { backgroundColor: item.status === 'completed' ? '#4ECDC4' : '#FFD700' }
+            ]} />
+            <Text style={styles.statusText}>
+              {item.status === 'completed' ? 'Completed' : 'Pending'}
+            </Text>
+          </View>
+        </View>
+      </View>
+      <View style={styles.transactionFooter}>
+        {/* <Text style={styles.dateText}>{item.time}</Text> */}
+        <Text style={styles.timeText}>{item.time}</Text>
+      </View>
+    </View>
+  );
+
+  const renderEmptyState = () => (
+    <View style={styles.emptyContainer}>
+      <View style={styles.emptyIconContainer}>
+        <Text style={styles.emptyIcon}>💰</Text>
+      </View>
+      <Text style={styles.emptyTitle}>No Tips Yet</Text>
+      <Text style={styles.emptySubtitle}>
+        Your received tips will appear here once you start getting them.
+      </Text>
+    </View>
+  );
+
+  const renderHeader = () => (
+    <View style={styles.headerContainer}>
+      <View style={styles.summaryCard}>
+        <View style={styles.summaryHeader}>
+          <Text style={styles.summaryLabel}>Total Tips Received</Text>
+          <View style={styles.trendContainer}>
+            <Text style={styles.trendIcon}>📈</Text>
+          </View>
+        </View>
+        <Text style={styles.summaryAmount}>KSH {totalAmount.toLocaleString()}</Text>
+        <Text style={styles.summarySubtext}>
+          {transactions.length} {transactions.length === 1 ? 'transaction' : 'transactions'}
+        </Text>
+      </View>
+      
+      {transactions.length > 0 && (
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>Recent Transactions</Text>
+          <Text style={styles.transactionCount}>{transactions.length}</Text>
+        </View>
+      )}
+    </View>
+  );
+
+  if (loading && !refreshing) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#FFD700" />
+          <Text style={styles.loadingText}>Loading your tips...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  return (
+    <SafeAreaView style={styles.container}>
+      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+      
+     
+
+      <FlatList
+        data={transactions}
+        keyExtractor={item => item.id}
+        renderItem={renderTransaction}
+        ListHeaderComponent={renderHeader}
+        ListEmptyComponent={renderEmptyState}
+        refreshControl={
+          <RefreshControl 
+            refreshing={refreshing} 
+            onRefresh={onRefresh}
+            colors={['#FFD700']}
+            tintColor="#FFD700"
+          />
+        }
+        contentContainerStyle={[
+          styles.listContent,
+          transactions.length === 0 && styles.emptyListContent
+        ]}
+        showsVerticalScrollIndicator={false}
+      />
+
+     
+    </SafeAreaView>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#F8F9FA',
+
+  },
+  header: {
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 8,
+    backgroundColor: '#FFFFFF',
+    borderBottomWidth: 1,
+    borderBottomColor: '#F0F0F0',
+  },
+  pageTitle: {
+    fontSize: 28,
+    fontWeight: '700',
+    color: '#1A1A1A',
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    fontSize: 16,
+    color: '#666666',
+    marginTop: 16,
+    fontWeight: '500',
+  },
+  listContent: {
+    paddingBottom: 20,
+  },
+  emptyListContent: {
+    flexGrow: 1,
+  },
+  headerContainer: {
+    paddingHorizontal: 20,
+    paddingTop: 20,
+  },
+  summaryCard: {
+    backgroundColor: '#1A1A1A',
+    borderRadius: 8,
+    padding: 24,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 5,
+  },
+  summaryHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    // marginBottom: 12,
+  },
+  summaryLabel: {
+    fontSize: 16,
+    color: '#FFFFFF',
+    opacity: 0.8,
+  },
+  trendContainer: {
+    backgroundColor: '#FFD70020',
+    borderRadius: 8,
+    padding: 8,
+  },
+  trendIcon: {
+    fontSize: 16,
+  },
+  summaryAmount: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    marginBottom: 8,
+  },
+  summarySubtext: {
+    fontSize: 14,
+    color: '#FFFFFF',
+    opacity: 0.6,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1A1A1A',
+  },
+  transactionCount: {
+    fontSize: 14,
+    color: '#666666',
+    backgroundColor: '#F0F0F0',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    fontWeight: '500',
+  },
+  transactionCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 8,
+    padding: 16,
+    marginHorizontal: 16,
+    marginBottom: 4,
+    shadowColor: '#000',
+    elevation: 1,
+  },
+  transactionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  leftSection: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  avatar: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  avatarText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#1A1A1A',
+  },
+  transactionInfo: {
+    flex: 1,
+  },
+  transactionTitle: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#1A1A1A',
+    marginBottom: 4,
+  },
+  transactionSubtitle: {
+    fontSize: 12,
+    color: '#666666',
+  },
+  rightSection: {
+    alignItems: 'flex-end',
+  },
+  amountText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#4ECDC4',
+    marginBottom: 4,
+  },
+  statusContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  statusDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    marginRight: 6,
+  },
+  statusText: {
+    fontSize: 12,
+    color: '#666666',
+    fontWeight: '500',
+  },
+  transactionFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingTop: 4,
+    borderTopWidth: 1,
+    borderTopColor: '#F0F0F0',
+  },
+  dateText: {
+    fontSize: 12,
+    color: '#666666',
+    fontWeight: '500',
+  },
+  timeText: {
+    fontSize: 12,
+    color: '#999999',
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 40,
+  },
+  emptyIconContainer: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: '#FFD70015',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  emptyIcon: {
+    fontSize: 32,
+  },
+  emptyTitle: {
+    fontSize: 24,
+    fontWeight: '600',
+    color: '#1A1A1A',
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  emptySubtitle: {
+    fontSize: 16,
+    color: '#666666',
+    textAlign: 'center',
+    lineHeight: 24,
+  },
+  footer:{
+height: 120,
+  }
+});
+
+export default MyTips;
