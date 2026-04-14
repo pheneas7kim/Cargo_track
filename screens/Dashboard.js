@@ -219,14 +219,24 @@ function HomeScreen() {
   const fetchTickets = async () => {
     try {
       setLoadingTickets(true);
+
+      // 1. Retrieve the Auth Token and the flat 'id' key
       const token = await getAuthToken();
+      const storedId = await AsyncStorage.getItem('id');
+
+      // 2. Fallback logic
+      // Since you saved it as 'id' in Login.tsx, we use storedId directly.
+      // If it's missing, we default to 1 (but log a warning).
+      const userId = storedId ? parseInt(storedId, 10) : 1;
+
       if (!token) {
-        // Snackbar.show({ text: 'Please log in again', duration: 3000, backgroundColor: '#FF6B6B' });
+        console.warn('No token found, skipping ticket fetch');
         return;
       }
 
+      // 3. Fetch using the dynamic ID
       const response = await fetch(
-        `${API_BASE}/api/v1/tickets/assignee/1?page=0&size=10000000&sort=createdAt,desc`,
+        `${API_BASE}/api/v1/tickets/assignee/${userId}?page=0&size=100&sort=createdAt,desc`,
         {
           method: 'GET',
           headers: {
@@ -236,14 +246,12 @@ function HomeScreen() {
         }
       );
 
-      if (response.status === 401) {
-        // Snackbar.show({ text: 'Session expired. Please log in again.', duration: 3000, backgroundColor: '#FF6B6B' });
-        return;
-      }
+      if (response.status === 401) return;
+      if (!response.ok) throw new Error(`HTTP Error: ${response.status}`);
 
-      if (!response.ok) throw new Error('Failed to fetch tickets');
       const data = await response.json();
 
+      // 4. Transform data for UI
       const transformed = (data.content || []).map(ticket => ({
         id: ticket.id?.toString(),
         ticketNumber: ticket.ticketNumber,
@@ -259,8 +267,7 @@ function HomeScreen() {
 
       setTickets(transformed);
     } catch (error) {
-      // console.error('Error fetching tickets:', error);
-      // Snackbar.show({ text: 'Failed to load tickets. Pull to refresh.', duration: 3000, backgroundColor: '#FF6B6B' });
+      console.error('Error fetching tickets:', error);
     } finally {
       setLoadingTickets(false);
     }
@@ -611,6 +618,7 @@ function HomeScreen() {
       </View>
 
       <View style={styles.trackingCard}>
+      {/*
         <Text style={styles.trackingTitle}>Track Your Device</Text>
         <View style={styles.trackingSearch}>
           <TextInput
@@ -623,7 +631,7 @@ function HomeScreen() {
           <TouchableOpacity style={styles.trackButton} onPress={handleTrackShipment}>
             <Text style={styles.trackButtonText}>Track</Text>
           </TouchableOpacity>
-        </View>
+          */}
       </View>
 
       <View style={styles.quickActionsGrid}>
@@ -658,7 +666,8 @@ function HomeScreen() {
             </TouchableOpacity>
           </View>
 
-          <View style={styles.actionRow}>
+            <View style={styles.actionRow}>
+            {/*
             <TouchableOpacity style={styles.actionCard} onPress={handleDevicesScreen}>
               <View style={[styles.actionIconBg, { backgroundColor: '#9C27B020' }]}>
                 <Image source={require('../assets/trk.png')} style={styles.actionIcon} />
@@ -686,6 +695,7 @@ function HomeScreen() {
               </View>
               <Text style={styles.actionLabel}>Stations</Text>
             </TouchableOpacity>
+            */}
           </View>
         </View>
       </View>

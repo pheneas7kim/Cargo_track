@@ -41,15 +41,27 @@ const TicketsScreen = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [selectedTicket, setSelectedTicket] = useState(null);
   const [modalVisible, setModalVisible] = useState(false);
-  const [filter, setFilter] = useState('all'); // all, open, in-progress, resolved, closed, critical
+  const [filter, setFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [showComments, setShowComments] = useState(false);
   const [commentText, setCommentText] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  
+
+  // --- NEW STATE FOR CREATION ---
+  const [createModalVisible, setCreateModalVisible] = useState(false);
+  const [newTicket, setNewTicket] = useState({
+    title: '',
+    description: '',
+    priority: 'MEDIUM',
+    deviceSn: '',
+    cargoValue: 0,
+    incidentType: 'MANUAL',
+  });
+
   // Animation values
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(30)).current;
+
 
   useEffect(() => {
     Animated.parallel([
@@ -76,7 +88,11 @@ const TicketsScreen = () => {
       const backHandler = BackHandler.addEventListener('hardwareBackPress', backAction);
       return () => backHandler.remove();
     }, [])
-  );
+    );
+
+
+
+
 
   const fetchTickets = async (isRefresh = false) => {
     try {
@@ -93,7 +109,9 @@ const TicketsScreen = () => {
       }
 
       const response = await axios.get(
-        `${serverUrl}/tickets/assignee/${userId}?page=0&size=10000000&sort=createdAt,desc`,
+        `${serverUrl}/tickets?page=0&size=10000000&sort=createdAt,desc`,
+
+
         {
           headers: {
             'Authorization': `Bearer ${token}`,
@@ -486,7 +504,10 @@ const TicketsScreen = () => {
               <Text style={styles.backButtonText}>←</Text>
             </TouchableOpacity>
             <Text style={styles.headerTitle}>Tickets</Text>
-            <TouchableOpacity style={styles.createButton}>
+            <TouchableOpacity
+              style={styles.createButton}
+              onPress={() => navigation.navigate('CreateTicket')}
+            >
               <Text style={styles.createButtonText}>+ New</Text>
             </TouchableOpacity>
           </View>

@@ -341,14 +341,15 @@ const Login = () => {
             </TouchableOpacity>
           </Animatable.View>
 
-          {/* Divider */}
+          {/* Divider
           <View style={styles.divider}>
             <View style={styles.dividerLine} />
             <Text style={styles.dividerText}>or</Text>
             <View style={styles.dividerLine} />
           </View>
+          */}
 
-          {/* Register Link */}
+          {/* Register Link
           <Animatable.View 
             animation="fadeInUp" 
             delay={800}
@@ -358,7 +359,7 @@ const Login = () => {
             <TouchableOpacity onPress={handleRegisterPress} activeOpacity={0.7}>
               <Text style={styles.registerLink}>Create Account</Text>
             </TouchableOpacity>
-          </Animatable.View>
+          </Animatable.View> */}
         </Animatable.View>
       </ScrollView>
     </KeyboardAvoidingView>

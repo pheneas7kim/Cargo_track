@@ -33,6 +33,8 @@ import { Provider } from 'react-redux';
 import AsyncStorage from '@react-native-async-storage/async-storage'; // <-- add this import
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import CreateTicket from './screens/CreateTicket';
+import AttatchEvidence from './screens/AttatchEvidence';
 
 
 // Define the types for your stack
@@ -217,6 +219,9 @@ export default function App() {
             
             {/* Profile screen */}
             <Stack.Screen name="Profile" component={ProfilePage} />
+            <Stack.Screen name="CreateTicket" component={CreateTicket} />
+            <Stack.Screen name="AttatchEvidence" component={AttatchEvidence} />
+
           </Stack.Navigator>
         </SafeAreaView>
       </NavigationContainer>

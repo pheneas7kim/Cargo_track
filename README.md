@@ -118,3 +118,7 @@ npm install @types/react-native@latest --save-dev
 rm -rf node_modules
 rm package-lock.json
 npm install
+
+
+npm install react-native-geolocation-service --legacy-peer-deps
+npm install react-native-image-picker --legacy-peer-deps
