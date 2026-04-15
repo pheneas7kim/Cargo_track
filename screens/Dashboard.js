@@ -435,6 +435,8 @@ function HomeScreen() {
   const handleCommandsScreen = () => navigation.navigate('CommandsScreen');
   const handleAlertsNotigicationScreen = () => navigation.navigate('AlertsNotigicationScreen');
   const handleHotspotsScreen = () => navigation.navigate('HotspotsScreen');
+  const handleRandomStopScreen = () => navigation.navigate('RandomStopScreen');
+
 
   const TopUpModal = () => setIsModalVisible(true);
   const withdrawModal = () => setIsModalVisibleWithdraw(true);
@@ -637,12 +639,20 @@ function HomeScreen() {
       <View style={styles.quickActionsGrid}>
         <View style={styles.actionsContainer}>
           <View style={styles.actionRow}>
-            <TouchableOpacity style={styles.actionCard} onPress={handleDeviceMapScreen}>
-              <View style={[styles.actionIconBg, { backgroundColor: '#FFA50020' }]}>
-                <Image source={require('../assets/monitor.png')} style={styles.actionIcon} />
-              </View>
-              <Text style={styles.actionLabel}>Shipments</Text>
-            </TouchableOpacity>
+
+          <TouchableOpacity style={styles.actionCard} onPress={handleTicketsScreen}>
+                       <View style={[styles.actionIconBg, { backgroundColor: '#2196F320' }]}>
+                         <Image source={require('../assets/phone.png')} style={styles.actionIcon} />
+                      </View>
+                      <Text style={styles.actionLabel}>Tickets</Text>
+                    </TouchableOpacity>
+
+            <TouchableOpacity style={styles.actionCard} onPress={handleRandomStopScreen}>
+                          <View style={[styles.actionIconBg, { backgroundColor: '#2196F320' }]}>
+                            <Image source={require('../assets/randomstop.png')} style={styles.actionIcon} />
+                          </View>
+                          <Text style={styles.actionLabel}>Random Stop</Text>
+                        </TouchableOpacity>
 
             <TouchableOpacity style={styles.actionCard} onPress={handleAlarmsNotigicationScreen}>
               <View style={[styles.actionIconBg, { backgroundColor: '#FF6B6B20' }]}>
@@ -657,14 +667,10 @@ function HomeScreen() {
               </View>
               <Text style={styles.actionLabel}>Alerts</Text>
             </TouchableOpacity>
-
-            <TouchableOpacity style={styles.actionCard} onPress={handleTicketsScreen}>
-              <View style={[styles.actionIconBg, { backgroundColor: '#2196F320' }]}>
-                <Image source={require('../assets/phone.png')} style={styles.actionIcon} />
-              </View>
-              <Text style={styles.actionLabel}>Tickets</Text>
-            </TouchableOpacity>
           </View>
+
+
+         </View>
 
             <View style={styles.actionRow}>
             {/*
@@ -689,14 +695,21 @@ function HomeScreen() {
               <Text style={styles.actionLabel}>Hotspots</Text>
             </TouchableOpacity>
 
+            <TouchableOpacity style={styles.actionCard} onPress={handleDeviceMapScreen}>
+                          <View style={[styles.actionIconBg, { backgroundColor: '#FFA50020' }]}>
+                            <Image source={require('../assets/monitor.png')} style={styles.actionIcon} />
+                          </View>
+                          <Text style={styles.actionLabel}>Shipments</Text>
+                        </TouchableOpacity>
+
             <TouchableOpacity style={styles.actionCard} onPress={handleStationsScreen}>
               <View style={[styles.actionIconBg, { backgroundColor: '#00BCD420' }]}>
                 <Image source={require('../assets/station.png')} style={styles.actionIcon} />
               </View>
               <Text style={styles.actionLabel}>Stations</Text>
             </TouchableOpacity>
-            */}
           </View>
+          */}
         </View>
       </View>
 

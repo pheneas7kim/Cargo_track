@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { SafeAreaView, View, TouchableOpacity, Image } from 'react-native';
-import { NavigationContainer } from '@react-navigation/native'; // Import NavigationContainer
+import { NavigationContainer, createNavigationContainerRef } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack'; // Import createStackNavigator
 import Onboarding from './screens/onboarding'; // Import the Onboarding screen
 import Dashboard from './screens/Dashboard'; // Import the Dashboard screen
@@ -35,6 +35,9 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import CreateTicket from './screens/CreateTicket';
 import AttatchEvidence from './screens/AttatchEvidence';
+import messaging from '@react-native-firebase/messaging';
+import RandomStopScreen from './screens/RandomStopScreen';
+import { setupAxiosLogging } from './utils/axiosLogger';
 
 
 // Define the types for your stack
@@ -65,9 +68,11 @@ type RootStackParamList = {
   CommandsScreen: undefined;
   TrackOnMap: undefined;
   AlertsNotigicationScreen: undefined;
+  RandomStopScreen: undefined;
 
 };
 
+export const navigationRef = createNavigationContainerRef<RootStackParamList>();
 // Create a Stack Navigator
 const Stack = createStackNavigator<RootStackParamList>();
 
@@ -75,20 +80,39 @@ export default function App() {
   const [userName, setUserName] = useState<string>('');
 
   useEffect(() => {
-    // Retrieve the stored name after login
+      setupAxiosLogging();
+      messaging().getToken().then(token => console.log("DEVICE_TOKEN:", token));
+    // 1. Your existing User Name logic
     const getUserName = async () => {
       const name = await AsyncStorage.getItem('name');
-      if (name) {
-        setUserName(name);
-      }
+      if (name) setUserName(name);
+
     };
-
     getUserName();
-  }, []);
 
+    const unsubscribe = messaging().onNotificationOpenedApp(remoteMessage => {
+      if (remoteMessage.data?.ticketId) {
+        if (navigationRef.isReady()) {
+          navigationRef.navigate('TicketsScreen', { ticketId: remoteMessage.data.ticketId } as any);
+        }
+      }
+    });
+
+    messaging().getInitialNotification().then(remoteMessage => {
+      if (remoteMessage?.data?.ticketId) {
+        setTimeout(() => {
+          if (navigationRef.isReady()) {
+            navigationRef.navigate('TicketsScreen', { ticketId: remoteMessage.data.ticketId } as any);
+          }
+        }, 1000);
+      }
+    });
+
+    return unsubscribe;
+  }, []);
   return (
     <Provider store={store}>
-      <NavigationContainer>
+      <NavigationContainer ref={navigationRef}>
         <SafeAreaView style={{ flex: 1 }}>
           <Stack.Navigator initialRouteName="SplashScreen">
             {/* Onboarding screen */}
@@ -115,6 +139,7 @@ export default function App() {
               <Stack.Screen name="CommandsScreen" component={CommandsScreen} options={{ headerShown: false }} />
               <Stack.Screen name="TrackOnMap" component={TrackOnMap} options={{ headerShown: false }} />
               <Stack.Screen name="AlertsNotigicationScreen" component={AlertsNotigicationScreen} options={{ headerShown: false }} />
+              <Stack.Screen name="RandomStopScreen" component={RandomStopScreen} options={{ headerShown: false }} />
 
 
 

@@ -1,5 +1,5 @@
 {
-  "name": "skyteam",
+  "name": "brisktrack",
   "version": "0.0.1",
   "private": true,
   "scripts": {
@@ -15,6 +15,8 @@
     "@haskkor/react-native-pincode": "^1.22.6",
     "@react-native-async-storage/async-storage": "^2.2.0",
     "@react-native-clipboard/clipboard": "^1.16.3",
+    "@react-native-firebase/app": "^24.0.0",
+    "@react-native-firebase/messaging": "^24.0.0",
     "@react-native-ml-kit/barcode-scanning": "^2.0.0",
     "@react-navigation/native": "^6.1.18",
     "@react-navigation/native-stack": "^6.11.0",
