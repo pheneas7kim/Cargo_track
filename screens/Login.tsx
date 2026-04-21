@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { requestPermissionAndToken } from '../utils/firebaseMessaging';
 import { 
   View, 
   Text, 
@@ -65,7 +66,7 @@ const Login = () => {
     }, [])
   );
 
-  /** ✅ Request camera permission */
+  /**  Request camera permission */
   useEffect(() => {
     const requestPermission = async () => {
       if (Platform.OS === 'android') {
@@ -99,72 +100,71 @@ const Login = () => {
   };
 
   const handleLogin = async () => {
-    if (!email.trim()) {
-      Snackbar.show({
-        text: 'Email is required',
-        duration: 3000,
-        backgroundColor: '#FF6B6B',
-      });
-      return;
-    }
+      if (!email.trim()) {
+        Snackbar.show({ text: 'Email is required', duration: 3000, backgroundColor: '#FF6B6B' });
+        return;
+      }
 
-    if (!password.trim()) {
-      Snackbar.show({
-        text: 'Password is required',
-        duration: 3000,
-        backgroundColor: '#FF6B6B',
-      });
-      return;
-    }
+      if (!password.trim()) {
+        Snackbar.show({ text: 'Password is required', duration: 3000, backgroundColor: '#FF6B6B' });
+        return;
+      }
 
-    setLoading(true);
+      setLoading(true);
 
-    try {
-      const response = await fetch(`${serverUrl}auth/signin`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          username: email,
-          password: password,
-        }),
-      });
+      try {
+        const response = await fetch(`${serverUrl}auth/signin`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username: email, password: password }),
+        });
 
-      if (response.ok) {
-        const data = await response.json();
-        await AsyncStorage.setItem('accessToken', data.accessToken);
-        await AsyncStorage.setItem('id', data.id.toString());
-        await AsyncStorage.setItem('name', data.name);
-        await AsyncStorage.setItem('email', data.email);
+        if (response.ok) {
+          const data = await response.json();
 
-        setUserLoggedIn(data);
-        setTimeout(() => {
-          setLoading(false);
-          navigation.reset({
-            index: 0,
-            routes: [{ name: 'Dashboard' }],
+          // Save to Storage
+          await AsyncStorage.setItem('accessToken', data.accessToken);
+          await AsyncStorage.setItem('id', data.id.toString());
+          await AsyncStorage.setItem('name', data.name);
+          await AsyncStorage.setItem('email', data.email);
+
+          setUserLoggedIn(data);
+
+          // --- NEW FCM REGISTRATION LOGIC ---
+          try {
+            // Pass the user ID and the newly received access token
+            await requestPermissionAndToken(data.id.toString(), data.accessToken);
+            console.log('FCM Registration triggered successfully');
+          } catch (fcmError) {
+            console.log('FCM Registration failed, but login continued:', fcmError);
+          }
+          // ----------------------------------
+
+          setTimeout(() => {
+            setLoading(false);
+            navigation.reset({
+              index: 0,
+              routes: [{ name: 'Dashboard' }],
+            });
+          }, 10);
+        } else {
+          const errorData = await response.json();
+          Snackbar.show({
+            text: errorData.message || 'Invalid credentials.',
+            duration: 3000,
+            backgroundColor: '#FF6B6B',
           });
-        }, 10);
-      } else {
-        const errorData = await response.json();
+          setLoading(false);
+        }
+      } catch (error) {
         Snackbar.show({
-          text: errorData.message || 'Invalid credentials.',
+          text: 'Something went wrong. Please try again later.',
           duration: 3000,
           backgroundColor: '#FF6B6B',
         });
         setLoading(false);
       }
-    } catch (error) {
-      Snackbar.show({
-        text: 'Something went wrong. Please try again later.',
-        duration: 3000,
-        backgroundColor: '#FF6B6B',
-      });
-      setLoading(false);
-    }
-  };
-
+    };
   if (!isVisible) {
     return (
       <View style={styles.container}>

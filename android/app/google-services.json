@@ -1,13 +1,13 @@
 {
   "project_info": {
-    "project_number": "181916532419",
-    "project_id": "ects-mobile-app",
-    "storage_bucket": "ects-mobile-app.firebasestorage.app"
+    "project_number": "137740267989",
+    "project_id": "ects-ef625",
+    "storage_bucket": "ects-ef625.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:181916532419:android:fec321546994288ece6c76",
+        "mobilesdk_app_id": "1:137740267989:android:1899f7e7bfd899229b0d5c",
         "android_client_info": {
           "package_name": "bsl.co.ke.ects"
         }
@@ -15,7 +15,7 @@
       "oauth_client": [],
       "api_key": [
         {
-          "current_key": "AIzaSyCzYojfaEoxUuuAk_F-Rbehxnt-dzisExQ"
+          "current_key": "AIzaSyDuiZ6WM1hRCjZeBg2NgmZABtAoUXQgKm4"
         }
       ],
       "services": {

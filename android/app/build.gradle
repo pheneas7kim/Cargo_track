@@ -13,12 +13,14 @@ react {
 def jscFlavor = 'io.github.react-native-community:jsc-android:2026004.+'
 
 android {
+    namespace "bsl.co.ke.ects"
     ndkVersion rootProject.ext.ndkVersion
     buildToolsVersion rootProject.ext.buildToolsVersion
     compileSdk rootProject.ext.compileSdkVersion
 
     namespace "bsl.co.ke.ects"
     defaultConfig {
+
         applicationId "bsl.co.ke.ects"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { SafeAreaView, View, TouchableOpacity, Image } from 'react-native';
+import { SafeAreaView, View, TouchableOpacity, Image, PermissionsAndroid, Platform } from 'react-native';
 import { NavigationContainer, createNavigationContainerRef } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack'; // Import createStackNavigator
 import Onboarding from './screens/onboarding'; // Import the Onboarding screen
@@ -38,7 +38,7 @@ import AttatchEvidence from './screens/AttatchEvidence';
 import messaging from '@react-native-firebase/messaging';
 import RandomStopScreen from './screens/RandomStopScreen';
 import { setupAxiosLogging } from './utils/axiosLogger';
-
+import notifee, { AndroidImportance } from '@notifee/react-native';
 
 // Define the types for your stack
 type RootStackParamList = {
@@ -69,7 +69,8 @@ type RootStackParamList = {
   TrackOnMap: undefined;
   AlertsNotigicationScreen: undefined;
   RandomStopScreen: undefined;
-
+  CreateTicket: undefined;
+  AttatchEvidence: undefined;
 };
 
 export const navigationRef = createNavigationContainerRef<RootStackParamList>();
@@ -80,17 +81,43 @@ export default function App() {
   const [userName, setUserName] = useState<string>('');
 
   useEffect(() => {
-      setupAxiosLogging();
-      messaging().getToken().then(token => console.log("DEVICE_TOKEN:", token));
+    setupAxiosLogging();
+
+    // Notification Logic (Permissions, Channels, Handlers)
+    const setupNotifications = async () => {
+      if (Platform.OS === 'android' && Platform.Version >= 33) {
+        await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS);
+      }
+      await notifee.createChannel({
+        id: 'default',
+        name: 'Default Channel',
+        importance: AndroidImportance.HIGH,
+      });
+    };
+    setupNotifications();
+
+    messaging().getToken().then(token => console.log("DEVICE_TOKEN:", token));
+
     // 1. Your existing User Name logic
     const getUserName = async () => {
       const name = await AsyncStorage.getItem('name');
       if (name) setUserName(name);
-
     };
     getUserName();
 
-    const unsubscribe = messaging().onNotificationOpenedApp(remoteMessage => {
+    // Foreground listener
+    const unsubscribeForeground = messaging().onMessage(async remoteMessage => {
+      await notifee.displayNotification({
+        title: remoteMessage.notification?.title,
+        body: remoteMessage.notification?.body,
+        android: {
+          channelId: 'default',
+          pressAction: { id: 'default' },
+        },
+      });
+    });
+
+    const unsubscribeOpened = messaging().onNotificationOpenedApp(remoteMessage => {
       if (remoteMessage.data?.ticketId) {
         if (navigationRef.isReady()) {
           navigationRef.navigate('TicketsScreen', { ticketId: remoteMessage.data.ticketId } as any);
@@ -108,8 +135,12 @@ export default function App() {
       }
     });
 
-    return unsubscribe;
+    return () => {
+      unsubscribeForeground();
+      unsubscribeOpened();
+    };
   }, []);
+
   return (
     <Provider store={store}>
       <NavigationContainer ref={navigationRef}>
@@ -124,7 +155,7 @@ export default function App() {
             <Stack.Screen name="Login" component={Login} options={{ headerShown: false }} />
             <Stack.Screen name="ForgotPassword" component={ForgotPassword} options={{ headerShown: false }} />
 
-          
+
             <Stack.Screen name="Register" component={RegisterPage} options={{ headerShown: false }} />
             <Stack.Screen name="Dashboard" component={Dashboard} options={{ headerShown: false }} />
             <Stack.Screen name="NotificationsScreen" component={NotificationsScreen} options={{ headerShown: false }} />
@@ -132,20 +163,14 @@ export default function App() {
               <Stack.Screen name="TicketsScreen" component={TicketsScreen} options={{ headerShown: false }} />
               <Stack.Screen name="DevicesScreen" component={DevicesScreen} options={{ headerShown: false }} />
               <Stack.Screen name="DeviceMapScreen" component={DeviceMapScreen} options={{ headerShown: false }} />
-              <Stack.Screen name="HotspotsScreen" component={HotspotsScreen} options={{ headerShown: false }} />  
-              <Stack.Screen name="StationsScreen" component={StationsScreen} options={{ headerShown: false }} />  
+              <Stack.Screen name="HotspotsScreen" component={HotspotsScreen} options={{ headerShown: false }} />
+              <Stack.Screen name="StationsScreen" component={StationsScreen} options={{ headerShown: false }} />
               <Stack.Screen name="GeofencesScreen" component={GeofencesScreen} options={{ headerShown: false }} />
               <Stack.Screen name="DeviceMapScreenView" component={DeviceMapScreenView} options={{ headerShown: false }} />
               <Stack.Screen name="CommandsScreen" component={CommandsScreen} options={{ headerShown: false }} />
               <Stack.Screen name="TrackOnMap" component={TrackOnMap} options={{ headerShown: false }} />
               <Stack.Screen name="AlertsNotigicationScreen" component={AlertsNotigicationScreen} options={{ headerShown: false }} />
               <Stack.Screen name="RandomStopScreen" component={RandomStopScreen} options={{ headerShown: false }} />
-
-
-
-
-           
-
 
             <Stack.Screen
               name="Withdraw"
@@ -160,7 +185,6 @@ export default function App() {
               }}
             />
 
-
             <Stack.Screen
               name="SecretPin"
               component={SetSecretPin}
@@ -173,7 +197,6 @@ export default function App() {
                 headerRight: () => <ProfileIcon />,
               }}
             />
-
 
             <Stack.Screen
               name="MpesaPaybillQRCode"
@@ -188,14 +211,7 @@ export default function App() {
               }}
             />
 
-
-              
-
-            
-
-            
-
-                { <Stack.Screen
+            { <Stack.Screen
               name="QrPaymentScanner"
               component={QrPaymentScanner}
               options={{
@@ -205,11 +221,7 @@ export default function App() {
                   fontWeight: '600',
                 },
               }}
-            /> } 
-
-
-            
-
+            /> }
 
             <Stack.Screen
               name="NewSecretPin"
@@ -224,9 +236,6 @@ export default function App() {
               }}
             />
 
-
-
-
             <Stack.Screen
               name="Transactions"
               component={MyTips}
@@ -240,8 +249,6 @@ export default function App() {
               }}
             />
 
-
-            
             {/* Profile screen */}
             <Stack.Screen name="Profile" component={ProfilePage} />
             <Stack.Screen name="CreateTicket" component={CreateTicket} />
@@ -259,13 +266,13 @@ const ProfileIcon = () => {
 
   return (
     <View style={{ flexDirection: 'row', marginRight: 16, alignItems: 'center' }}>
-      
+
       <TouchableOpacity onPress={() => navigation.navigate('MpesaPaybillQRCode')}>
         <Image source={require('./assets/qr.png')} style={{ width: 26, height: 26 }} />
       </TouchableOpacity>
-      
-      <TouchableOpacity 
-        onPress={() => navigation.navigate('Profile')} 
+
+      <TouchableOpacity
+        onPress={() => navigation.navigate('Profile')}
         style={{ marginLeft: 12 }} // Adjust spacing as needed
       >
         <Image source={require('./assets/user.png')} style={{ width: 26, height: 26 }} />
@@ -274,4 +281,3 @@ const ProfileIcon = () => {
     </View>
   );
 };
-
