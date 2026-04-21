@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { requestPermissionAndToken } from '../utils/firebaseMessaging';
-import { 
+import { requestPermissionAndToken, setupNotificationListeners } from '../utils/firebaseMessaging';
+import {
   View, 
   Text, 
   TextInput, 
@@ -100,29 +100,45 @@ const Login = () => {
   };
 
   const handleLogin = async () => {
-      if (!email.trim()) {
-        Snackbar.show({ text: 'Email is required', duration: 3000, backgroundColor: '#FF6B6B' });
-        return;
-      }
-
-      if (!password.trim()) {
-        Snackbar.show({ text: 'Password is required', duration: 3000, backgroundColor: '#FF6B6B' });
+      if (!email.trim() || !password.trim()) {
+        Snackbar.show({
+          text: 'Email and Password are required',
+          duration: 3000,
+          backgroundColor: '#FF6B6B',
+        });
         return;
       }
 
       setLoading(true);
 
+      const payload = {
+        username: email,
+        password: password,
+      };
+
+      console.log('DEBUG: Attempting login to:', `${serverUrl}auth/signin`);
+      console.log('DEBUG: Request Payload:', JSON.stringify(payload));
+
       try {
         const response = await fetch(`${serverUrl}auth/signin`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ username: email, password: password }),
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+          },
+          body: JSON.stringify(payload),
         });
 
-        if (response.ok) {
-          const data = await response.json();
+        // Log raw response status and headers
+        console.log('DEBUG: Response Status:', response.status);
+        console.log('DEBUG: Response Headers:', response.headers);
 
-          // Save to Storage
+        const responseText = await response.text();
+        console.log('DEBUG: Raw Response Text:', responseText);
+
+        if (response.ok) {
+          const data = JSON.parse(responseText);
+
           await AsyncStorage.setItem('accessToken', data.accessToken);
           await AsyncStorage.setItem('id', data.id.toString());
           await AsyncStorage.setItem('name', data.name);
@@ -130,35 +146,27 @@ const Login = () => {
 
           setUserLoggedIn(data);
 
-          // --- NEW FCM REGISTRATION LOGIC ---
-          try {
-            // Pass the user ID and the newly received access token
-            await requestPermissionAndToken(data.id.toString(), data.accessToken);
-            console.log('FCM Registration triggered successfully');
-          } catch (fcmError) {
-            console.log('FCM Registration failed, but login continued:', fcmError);
-          }
-          // ----------------------------------
+          await requestPermissionAndToken(data.id, data.accessToken);
+          setupNotificationListeners();
 
-          setTimeout(() => {
-            setLoading(false);
-            navigation.reset({
-              index: 0,
-              routes: [{ name: 'Dashboard' }],
-            });
-          }, 10);
+          setLoading(false);
+          navigation.reset({
+            index: 0,
+            routes: [{ name: 'Dashboard' }],
+          });
         } else {
-          const errorData = await response.json();
+          console.log('DEBUG: Login failed. Server response:', responseText);
           Snackbar.show({
-            text: errorData.message || 'Invalid credentials.',
+            text: 'Login failed. Check logs.',
             duration: 3000,
             backgroundColor: '#FF6B6B',
           });
           setLoading(false);
         }
       } catch (error) {
+        console.log('DEBUG: Network or Request Error:', error);
         Snackbar.show({
-          text: 'Something went wrong. Please try again later.',
+          text: 'Something went wrong. Please check your connection.',
           duration: 3000,
           backgroundColor: '#FF6B6B',
         });

@@ -15,6 +15,7 @@ import {
   TextInput,
   Animated
 } from 'react-native';
+import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { BackHandler } from 'react-native';
 import Snackbar from 'react-native-snackbar';
@@ -151,8 +152,8 @@ const RandomStopScreen = () => {
         <View style={styles.header}>
           <View style={styles.headerTop}>
             <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-              <Text style={styles.backButtonText}>←</Text>
-            </TouchableOpacity>
+                      <Icon name="arrow-back" size={24} color="#1A1A1A" />
+                    </TouchableOpacity>
             <Text style={styles.headerTitle}>Random Stops</Text>
             <TouchableOpacity style={styles.createButton} onPress={() => setCreateModalVisible(true)}>
               <Text style={styles.createButtonText}>+ Report</Text>

@@ -116,6 +116,8 @@ function HomeScreen() {
   const [phoneNumber2, setPhoneNumber2] = useState('');
   const [amount2, setAmount2] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [selectedTicket, setSelectedTicket] = useState(null);
+  const [modalVisible, setModalVisible] = useState(false);
 
   // Commands list
   const commands = [
@@ -558,30 +560,33 @@ function HomeScreen() {
   );
 
   const renderTicket = ({ item, index }) => (
-    <Animatable.View
-      animation="fadeInLeft"
-      delay={index * 100}
-      style={styles.ticketCard}
-      onTouchEnd={() => handleViewTicket(item)}
-    >
-      <View style={styles.ticketHeader}>
-        <Text style={styles.ticketId}>{item.ticketNumber}</Text>
-        <View style={[styles.priorityBadge, { backgroundColor: getPriorityColor(item.priority) + '20' }]}>
-          <Text style={[styles.priorityText, { color: getPriorityColor(item.priority) }]}>
-            {item.priority}
-          </Text>
+    <Animatable.View animation="fadeInLeft" delay={index * 100} style={styles.ticketCard}>
+      <TouchableOpacity
+        activeOpacity={0.7}
+        onPress={() => {
+          setSelectedTicket(item);
+          setModalVisible(true);
+        }}
+      >
+        <View style={styles.ticketHeader}>
+          <Text style={styles.ticketId}>{item.ticketNumber}</Text>
+          <View style={[styles.priorityBadge, { backgroundColor: getPriorityColor(item.priority) + '20' }]}>
+            <Text style={[styles.priorityText, { color: getPriorityColor(item.priority) }]}>
+              {item.priority}
+            </Text>
+          </View>
         </View>
-      </View>
-      <Text style={styles.ticketSubject}>{item.subject}</Text>
-      <Text style={styles.ticketDescription}>{item.description}</Text>
-      <View style={styles.ticketFooter}>
-        <Text style={styles.ticketDate}>{item.createdAt}</Text>
-        <View style={[styles.statusBadgeSmall, { backgroundColor: item.status === 'OPEN' ? '#FFA50020' : '#4CAF5020' }]}>
-          <Text style={[styles.statusTextSmall, { color: item.status === 'OPEN' ? '#FFA500' : '#4CAF50' }]}>
-            {item.status}
-          </Text>
+        <Text style={styles.ticketSubject}>{item.subject}</Text>
+        <Text style={styles.ticketDescription}>{item.description}</Text>
+        <View style={styles.ticketFooter}>
+          <Text style={styles.ticketDate}>{item.createdAt}</Text>
+          <View style={[styles.statusBadgeSmall, { backgroundColor: item.status === 'OPEN' ? '#FFA50020' : '#4CAF5020' }]}>
+            <Text style={[styles.statusTextSmall, { color: item.status === 'OPEN' ? '#FFA500' : '#4CAF50' }]}>
+              {item.status}
+            </Text>
+          </View>
         </View>
-      </View>
+      </TouchableOpacity>
     </Animatable.View>
   );
 
@@ -613,9 +618,11 @@ function HomeScreen() {
               </View>
             )}
           </TouchableOpacity>
+          {/*
           <TouchableOpacity style={styles.iconButton} onPress={handleCommandsScreen}>
             <Image source={require('../assets/command.png')} style={styles.headerIcon} />
           </TouchableOpacity>
+          */}
         </View>
       </View>
 
@@ -891,9 +898,54 @@ function HomeScreen() {
       </Modal>
 
       {activeTab === 'tickets' && (
-        <TouchableOpacity style={styles.fab} onPress={handleCreateTicket}>
-          <Text style={styles.fabText}>+</Text>
-        </TouchableOpacity>
+        <>
+          <TouchableOpacity style={styles.fab} onPress={handleCreateTicket}>
+            <Text style={styles.fabText}>+</Text>
+          </TouchableOpacity>
+
+          {/* Ticket Detail Modal */}
+          <Modal
+            visible={modalVisible}
+            animationType="slide"
+            transparent={true}
+            onRequestClose={() => setModalVisible(false)}
+          >
+            <View style={styles.modalOverlay}>
+              <Animatable.View animation="slideInUp" duration={300} style={styles.modalContent}>
+                <View style={styles.modalHeader}>
+                  <Text style={styles.modalTitle}>Ticket Details</Text>
+                  <TouchableOpacity onPress={() => setModalVisible(false)} style={styles.closeButton}>
+                    <Text style={styles.closeButtonText}>✕</Text>
+                  </TouchableOpacity>
+                </View>
+
+                {selectedTicket && (
+                  <ScrollView style={styles.modalBody}>
+                    <Text style={styles.detailLabel}>Ticket ID</Text>
+                    <Text style={styles.detailValue}>{selectedTicket.ticketNumber}</Text>
+
+                    <Text style={styles.detailLabel}>Subject</Text>
+                    <Text style={styles.detailValue}>{selectedTicket.subject}</Text>
+
+                    <Text style={styles.detailLabel}>Description</Text>
+                    <Text style={styles.detailValue}>{selectedTicket.description}</Text>
+
+                    <Text style={styles.detailLabel}>Priority</Text>
+                    <Text style={[styles.detailValue, { color: getPriorityColor(selectedTicket.priority) }]}>
+                      {selectedTicket.priority}
+                    </Text>
+
+                    <Text style={styles.detailLabel}>Status</Text>
+                    <Text style={styles.detailValue}>{selectedTicket.status}</Text>
+
+                    <Text style={styles.detailLabel}>Created At</Text>
+                    <Text style={styles.detailValue}>{selectedTicket.createdAt}</Text>
+                  </ScrollView>
+                )}
+              </Animatable.View>
+            </View>
+          </Modal>
+        </>
       )}
     </SafeAreaView>
   );
@@ -952,8 +1004,8 @@ const styles = StyleSheet.create({
   progressText: { fontSize: 12, color: '#666', marginTop: 4 },
   shipmentDetails: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12, paddingTop: 8, borderTopWidth: 1, borderTopColor: '#F0F0F0' },
   detailItem: { flex: 1 },
-  detailLabel: { fontSize: 11, color: '#999', marginBottom: 4 },
-  detailValue: { fontSize: 13, color: '#333', fontWeight: '500' },
+  detailLabel: { fontSize: 12, color: '#666',  marginTop: 10,},
+  detailValue: { fontSize: 16, color: '#333',  marginBottom: 5,},
   shipmentActions: { flexDirection: 'row', gap: 12 },
   actionBtn: { flex: 1, backgroundColor: '#F5F5F5', paddingVertical: 10, borderRadius: 10, alignItems: 'center' },
   actionBtnText: { fontSize: 13, color: '#FFA500', fontWeight: '500' },
@@ -980,10 +1032,10 @@ const styles = StyleSheet.create({
   alertTitle: { fontSize: 14, fontWeight: '600', color: '#1A1A1A', marginBottom: 4 },
   alertMessage: { fontSize: 12, color: '#666', marginBottom: 8 },
   alertTime: { fontSize: 10, color: '#999' },
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.5)', justifyContent: 'flex-end' },
-  modalContent: { backgroundColor: '#FFFFFF', borderTopLeftRadius: 24, borderTopRightRadius: 24, maxHeight: '80%' },
-  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 20, borderBottomWidth: 1, borderBottomColor: '#F0F0F0' },
-  modalTitle: { fontSize: 18, fontWeight: '600', color: '#1A1A1A' },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end', },
+  modalContent: { backgroundColor: '#FFF', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, maxHeight: '80%',},
+  modalHeader: { flexDirection: 'row',  justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, },
+  modalTitle: { fontSize: 18, fontWeight: 'bold', },
   closeButtonText: { fontSize: 24, color: '#999' },
   modalBody: { padding: 20 },
   detailTitle: { fontSize: 12, fontWeight: '600', color: '#999', marginTop: 12, marginBottom: 4 },
@@ -1005,7 +1057,7 @@ const styles = StyleSheet.create({
   submitButton: { flex: 1, paddingVertical: 14, borderRadius: 12, backgroundColor: '#FFA500', alignItems: 'center' },
   submitButtonDisabled: { backgroundColor: '#CCCCCC' },
   submitButtonText: { fontSize: 16, fontWeight: '600', color: '#FFFFFF' },
-  closeButton: { width: 32, height: 32, borderRadius: 16, backgroundColor: '#F0F0F0', justifyContent: 'center', alignItems: 'center' },
+  closeButtonText: { fontSize: 20, color: '#333', },
   loaderContainer: { padding: 40, alignItems: 'center' },
   loaderText: { marginTop: 12, fontSize: 14, color: '#666' },
   emptyContainer: { padding: 40, alignItems: 'center' },
