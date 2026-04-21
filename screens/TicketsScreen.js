@@ -62,6 +62,7 @@ const TicketsScreen = () => {
   // Animation values
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(30)).current;
+  const STATUS_ACTIONS = ['ACKNOWLEDGED', 'RESOLVED'];
 
 
   useEffect(() => {
@@ -239,12 +240,13 @@ const TicketsScreen = () => {
   };
 
   const getStatusColor = (status) => {
-    switch(status?.toLowerCase()) {
-      case 'open': return '#FFA500';
-      case 'in-progress': return '#4CAF50';
-      case 'resolved': return '#2196F3';
-      case 'closed': return '#9E9E9E';
-      default: return '#666';
+    switch (status?.toUpperCase()) {
+      case 'ACKNOWLEDGED':
+        return '#FFA500';
+      case 'RESOLVED':
+        return '#2196F3';
+      default:
+        return '#666';
     }
   };
 
@@ -288,22 +290,19 @@ const TicketsScreen = () => {
     let filtered = [...tickets];
     
     // Apply status filter
-    switch(filter) {
-      case 'open':
-        filtered = filtered.filter(t => t.status?.toLowerCase() === 'open');
+    switch (filter) {
+      case 'acknowledged':
+        filtered = filtered.filter(t => t.status?.toUpperCase() === 'ACKNOWLEDGED');
         break;
-      case 'in-progress':
-        filtered = filtered.filter(t => t.status?.toLowerCase() === 'in-progress');
-        break;
+
       case 'resolved':
-        filtered = filtered.filter(t => t.status?.toLowerCase() === 'resolved');
+        filtered = filtered.filter(t => t.status?.toUpperCase() === 'RESOLVED');
         break;
-      case 'closed':
-        filtered = filtered.filter(t => t.status?.toLowerCase() === 'closed');
-        break;
+
       case 'critical':
         filtered = filtered.filter(t => t.priority?.toUpperCase() === 'CRITICAL');
         break;
+
       default:
         break;
     }
@@ -731,7 +730,7 @@ const TicketsScreen = () => {
                 <View style={styles.statusUpdateSection}>
                   <Text style={styles.sectionTitle}>Update Status</Text>
                   <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.statusButtons}>
-                    {['Open', 'In-Progress', 'Resolved', 'Closed'].map(status => (
+                    {STATUS_ACTIONS.map(status => (
                       <TouchableOpacity
                         key={status}
                         style={[

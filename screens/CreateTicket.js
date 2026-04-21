@@ -151,7 +151,7 @@ const CreateTicket = ({ navigation }) => {
 
         <View style={styles.divider} />
 
-        {/* OPTIONAL FIELDS SECTION */}
+        {/*
         <Text style={styles.optionalLabel}>Device Serial Number (Optional)</Text>
         <TextInput
           style={styles.input}
@@ -169,6 +169,7 @@ const CreateTicket = ({ navigation }) => {
           value={form.cargoValue}
           onChangeText={(val) => setForm({...form, cargoValue: val})}
         />
+        */}
 
         <TouchableOpacity
           style={styles.submitBtn}
@@ -178,7 +179,7 @@ const CreateTicket = ({ navigation }) => {
           {submitting ? (
             <ActivityIndicator color="#fff" />
           ) : (
-            <Text style={styles.btnText}>SUBMIT TICKET</Text>
+            <Text style={styles.btnText}>Proceed to Attatch Evidence</Text>
           )}
         </TouchableOpacity>
       </ScrollView>

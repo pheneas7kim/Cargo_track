@@ -47,6 +47,23 @@ const formatRelativeTime = (timestamp) => {
 };
 
 // Helper: Map tracking status to color and display text
+const getTicketStatusInfo = (status) => {
+  switch (status?.toUpperCase()) {
+    case 'OPEN':
+      return { text: 'Open', color: '#FF6B6B' };
+    case 'IN_PROGRESS':
+      return { text: 'In Progress', color: '#FFA500' };
+    case 'RESOLVED':
+      return { text: 'Resolved', color: '#4CAF50' };
+    case 'CLOSED':
+      return { text: 'Closed', color: '#2196F3' };
+    default:
+      return { text: status || 'Unknown', color: '#999' };
+  }
+};
+
+
+
 const getStatusInfo = (status) => {
   switch (status) {
     case 'IN_TRANSIT':
@@ -61,6 +78,19 @@ const getStatusInfo = (status) => {
 };
 
 // Helper: Map priority to color
+const cleanTicketDescription = (text) => {
+  if (!text) return '';
+
+  return text
+    .replace(/Location:\s*.*$/gim, '')
+    .replace(/Map:\s*https?:\/\/\S+/gim, '')
+    .replace(/https?:\/\/maps\.google\.com\/\S+/gim, '')
+    .replace(/-?\d{1,2}\.\d+,\s*-?\d{1,3}\.\d+/g, '')
+    .replace(/\n{2,}/g, '\n')
+    .trim();
+};
+
+
 const getPriorityColor = (priority) => {
   switch (priority?.toUpperCase()) {
     case 'CRITICAL':
@@ -84,7 +114,42 @@ const getAuthToken = async () => {
     return null;
   }
 };
+const acknowledgeTicket = async (ticketId) => {
+  const token = await getAuthToken();
 
+  const response = await fetch(
+    `${API_BASE}/api/v1/tickets/${ticketId}/acknowledge`,
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+    }
+  );
+
+  if (!response.ok) throw new Error('Failed to acknowledge ticket');
+  return await response.json();
+};
+
+const resolveTicket = async (ticketId, payload = {}) => {
+  const token = await getAuthToken();
+
+  const response = await fetch(
+    `${API_BASE}/api/v1/tickets/${ticketId}/resolve`,
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    }
+  );
+
+  if (!response.ok) throw new Error('Failed to resolve ticket');
+  return await response.json();
+};
 function HomeScreen() {
   const navigation = useNavigation();
   const [refreshing, setRefreshing] = useState(false);
@@ -254,18 +319,29 @@ function HomeScreen() {
       const data = await response.json();
 
       // 4. Transform data for UI
-      const transformed = (data.content || []).map(ticket => ({
-        id: ticket.id?.toString(),
-        ticketNumber: ticket.ticketNumber,
-        subject: ticket.title,
-        description: ticket.description,
-        priority: ticket.priority,
-        status: ticket.status,
-        createdAt: ticket.createdAt ? new Date(ticket.createdAt).toLocaleDateString() : null,
-        updatedAt: ticket.updatedAt,
-        t1Number: ticket.t1Number,
-        truckReg: ticket.truckRegistrationNumber,
-      }));
+      const transformed = (data.content || []).map(ticket => {
+        const latestStatusFromComments =
+          ticket.comments && ticket.comments.length > 0
+            ? ticket.comments[ticket.comments.length - 1].newStatus
+            : null;
+
+        const finalStatus = latestStatusFromComments || ticket.status;
+
+        return {
+          id: ticket.id?.toString(),
+          ticketNumber: ticket.ticketNumber,
+          subject: ticket.title,
+          description: ticket.description,
+          priority: ticket.priority,
+          status: finalStatus?.toUpperCase(),
+          createdAt: ticket.createdAt
+            ? new Date(ticket.createdAt).toLocaleDateString()
+            : null,
+          updatedAt: ticket.updatedAt,
+          t1Number: ticket.t1Number,
+          truckReg: ticket.truckRegistrationNumber,
+        };
+      });
 
       setTickets(transformed);
     } catch (error) {
@@ -455,6 +531,47 @@ function HomeScreen() {
     setAmount2('');
   };
 
+  const handleAcknowledge = async (ticketId) => {
+    try {
+      await acknowledgeTicket(ticketId);
+      Snackbar.show({
+        text: 'Ticket acknowledged',
+        duration: 2000,
+        backgroundColor: '#4CAF50',
+      });
+      fetchTickets();
+    } catch (e) {
+      Snackbar.show({
+        text: 'Failed to acknowledge ticket',
+        duration: 3000,
+        backgroundColor: '#FF6B6B',
+      });
+    }
+  };
+
+  const handleResolve = async (ticketId) => {
+    try {
+      await resolveTicket(ticketId, {
+        content: 'Resolved from mobile app',
+        evidenceUrls: [], // we’ll wire images here next
+      });
+
+      Snackbar.show({
+        text: 'Ticket resolved',
+        duration: 2000,
+        backgroundColor: '#4CAF50',
+      });
+
+      fetchTickets();
+    } catch (e) {
+      Snackbar.show({
+        text: 'Failed to resolve ticket',
+        duration: 3000,
+        backgroundColor: '#FF6B6B',
+      });
+    }
+  };
+
   const handleSubmit = async () => {
     if (!phoneNumber.trim()) {
       Snackbar.show({ text: 'Phone number is required', duration: 3000, backgroundColor: '#FF6B6B' });
@@ -559,37 +676,80 @@ function HomeScreen() {
     </Animatable.View>
   );
 
-  const renderTicket = ({ item, index }) => (
-    <Animatable.View animation="fadeInLeft" delay={index * 100} style={styles.ticketCard}>
+  const renderTicket = ({ item, index }) => {
+    const getTicketStatusInfo = (status) => {
+      switch (status?.toUpperCase()) {
+        case 'OPEN':
+          return { text: 'Open', color: '#FF6B6B' };
+
+        case 'DISPATCHED':
+          return { text: 'Dispatched', color: '#9C27B0' };
+
+        case 'ACKNOWLEDGED':
+          return { text: 'Acknowledged', color: '#FFA500' };
+
+        case 'IN_PROGRESS':
+          return { text: 'In Progress', color: '#FFC107' };
+
+        case 'RESOLVED':
+          return { text: 'Resolved', color: '#4CAF50' };
+
+        case 'CLOSED':
+          return { text: 'Closed', color: '#2196F3' };
+
+        default:
+          return { text: status || 'Unknown', color: '#999' };
+      }
+    };
+    const statusInfo = getTicketStatusInfo(item.status);
+
+    return (
       <TouchableOpacity
-        activeOpacity={0.7}
+        activeOpacity={0.8}
         onPress={() => {
           setSelectedTicket(item);
           setModalVisible(true);
         }}
       >
-        <View style={styles.ticketHeader}>
-          <Text style={styles.ticketId}>{item.ticketNumber}</Text>
-          <View style={[styles.priorityBadge, { backgroundColor: getPriorityColor(item.priority) + '20' }]}>
-            <Text style={[styles.priorityText, { color: getPriorityColor(item.priority) }]}>
-              {item.priority}
-            </Text>
+        <Animatable.View animation="fadeInLeft" delay={index * 100} style={styles.ticketCard}>
+          <View style={styles.ticketHeader}>
+            <Text style={styles.ticketId}>{item.ticketNumber}</Text>
+            <View style={[styles.priorityBadge, { backgroundColor: getPriorityColor(item.priority) + '20' }]}>
+              <Text style={[styles.priorityText, { color: getPriorityColor(item.priority) }]}>
+                {item.priority}
+              </Text>
+            </View>
           </View>
-        </View>
-        <Text style={styles.ticketSubject}>{item.subject}</Text>
-        <Text style={styles.ticketDescription}>{item.description}</Text>
-        <View style={styles.ticketFooter}>
-          <Text style={styles.ticketDate}>{item.createdAt}</Text>
-          <View style={[styles.statusBadgeSmall, { backgroundColor: item.status === 'OPEN' ? '#FFA50020' : '#4CAF5020' }]}>
-            <Text style={[styles.statusTextSmall, { color: item.status === 'OPEN' ? '#FFA500' : '#4CAF50' }]}>
-              {item.status}
-            </Text>
-          </View>
-        </View>
-      </TouchableOpacity>
-    </Animatable.View>
-  );
 
+          <Text style={styles.ticketSubject}>{item.subject}</Text>
+
+          <Text style={styles.ticketDescription} numberOfLines={3}>
+            {cleanTicketDescription(item.description)}
+          </Text>
+
+          <View style={styles.ticketFooter}>
+            <Text style={styles.ticketDate}>{item.createdAt}</Text>
+
+            <View
+              style={[
+                styles.statusBadgeSmall,
+                { backgroundColor: statusInfo.color + '20' }
+              ]}
+            >
+              <Text
+                style={[
+                  styles.statusTextSmall,
+                  { color: statusInfo.color }
+                ]}
+              >
+                {statusInfo.text}
+              </Text>
+            </View>
+          </View>
+        </Animatable.View>
+      </TouchableOpacity>
+    );
+  };
   const renderAlert = ({ item, index }) => (
     <Animatable.View
       animation="fadeInUp"
@@ -919,7 +1079,7 @@ function HomeScreen() {
                   </TouchableOpacity>
                 </View>
 
-                {selectedTicket && (
+                {selectedTicket && modalVisible && (
                   <ScrollView style={styles.modalBody}>
                     <Text style={styles.detailLabel}>Ticket ID</Text>
                     <Text style={styles.detailValue}>{selectedTicket.ticketNumber}</Text>
@@ -928,7 +1088,9 @@ function HomeScreen() {
                     <Text style={styles.detailValue}>{selectedTicket.subject}</Text>
 
                     <Text style={styles.detailLabel}>Description</Text>
-                    <Text style={styles.detailValue}>{selectedTicket.description}</Text>
+                    <Text style={styles.detailValue}>
+                      {cleanTicketDescription(selectedTicket.description)}
+                    </Text>
 
                     <Text style={styles.detailLabel}>Priority</Text>
                     <Text style={[styles.detailValue, { color: getPriorityColor(selectedTicket.priority) }]}>
