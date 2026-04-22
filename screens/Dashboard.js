@@ -118,13 +118,17 @@ const acknowledgeTicket = async (ticketId) => {
   const token = await getAuthToken();
 
   const response = await fetch(
-    `${API_BASE}/api/v1/tickets/${ticketId}/acknowledge`,
+    `${API_BASE}/api/v1/tickets/acknowledge`,
     {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${token}`,
         'Content-Type': 'application/json',
       },
+      body: JSON.stringify({
+        ticketId: Number(ticketId),
+        content: 'Acknowledged from mobile app',
+      }),
     }
   );
 
@@ -132,8 +136,11 @@ const acknowledgeTicket = async (ticketId) => {
   return await response.json();
 };
 
-const resolveTicket = async (ticketId, payload = {}) => {
+const resolveTicket = async (ticketId) => {
   const token = await getAuthToken();
+
+  const formData = new FormData();
+  formData.append('notes', 'Resolved from mobile app');
 
   const response = await fetch(
     `${API_BASE}/api/v1/tickets/${ticketId}/resolve`,
@@ -141,15 +148,17 @@ const resolveTicket = async (ticketId, payload = {}) => {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
       },
-      body: JSON.stringify(payload),
+      body: formData,
     }
   );
 
   if (!response.ok) throw new Error('Failed to resolve ticket');
   return await response.json();
 };
+
+
+
 function HomeScreen() {
   const navigation = useNavigation();
   const [refreshing, setRefreshing] = useState(false);
@@ -1072,37 +1081,66 @@ function HomeScreen() {
           >
             <View style={styles.modalOverlay}>
               <Animatable.View animation="slideInUp" duration={300} style={styles.modalContent}>
+
+                {/* Header */}
                 <View style={styles.modalHeader}>
                   <Text style={styles.modalTitle}>Ticket Details</Text>
-                  <TouchableOpacity onPress={() => setModalVisible(false)} style={styles.closeButton}>
+                  <TouchableOpacity onPress={() => setModalVisible(false)}>
                     <Text style={styles.closeButtonText}>✕</Text>
                   </TouchableOpacity>
                 </View>
 
-                {selectedTicket && modalVisible && (
-                  <ScrollView style={styles.modalBody}>
-                    <Text style={styles.detailLabel}>Ticket ID</Text>
-                    <Text style={styles.detailValue}>{selectedTicket.ticketNumber}</Text>
+                {/* Body */}
+                {selectedTicket && (
+                  <>
+                    <ScrollView style={styles.modalBody}>
 
-                    <Text style={styles.detailLabel}>Subject</Text>
-                    <Text style={styles.detailValue}>{selectedTicket.subject}</Text>
+                      <Text style={styles.detailLabel}>Ticket ID</Text>
+                      <Text style={styles.detailValue}>{selectedTicket.ticketNumber}</Text>
 
-                    <Text style={styles.detailLabel}>Description</Text>
-                    <Text style={styles.detailValue}>
-                      {cleanTicketDescription(selectedTicket.description)}
-                    </Text>
+                      <Text style={styles.detailLabel}>Subject</Text>
+                      <Text style={styles.detailValue}>{selectedTicket.subject}</Text>
 
-                    <Text style={styles.detailLabel}>Priority</Text>
-                    <Text style={[styles.detailValue, { color: getPriorityColor(selectedTicket.priority) }]}>
-                      {selectedTicket.priority}
-                    </Text>
+                      <Text style={styles.detailLabel}>Description</Text>
+                      <Text style={styles.detailValue}>
+                        {cleanTicketDescription(selectedTicket.description)}
+                      </Text>
 
-                    <Text style={styles.detailLabel}>Status</Text>
-                    <Text style={styles.detailValue}>{selectedTicket.status}</Text>
+                      <Text style={styles.detailLabel}>Priority</Text>
+                      <Text
+                        style={[
+                          styles.detailValue,
+                          { color: getPriorityColor(selectedTicket.priority) }
+                        ]}
+                      >
+                        {selectedTicket.priority}
+                      </Text>
 
-                    <Text style={styles.detailLabel}>Created At</Text>
-                    <Text style={styles.detailValue}>{selectedTicket.createdAt}</Text>
-                  </ScrollView>
+                      <Text style={styles.detailLabel}>Status</Text>
+                      <Text style={styles.detailValue}>{selectedTicket.status}</Text>
+
+                      <Text style={styles.detailLabel}>Created At</Text>
+                      <Text style={styles.detailValue}>{selectedTicket.createdAt}</Text>
+
+                    </ScrollView>
+
+                    {/* ACTION BUTTONS */}
+                    <View style={styles.modalActions}>
+                      <TouchableOpacity
+                        style={styles.submitButton}
+                        onPress={() => handleAcknowledge(selectedTicket.id)}
+                      >
+                        <Text style={styles.submitButtonText}>Acknowledge</Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        style={styles.submitButton}
+                        onPress={() => handleResolve(selectedTicket.id)}
+                      >
+                        <Text style={styles.submitButtonText}>Resolve</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </>
                 )}
               </Animatable.View>
             </View>

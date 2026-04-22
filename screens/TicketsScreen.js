@@ -467,6 +467,14 @@ const TicketsScreen = () => {
                 <Text style={styles.footerIcon}>🕒</Text>
                 <Text style={styles.footerText}>{formatDate(item.createdAt)}</Text>
               </View>
+
+              {item.t1Number && (
+                  <View style={styles.footerItem}>
+                    <Icon name="document-text-outline" size={14} color="#666" />
+                    <Text style={styles.footerText}>{item.t1Number}</Text>
+                  </View>
+                )}
+
               {item.deviceSerialNumber && (
                 <View style={styles.footerItem}>
                   <Text style={styles.footerIcon}>📱</Text>
@@ -664,7 +672,12 @@ const TicketsScreen = () => {
                 </View>
 
                 <Text style={styles.ticketDetailTitle}>{selectedTicket.title}</Text>
-                <Text style={styles.ticketDetailDescription}>{selectedTicket.description}</Text>
+                <Text style={styles.ticketDetailDescription}>
+                  {selectedTicket.description
+                    .replace(/Location: .*\n?/g, '')
+                    .replace(/Map: .*\n?/g, '')
+                    .trim()}
+                </Text>
 
                 {/* Ticket Info Grid */}
                 <View style={styles.infoGrid}>
@@ -680,6 +693,13 @@ const TicketsScreen = () => {
                       </Text>
                     </View>
                   </View>
+
+                   {selectedTicket.t1Number && (
+                     <View style={styles.infoItem}>
+                       <Text style={styles.infoLabel}>T1 Number</Text>
+                       <Text style={styles.infoValue}>{selectedTicket.t1Number}</Text>
+                     </View>
+                   )}
 
                   {selectedTicket.deviceSerialNumber && (
                     <View style={styles.infoItem}>
@@ -726,7 +746,7 @@ const TicketsScreen = () => {
                   )}
                 </View>
 
-                {/* Status Update Section */}
+                {/*
                 <View style={styles.statusUpdateSection}>
                   <Text style={styles.sectionTitle}>Update Status</Text>
                   <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.statusButtons}>
@@ -750,7 +770,6 @@ const TicketsScreen = () => {
                   </ScrollView>
                 </View>
 
-                {/* Comments Section */}
                 <View style={styles.commentsSection}>
                   <TouchableOpacity 
                     style={styles.commentsHeader}
@@ -763,6 +782,7 @@ const TicketsScreen = () => {
                       {showComments ? '▲' : '▼'}
                     </Text>
                   </TouchableOpacity>
+
 
                   {showComments && (
                     <View style={styles.commentsList}>
@@ -797,7 +817,8 @@ const TicketsScreen = () => {
                       multiline
                       numberOfLines={3}
                     />
-                    <TouchableOpacity 
+
+                    <TouchableOpacity
                       style={[styles.submitCommentButton, submitting && styles.disabledButton]}
                       onPress={addComment}
                       disabled={submitting}
@@ -810,6 +831,7 @@ const TicketsScreen = () => {
                     </TouchableOpacity>
                   </View>
                 </View>
+                */}
 
                 <TouchableOpacity 
                   style={styles.closeModalButton}
