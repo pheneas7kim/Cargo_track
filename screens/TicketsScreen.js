@@ -129,6 +129,7 @@ const TicketsScreen = () => {
           description: t.description,
           priority: t.priority,
           status: t.status,
+          t1Number: t.t1Number,
           assignedTo: t.assignee ? {
             id: t.assignee.userId,
             name: (t.assignee.firstName && t.assignee.lastName) 
@@ -468,12 +469,12 @@ const TicketsScreen = () => {
                 <Text style={styles.footerText}>{formatDate(item.createdAt)}</Text>
               </View>
 
-              {item.t1Number && (
-                  <View style={styles.footerItem}>
-                    <Icon name="document-text-outline" size={14} color="#666" />
-                    <Text style={styles.footerText}>{item.t1Number}</Text>
-                  </View>
-                )}
+               {item.t1Number && (
+                 <View style={styles.footerItem}>
+                  <Text style={styles.footerIcon}>📄</Text>
+                  <Text style={styles.footerText}>{item.t1Number}</Text>
+                 </View>
+               )}
 
               {item.deviceSerialNumber && (
                 <View style={styles.footerItem}>
@@ -679,74 +680,93 @@ const TicketsScreen = () => {
                     .trim()}
                 </Text>
 
-                {/* Ticket Info Grid */}
-                <View style={styles.infoGrid}>
-                  <View style={styles.infoItem}>
-                    <Text style={styles.infoLabel}>Priority</Text>
-                    <View style={[styles.priorityBadgeLarge, 
-                      { backgroundColor: getPriorityColor(selectedTicket.priority) + '20' }]}>
-                      <Text style={styles.priorityIconLarge}>
-                        {getPriorityIcon(selectedTicket.priority)}
-                      </Text>
-                      <Text style={[styles.priorityTextLarge, { color: getPriorityColor(selectedTicket.priority) }]}>
-                        {selectedTicket.priority}
-                      </Text>
-                    </View>
-                  </View>
 
-                   {selectedTicket.t1Number && (
-                     <View style={styles.infoItem}>
-                       <Text style={styles.infoLabel}>T1 Number</Text>
-                       <Text style={styles.infoValue}>{selectedTicket.t1Number}</Text>
-                     </View>
-                   )}
 
-                  {selectedTicket.deviceSerialNumber && (
-                    <View style={styles.infoItem}>
-                      <Text style={styles.infoLabel}>Device</Text>
-                      <Text style={styles.infoValue}>{selectedTicket.deviceSerialNumber}</Text>
-                    </View>
-                  )}
+                                {/* Ticket Info Grid */}
+                                <View style={styles.infoGrid}>
+                                  <View style={styles.infoItem}>
+                                    <Text style={styles.infoLabel}>Priority</Text>
+                                    <View style={[styles.priorityBadgeLarge,
+                                      { backgroundColor: getPriorityColor(selectedTicket.priority) + '20' }]}>
+                                      <Text style={styles.priorityIconLarge}>
+                                        {getPriorityIcon(selectedTicket.priority)}
+                                      </Text>
+                                      <Text style={[styles.priorityTextLarge, { color: getPriorityColor(selectedTicket.priority) }]}>
+                                        {selectedTicket.priority}
+                                      </Text>
+                                    </View>
+                                  </View>
 
-                  {selectedTicket.geofenceName && (
-                    <View style={styles.infoItem}>
-                      <Text style={styles.infoLabel}>Geofence</Text>
-                      <Text style={styles.infoValue}>{selectedTicket.geofenceName}</Text>
-                    </View>
-                  )}
+                                   {selectedTicket.t1Number && (
+                                     <View style={styles.infoItem}>
+                                       <Text style={styles.infoLabel}>T1 Number</Text>
+                                       <Text style={styles.infoValue}>{selectedTicket.t1Number}</Text>
+                                     </View>
+                                   )}
 
-                  {selectedTicket.assignedTo && (
-                    <View style={styles.infoItem}>
-                      <Text style={styles.infoLabel}>Assigned To</Text>
-                      <Text style={styles.infoValue}>{selectedTicket.assignedTo.name}</Text>
-                    </View>
-                  )}
+                                  {selectedTicket.deviceSerialNumber && (
+                                    <View style={styles.infoItem}>
+                                      <Text style={styles.infoLabel}>Device</Text>
+                                      <Text style={styles.infoValue}>{selectedTicket.deviceSerialNumber}</Text>
+                                    </View>
+                                  )}
 
-                  {selectedTicket.reporter && (
-                    <View style={styles.infoItem}>
-                      <Text style={styles.infoLabel}>Reported By</Text>
-                      <Text style={styles.infoValue}>{selectedTicket.reporter.name}</Text>
-                    </View>
-                  )}
+                                  {selectedTicket.geofenceName && (
+                                    <View style={styles.infoItem}>
+                                      <Text style={styles.infoLabel}>Geofence</Text>
+                                      <Text style={styles.infoValue}>{selectedTicket.geofenceName}</Text>
+                                    </View>
+                                  )}
 
-                  <View style={styles.infoItem}>
-                    <Text style={styles.infoLabel}>Created</Text>
-                    <Text style={styles.infoValue}>
-                      {new Date(selectedTicket.createdAt).toLocaleString()}
-                    </Text>
-                  </View>
+                                  {selectedTicket.assignedTo && (
+                                    <View style={styles.infoItem}>
+                                      <Text style={styles.infoLabel}>Assigned To</Text>
+                                      <Text style={styles.infoValue}>{selectedTicket.assignedTo.name}</Text>
+                                    </View>
+                                  )}
 
-                  {selectedTicket.updatedAt && (
-                    <View style={styles.infoItem}>
-                      <Text style={styles.infoLabel}>Last Updated</Text>
-                      <Text style={styles.infoValue}>
-                        {new Date(selectedTicket.updatedAt).toLocaleString()}
-                      </Text>
-                    </View>
-                  )}
-                </View>
+                                  {selectedTicket.reporter && (
+                                    <View style={styles.infoItem}>
+                                      <Text style={styles.infoLabel}>Reported By</Text>
+                                      <Text style={styles.infoValue}>{selectedTicket.reporter.name}</Text>
+                                    </View>
+                                  )}
 
-                {/*
+                                  <View style={styles.infoItem}>
+                                    <Text style={styles.infoLabel}>Created</Text>
+                                    <Text style={styles.infoValue}>
+                                      {new Date(selectedTicket.createdAt).toLocaleString()}
+                                    </Text>
+                                  </View>
+
+                                  {selectedTicket.updatedAt && (
+                                    <View style={styles.infoItem}>
+                                      <Text style={styles.infoLabel}>Last Updated</Text>
+                                      <Text style={styles.infoValue}>
+                                        {new Date(selectedTicket.updatedAt).toLocaleString()}
+                                      </Text>
+                                    </View>
+                                  )}
+                                </View>
+
+                                {/* Track on Map Button - Only show if t1Number exists */}
+                                {selectedTicket.t1Number && (
+                                  <TouchableOpacity
+                                    style={styles.trackOnMapButton}
+                                    onPress={() => {
+                                      setModalVisible(false);
+                                      navigation.navigate('TrackShipment', {
+                                        t1Number: selectedTicket.t1Number,
+                                        ticketId: selectedTicket.id
+                                      });
+                                    }}
+                                  >
+                                    <Icon name="map" size={20} color="#FFFFFF" />
+                                    <Text style={styles.trackOnMapButtonText}>Track on Map</Text>
+                                  </TouchableOpacity>
+                                )}
+
+              {/*
                 <View style={styles.statusUpdateSection}>
                   <Text style={styles.sectionTitle}>Update Status</Text>
                   <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.statusButtons}>
@@ -1331,6 +1351,8 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     fontSize: 16,
   },
+  trackOnMapButton: { backgroundColor: '#FFA500', borderRadius: 12, paddingVertical: 14, alignItems: 'center', marginTop: 20, height: 52 },
+    trackOnMapButtonText: { color: '#FFFFFF', fontWeight: '600', alignItems: 'center', fontSize: 14, borderRadius: 12,  }
 });
 
 export default TicketsScreen;

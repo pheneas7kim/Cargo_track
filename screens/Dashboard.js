@@ -62,6 +62,43 @@ const getTicketStatusInfo = (status) => {
   }
 };
 
+const getStatusColor = (status) => {
+    switch (status?.toUpperCase()) {
+      case 'ACKNOWLEDGED':
+        return '#FFA500';
+      case 'RESOLVED':
+        return '#2196F3';
+      default:
+        return '#666';
+    }
+  };
+
+const formatDate = (dateString) => {
+    if (!dateString) return 'N/A';
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffMs = now - date;
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMins / 60);
+    const diffDays = Math.floor(diffHours / 24);
+
+    if (diffMins < 1) return 'Just now';
+    if (diffMins < 60) return `${diffMins}m ago`;
+    if (diffHours < 24) return `${diffHours}h ago`;
+    if (diffDays < 7) return `${diffDays}d ago`;
+    return date.toLocaleDateString();
+  };
+
+const getPriorityIcon = (priority) => {
+    switch(priority?.toUpperCase()) {
+      case 'CRITICAL': return '🔴';
+      case 'HIGH': return '🟠';
+      case 'MEDIUM': return '🟡';
+      case 'LOW': return '🟢';
+      default: return '⚪';
+    }
+  };
+
 
 
 const getStatusInfo = (status) => {
@@ -500,6 +537,7 @@ function HomeScreen() {
     navigation.navigate('TrackOnMap', { shipment });
   };
 
+
   const handleSendCommand = (command) => {
     setSelectedCommand(command.name);
     // Snackbar.show({ text: `Command "${command.name}" sent successfully`, duration: 3000, backgroundColor: '#4CAF50' });
@@ -686,79 +724,79 @@ function HomeScreen() {
   );
 
   const renderTicket = ({ item, index }) => {
-    const getTicketStatusInfo = (status) => {
-      switch (status?.toUpperCase()) {
-        case 'OPEN':
-          return { text: 'Open', color: '#FF6B6B' };
-
-        case 'DISPATCHED':
-          return { text: 'Dispatched', color: '#9C27B0' };
-
-        case 'ACKNOWLEDGED':
-          return { text: 'Acknowledged', color: '#FFA500' };
-
-        case 'IN_PROGRESS':
-          return { text: 'In Progress', color: '#FFC107' };
-
-        case 'RESOLVED':
-          return { text: 'Resolved', color: '#4CAF50' };
-
-        case 'CLOSED':
-          return { text: 'Closed', color: '#2196F3' };
-
-        default:
-          return { text: status || 'Unknown', color: '#999' };
-      }
-    };
-    const statusInfo = getTicketStatusInfo(item.status);
+    const statusColor = getStatusColor(item.status);
+    const priorityColor = getPriorityColor(item.priority);
 
     return (
-      <TouchableOpacity
-        activeOpacity={0.8}
-        onPress={() => {
-          setSelectedTicket(item);
-          setModalVisible(true);
-        }}
+      <Animatable.View
+        animation="fadeInUp"
+        delay={index * 80}
+        duration={400}
+        style={styles.animationWrapper}
       >
-        <Animatable.View animation="fadeInLeft" delay={index * 100} style={styles.ticketCard}>
-          <View style={styles.ticketHeader}>
-            <Text style={styles.ticketId}>{item.ticketNumber}</Text>
-            <View style={[styles.priorityBadge, { backgroundColor: getPriorityColor(item.priority) + '20' }]}>
-              <Text style={[styles.priorityText, { color: getPriorityColor(item.priority) }]}>
-                {item.priority}
-              </Text>
+        <TouchableOpacity
+          activeOpacity={0.9}
+          onPress={() => {
+            setSelectedTicket(item);
+            setModalVisible(true);
+          }}
+        >
+          <View style={styles.ticketCard}>
+            {/* Top Row: Ticket Number | Priority | Status */}
+            <View style={styles.ticketHeader}>
+              <Text style={styles.ticketNumber}>{item.ticketNumber || `#${item.id}`}</Text>
+              <View style={[styles.priorityBadge, { backgroundColor: priorityColor + '20' }]}>
+                <Text style={styles.priorityIcon}>{getPriorityIcon(item.priority)}</Text>
+                <Text style={[styles.priorityText, { color: priorityColor }]}>
+                  {item.priority}
+                </Text>
+              </View>
+              <Text style={styles.statusText}>{item.status || 'Open'}</Text>
             </View>
-          </View>
 
-          <Text style={styles.ticketSubject}>{item.subject}</Text>
+            {/* Title */}
+            <Text style={styles.ticketTitle}>{item.subject}</Text>
 
-          <Text style={styles.ticketDescription} numberOfLines={3}>
-            {cleanTicketDescription(item.description)}
-          </Text>
+            {/* Description */}
+            <Text style={styles.ticketDescription} numberOfLines={2}>
+              {cleanTicketDescription(item.description)}
+            </Text>
 
-          <View style={styles.ticketFooter}>
-            <Text style={styles.ticketDate}>{item.createdAt}</Text>
+            {/* Bottom Row: Time, T1, Device */}
+            <View style={styles.ticketFooter}>
+              <View style={styles.footerItem}>
+                <Text style={styles.footerIcon}>🕒</Text>
+                <Text style={styles.footerText}>{formatDate(item.createdAt)}</Text>
+              </View>
 
-            <View
-              style={[
-                styles.statusBadgeSmall,
-                { backgroundColor: statusInfo.color + '20' }
-              ]}
-            >
-              <Text
-                style={[
-                  styles.statusTextSmall,
-                  { color: statusInfo.color }
-                ]}
-              >
-                {statusInfo.text}
-              </Text>
+              {item.t1Number && (
+                <View style={styles.footerItem}>
+                  <Text style={styles.footerIcon}>📄</Text>
+                  <Text style={styles.footerText}>{item.t1Number}</Text>
+                </View>
+              )}
+
+              {item.truckReg && (
+                <View style={styles.footerItem}>
+                  <Text style={styles.footerIcon}>📱</Text>
+                  <Text style={styles.footerText}>{item.truckReg}</Text>
+                </View>
+              )}
             </View>
+
+            {/* Comments Count */}
+            {item.comments && item.comments.length > 0 && (
+              <View style={styles.commentsCount}>
+                <Text style={styles.commentsIcon}>💬</Text>
+                <Text style={styles.commentsText}>{item.comments.length} comments</Text>
+              </View>
+            )}
           </View>
-        </Animatable.View>
-      </TouchableOpacity>
+        </TouchableOpacity>
+      </Animatable.View>
     );
   };
+
   const renderAlert = ({ item, index }) => (
     <Animatable.View
       animation="fadeInUp"
@@ -884,7 +922,6 @@ function HomeScreen() {
               </View>
               <Text style={styles.actionLabel}>Stations</Text>
             </TouchableOpacity>
-          </View>
           */}
         </View>
       </View>
@@ -1091,40 +1128,95 @@ function HomeScreen() {
                 </View>
 
                 {/* Body */}
+
                 {selectedTicket && (
                   <>
                     <ScrollView style={styles.modalBody}>
+                      {/* Ticket Header */}
+                      <View style={styles.ticketDetailHeader}>
+                        <Text style={styles.ticketDetailNumber}>
+                          {selectedTicket.ticketNumber || `#${selectedTicket.id}`}
+                        </Text>
+                        <View style={[styles.statusBadgeLarge,
+                          { backgroundColor: getTicketStatusInfo(selectedTicket.status).color + '20' }]}>
+                          <Text style={[styles.statusTextLarge, { color: getTicketStatusInfo(selectedTicket.status).color }]}>
+                            {getTicketStatusInfo(selectedTicket.status).text}
+                          </Text>
+                        </View>
+                      </View>
 
-                      <Text style={styles.detailLabel}>Ticket ID</Text>
-                      <Text style={styles.detailValue}>{selectedTicket.ticketNumber}</Text>
-
-                      <Text style={styles.detailLabel}>Subject</Text>
-                      <Text style={styles.detailValue}>{selectedTicket.subject}</Text>
-
-                      <Text style={styles.detailLabel}>Description</Text>
-                      <Text style={styles.detailValue}>
+                      <Text style={styles.ticketDetailTitle}>{selectedTicket.subject}</Text>
+                      <Text style={styles.ticketDetailDescription}>
                         {cleanTicketDescription(selectedTicket.description)}
                       </Text>
 
-                      <Text style={styles.detailLabel}>Priority</Text>
-                      <Text
-                        style={[
-                          styles.detailValue,
-                          { color: getPriorityColor(selectedTicket.priority) }
-                        ]}
-                      >
-                        {selectedTicket.priority}
-                      </Text>
+                      {/* Ticket Info Grid */}
+                      <View style={styles.infoGrid}>
+                        <View style={styles.infoItem}>
+                          <Text style={styles.infoLabel}>Priority</Text>
+                          <View style={[styles.priorityBadgeLarge,
+                            { backgroundColor: getPriorityColor(selectedTicket.priority) + '20' }]}>
+                            <Text style={[styles.priorityTextLarge, { color: getPriorityColor(selectedTicket.priority) }]}>
+                              {selectedTicket.priority}
+                            </Text>
+                          </View>
+                        </View>
 
-                      <Text style={styles.detailLabel}>Status</Text>
-                      <Text style={styles.detailValue}>{selectedTicket.status}</Text>
+                        {selectedTicket.t1Number && (
+                          <View style={styles.infoItem}>
+                            <Text style={styles.infoLabel}>T1 Number</Text>
+                            <Text style={styles.infoValue}>{selectedTicket.t1Number}</Text>
+                          </View>
+                        )}
 
-                      <Text style={styles.detailLabel}>Created At</Text>
-                      <Text style={styles.detailValue}>{selectedTicket.createdAt}</Text>
+                        {selectedTicket.truckReg && (
+                          <View style={styles.infoItem}>
+                            <Text style={styles.infoLabel}>Device</Text>
+                            <Text style={styles.infoValue}>{selectedTicket.truckReg}</Text>
+                          </View>
+                        )}
 
+                        <View style={styles.infoItem}>
+                          <Text style={styles.infoLabel}>Created</Text>
+                          <Text style={styles.infoValue}>
+                            {selectedTicket.createdAt}
+                          </Text>
+                        </View>
+
+                        {selectedTicket.updatedAt && (
+                          <View style={styles.infoItem}>
+                            <Text style={styles.infoLabel}>Last Updated</Text>
+                            <Text style={styles.infoValue}>
+                              {new Date(selectedTicket.updatedAt).toLocaleString()}
+                            </Text>
+                          </View>
+                        )}
+                      </View>
+
+                      {/* Track on Map Button - Only show if t1Number exists */}
+                      {selectedTicket.t1Number && (
+                        <TouchableOpacity
+                          style={[styles.mapButton, { flexDirection: 'row', justifyContent: 'center', gap: 8 }]}
+                          onPress={() => {
+                            setModalVisible(false);
+                            // Navigate to TrackOnMap2 screen with t1Number
+                            const shipment = shipments.find(s => s.trackingNumber === selectedTicket.t1Number);
+                            if (shipment) {
+                              navigation.navigate('TrackOnMap2', { shipment });
+                            } else {
+                              // Fallback: pass just the T1 number if shipment not in local state
+                              navigation.navigate('TrackOnMap2', { t1Number: selectedTicket.t1Number });
+                            }
+                          }}
+
+                        >
+                          <Image source={require('../assets/map.png')} style={{ width: 20, height: 20 }} />
+                          <Text style={styles.mapButtonText}>Track on Map</Text>
+                        </TouchableOpacity>
+                      )}
                     </ScrollView>
 
-                    {/* ACTION BUTTONS */}
+                    {/* ACTION BUTTONS - KEEP THESE */}
                     <View style={styles.modalActions}>
                       <TouchableOpacity
                         style={styles.submitButton}
@@ -1142,6 +1234,7 @@ function HomeScreen() {
                     </View>
                   </>
                 )}
+
               </Animatable.View>
             </View>
           </Modal>
@@ -1217,7 +1310,7 @@ const styles = StyleSheet.create({
   notificationTitle: { fontSize: 14, fontWeight: '600', color: '#1A1A1A', marginBottom: 4 },
   notificationMessage: { fontSize: 12, color: '#666', marginBottom: 4 },
   notificationTime: { fontSize: 10, color: '#999' },
-  ticketCard: { backgroundColor: '#FFFFFF', borderRadius: 16, marginHorizontal: 16, padding: 16, marginBottom: 12, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 3 },
+  ticketCard: { backgroundColor: '#FFFFFF', borderRadius: 16, marginHorizontal: 16, padding: 24, marginBottom: 12, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 3 },
   ticketHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
   ticketId: { fontSize: 12, color: '#999', fontWeight: '500' },
   priorityBadge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
@@ -1262,6 +1355,35 @@ const styles = StyleSheet.create({
   loaderText: { marginTop: 12, fontSize: 14, color: '#666' },
   emptyContainer: { padding: 40, alignItems: 'center' },
   emptyText: { fontSize: 14, color: '#999' },
+  ticketDetailHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16,},
+  ticketDetailNumber: { fontSize: 14, fontWeight: '600', color: '#666', },
+  statusBadgeLarge: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8,  },
+  statusTextLarge: { fontSize: 12, fontWeight: '600',},
+  ticketDetailTitle: { fontSize: 20, fontWeight: '700', color: '#1A1A1A', marginBottom: 12, },
+  ticketDetailDescription: {fontSize: 14, color: '#666',  lineHeight: 20, marginBottom: 24,  },
+  infoGrid: { flexDirection: 'row', flexWrap: 'wrap',  gap: 16, marginBottom: 24, paddingBottom: 24, borderBottomWidth: 1, borderBottomColor: '#F0F0F0', },
+  infoItem: { flex: 1, minWidth: '45%', },
+  infoLabel: { fontSize: 11, fontWeight: '600', color: '#999', marginBottom: 6,  },
+  infoValue: { fontSize: 13, color: '#333', fontWeight: '500', },
+  priorityBadgeLarge: { flexDirection: 'row',  alignItems: 'center',  alignSelf: 'flex-start', paddingHorizontal: 10,  paddingVertical: 4, borderRadius: 8, gap: 6, },
+  priorityTextLarge: {fontSize: 12, fontWeight: '600', },
+  animationWrapper: { marginHorizontal: 8, marginBottom: 12, },
+  ticketHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12,},
+  ticketNumberContainer: {flexDirection: 'row', alignItems: 'center', gap: 8,},
+  ticketNumber: { fontSize: 12, fontWeight: '600', color: '#666',},
+  priorityBadge: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, gap: 4, },
+  priorityIcon: { fontSize: 10, },
+  priorityText: { fontSize: 10, fontWeight: '600', },
+  statusText: { fontSize: 10, fontWeight: '600', color: '#666',},
+  ticketTitle: {fontSize: 16, fontWeight: '600', color: '#1A1A1A', marginBottom: 8,},
+  ticketDescription: { fontSize: 14, color: '#666', lineHeight: 20, marginBottom: 12, },
+  ticketFooter: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginBottom: 8, },
+  footerItem: { flexDirection: 'row', alignItems: 'center',  gap: 4, },
+  footerIcon: {  fontSize: 12, },
+  footerText: {fontSize: 11, color: '#999', },
+  commentsCount: { flexDirection: 'row',  alignItems: 'center', gap: 4, paddingTop: 8, borderTopWidth: 1, borderTopColor: '#F0F0F0', },
+  commentsIcon: { fontSize: 12, },
+  commentsText: {fontSize: 11, color: '#FFA500',},
 });
 
 export default HomeScreen;

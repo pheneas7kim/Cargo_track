@@ -203,5 +203,6 @@ const styles = StyleSheet.create({
   priorityTextSelected: { color: '#fff' },
   divider: { height: 1, backgroundColor: '#eee', marginVertical: 20 },
   submitBtn: { backgroundColor: '#FFA500', padding: 15, borderRadius: 8, marginTop: 30, alignItems: 'center' },
-  btnText: { color: '#fff', fontWeight: 'bold', fontSize: 16 }
+  btnText: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
+
 });

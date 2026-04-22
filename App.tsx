@@ -27,6 +27,7 @@ import StationsScreen from './screens/StationsScreen'; // Import the Onboarding 
 import  DeviceMapScreenView from './screens/DeviceMapScreenView'; // Import the Onboarding screen
 import CommandsScreen from './screens/CommandsScreen'; // Import the Onboarding screen
 import TrackOnMap from './screens/TrackOnMap'; // Import the Onboarding screen
+import TrackOnMap2 from './screens/TrackOnMap2';
 import AlertsNotigicationScreen from './screens/AlertsNotigicationScreen'; // Import the Onboarding screen
 import store from './Store';
 import { Provider } from 'react-redux';
@@ -67,6 +68,7 @@ type RootStackParamList = {
   DeviceMapScreenView: undefined;
   CommandsScreen: undefined;
   TrackOnMap: undefined;
+  TrackOnMap2: undefined;
   AlertsNotigicationScreen: undefined;
   RandomStopScreen: undefined;
   CreateTicket: undefined;
@@ -169,6 +171,7 @@ export default function App() {
               <Stack.Screen name="DeviceMapScreenView" component={DeviceMapScreenView} options={{ headerShown: false }} />
               <Stack.Screen name="CommandsScreen" component={CommandsScreen} options={{ headerShown: false }} />
               <Stack.Screen name="TrackOnMap" component={TrackOnMap} options={{ headerShown: false }} />
+              <Stack.Screen name="TrackOnMap2" component={TrackOnMap2} options={{ headerShown: false }} />
               <Stack.Screen name="AlertsNotigicationScreen" component={AlertsNotigicationScreen} options={{ headerShown: false }} />
               <Stack.Screen name="RandomStopScreen" component={RandomStopScreen} options={{ headerShown: false }} />
 
