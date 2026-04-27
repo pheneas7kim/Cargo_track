@@ -561,7 +561,8 @@ function HomeScreen() {
   const handleAlertsNotigicationScreen = () => navigation.navigate('AlertsNotigicationScreen');
   const handleHotspotsScreen = () => navigation.navigate('HotspotsScreen');
   const handleRandomStopScreen = () => navigation.navigate('RandomStopScreen');
-
+  const handleQrPaymentScanner = () => navigation.navigate('QrPaymentScanner');
+  const handleMasterSlaveMapper = () => navigation.navigate('MasterSlaveMapper')
 
   const TopUpModal = () => setIsModalVisible(true);
   const withdrawModal = () => setIsModalVisibleWithdraw(true);
@@ -852,6 +853,31 @@ function HomeScreen() {
 
       <View style={styles.quickActionsGrid}>
         <View style={styles.actionsContainer}>
+          <View style={styles.actionRow}>
+
+          <TouchableOpacity style={styles.actionCard} onPress={handleQrPaymentScanner}>
+                        <View style={[styles.actionIconBg, { backgroundColor: '#9C27B020' }]}>
+                          <Image source={require('../assets/trk.png')} style={styles.actionIcon} />
+                        </View>
+                        <Text style={styles.actionLabel}>Scan to Unlock</Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity style={styles.actionCard} onPress={handleMasterSlaveMapper}>
+                        <View style={[styles.actionIconBg, { backgroundColor: '#FF980020' }]}>
+                          <Image source={require('../assets/geo.png')} style={styles.actionIcon} />
+                        </View>
+                        <Text style={styles.actionLabel}>Sensors Mapping</Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity style={styles.actionCard} onPress={handleHotspotsScreen}>
+                        <View style={[styles.actionIconBg, { backgroundColor: '#E91E6320' }]}>
+                          <Image source={require('../assets/location.png')} style={styles.actionIcon} />
+                        </View>
+                        <Text style={styles.actionLabel}>T1 Mapping</Text>
+                      </TouchableOpacity>
+
+          </View>
+
           <View style={styles.actionRow}>
 
           <TouchableOpacity style={styles.actionCard} onPress={handleTicketsScreen}>

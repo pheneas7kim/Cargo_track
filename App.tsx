@@ -16,7 +16,7 @@ import ForgotPassword from './screens/forgotpassword'; // Import the Login scree
 import QrPaymentScanner from './screens/QrPaymentScanner'; // Import the Onboarding screen
 import MpesaPaybillQRCode from './screens/qrcodepage'; // Import the Onboarding screen
 import GeofencesScreen from './screens/GeofencesScreen'; // Import the Onboarding screen
-
+import MasterSlaveMapper from './screens/MasterSlaveMapper';
 import NotificationsScreen from './screens/NotificationsScreen'; // Import the Onboarding screen
 import AlarmsNotigicationScreen from './screens/AlarmsNotigicationScreen'; // Import the Onboarding screen
 import TicketsScreen from './screens/TicketsScreen'; // Import the Onboarding screen
@@ -57,6 +57,7 @@ type RootStackParamList = {
   MpesaPaybillQRCode: undefined;
   ScanAndPayScreen: undefined;
   QrPaymentScanner: undefined;
+  MasterSlaveMapper: undefined;
   NotificationsScreen: undefined;
   AlarmsNotigicationScreen: undefined;
   TicketsScreen: undefined;
@@ -149,7 +150,6 @@ export default function App() {
         <SafeAreaView style={{ flex: 1 }}>
           <Stack.Navigator initialRouteName="SplashScreen">
             {/* Onboarding screen */}
-            {/* <Stack.Screen name="Onboarding" component={Onboarding} options={{ headerShown: false }} /> */}
             <Stack.Screen name="SplashScreen" component={SplashScreen} options={{ headerShown: false }} />
             <Stack.Screen name="Onboarding" component={Onboarding} options={{ headerShown: false }} />
 
@@ -225,6 +225,18 @@ export default function App() {
                 },
               }}
             /> }
+
+            <Stack.Screen
+              name ="MasterSlaveMapper"
+              component = {MasterSlaveMapper}
+              options={{
+                  title: 'Map Sensors',
+                  headerTitleStyle:{
+                      fontSize: 16,
+                      fontWeight: '600',
+                      },
+                  }}/>
+
 
             <Stack.Screen
               name="NewSecretPin"
