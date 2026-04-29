@@ -876,6 +876,15 @@ function HomeScreen() {
                         <Text style={styles.actionLabel}>T1 Mapping</Text>
                       </TouchableOpacity>
 
+
+
+                      <TouchableOpacity style={styles.actionCard} onPress={handleTicketsScreen}>
+                                             <View style={[styles.actionIconBg, { backgroundColor: '#2196F320' }]}>
+                                               <Image source={require('../assets/phone.png')} style={styles.actionIcon} />
+                                            </View>
+                                            <Text style={styles.actionLabel}>Tickets</Text>
+                                          </TouchableOpacity>
+
           </View>
 
           <View style={styles.actionRow}>
