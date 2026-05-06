@@ -885,81 +885,81 @@ function HomeScreen() {
                                             <Text style={styles.actionLabel}>Tickets</Text>
                                           </TouchableOpacity>
 
+                    </View>
+
+                    <View style={styles.actionRow}>
+
+                    <TouchableOpacity style={styles.actionCard} onPress={handleTicketsScreen}>
+                                <View style={[styles.actionIconBg, { backgroundColor: '#2196F320' }]}>
+                                  <Image source={require('../assets/phone.png')} style={styles.actionIcon} />
+                                </View>
+                                <Text style={styles.actionLabel}>Tickets</Text>
+                              </TouchableOpacity>
+
+                      <TouchableOpacity style={styles.actionCard} onPress={handleRandomStopScreen}>
+                                    <View style={[styles.actionIconBg, { backgroundColor: '#2196F320' }]}>
+                                      <Image source={require('../assets/randomstop.png')} style={styles.actionIcon} />
+                                    </View>
+                                    <Text style={styles.actionLabel}>Random Stop</Text>
+                                  </TouchableOpacity>
+
+                      <TouchableOpacity style={styles.actionCard} onPress={handleAlarmsNotigicationScreen}>
+                        <View style={[styles.actionIconBg, { backgroundColor: '#FF6B6B20' }]}>
+                          <Image source={require('../assets/alarm.png')} style={styles.actionIcon} />
+                        </View>
+                        <Text style={styles.actionLabel}>Alarms</Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity style={styles.actionCard} onPress={handleAlertsNotigicationScreen}>
+                        <View style={[styles.actionIconBg, { backgroundColor: '#4CAF5020' }]}>
+                          <Image source={require('../assets/bell.png')} style={styles.actionIcon} />
+                        </View>
+                        <Text style={styles.actionLabel}>Alerts</Text>
+                      </TouchableOpacity>
+                    </View>
+
+
+                  </View>
+
+                <View style={styles.actionRow}>
+                {/*
+                <TouchableOpacity style={styles.actionCard} onPress={handleDevicesScreen}>
+                  <View style={[styles.actionIconBg, { backgroundColor: '#9C27B020' }]}>
+                    <Image source={require('../assets/trk.png')} style={styles.actionIcon} />
+                  </View>
+                  <Text style={styles.actionLabel}>Devices</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity style={styles.actionCard} onPress={handleGeofencesScreen}>
+                  <View style={[styles.actionIconBg, { backgroundColor: '#FF980020' }]}>
+                    <Image source={require('../assets/geo.png')} style={styles.actionIcon} />
+                  </View>
+                  <Text style={styles.actionLabel}>Geofences</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity style={styles.actionCard} onPress={handleHotspotsScreen}>
+                  <View style={[styles.actionIconBg, { backgroundColor: '#E91E6320' }]}>
+                    <Image source={require('../assets/location.png')} style={styles.actionIcon} />
+                  </View>
+                  <Text style={styles.actionLabel}>Hotspots</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity style={styles.actionCard} onPress={handleDeviceMapScreen}>
+                              <View style={[styles.actionIconBg, { backgroundColor: '#FFA50020' }]}>
+                                <Image source={require('../assets/monitor.png')} style={styles.actionIcon} />
+                              </View>
+                              <Text style={styles.actionLabel}>Shipments</Text>
+                            </TouchableOpacity>
+
+                <TouchableOpacity style={styles.actionCard} onPress={handleStationsScreen}>
+                  <View style={[styles.actionIconBg, { backgroundColor: '#00BCD420' }]}>
+                    <Image source={require('../assets/station.png')} style={styles.actionIcon} />
+                  </View>
+                  <Text style={styles.actionLabel}>Stations</Text>
+                </TouchableOpacity>
+              */}
+            </View>
           </View>
-
-          <View style={styles.actionRow}>
-
-          <TouchableOpacity style={styles.actionCard} onPress={handleTicketsScreen}>
-                       <View style={[styles.actionIconBg, { backgroundColor: '#2196F320' }]}>
-                         <Image source={require('../assets/phone.png')} style={styles.actionIcon} />
-                      </View>
-                      <Text style={styles.actionLabel}>Tickets</Text>
-                    </TouchableOpacity>
-
-            <TouchableOpacity style={styles.actionCard} onPress={handleRandomStopScreen}>
-                          <View style={[styles.actionIconBg, { backgroundColor: '#2196F320' }]}>
-                            <Image source={require('../assets/randomstop.png')} style={styles.actionIcon} />
-                          </View>
-                          <Text style={styles.actionLabel}>Random Stop</Text>
-                        </TouchableOpacity>
-
-            <TouchableOpacity style={styles.actionCard} onPress={handleAlarmsNotigicationScreen}>
-              <View style={[styles.actionIconBg, { backgroundColor: '#FF6B6B20' }]}>
-                <Image source={require('../assets/alarm.png')} style={styles.actionIcon} />
-              </View>
-              <Text style={styles.actionLabel}>Alarms</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity style={styles.actionCard} onPress={handleAlertsNotigicationScreen}>
-              <View style={[styles.actionIconBg, { backgroundColor: '#4CAF5020' }]}>
-                <Image source={require('../assets/bell.png')} style={styles.actionIcon} />
-              </View>
-              <Text style={styles.actionLabel}>Alerts</Text>
-            </TouchableOpacity>
-          </View>
-
-
-         </View>
-
-            <View style={styles.actionRow}>
-            {/*
-            <TouchableOpacity style={styles.actionCard} onPress={handleDevicesScreen}>
-              <View style={[styles.actionIconBg, { backgroundColor: '#9C27B020' }]}>
-                <Image source={require('../assets/trk.png')} style={styles.actionIcon} />
-              </View>
-              <Text style={styles.actionLabel}>Devices</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity style={styles.actionCard} onPress={handleGeofencesScreen}>
-              <View style={[styles.actionIconBg, { backgroundColor: '#FF980020' }]}>
-                <Image source={require('../assets/geo.png')} style={styles.actionIcon} />
-              </View>
-              <Text style={styles.actionLabel}>Geofences</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity style={styles.actionCard} onPress={handleHotspotsScreen}>
-              <View style={[styles.actionIconBg, { backgroundColor: '#E91E6320' }]}>
-                <Image source={require('../assets/location.png')} style={styles.actionIcon} />
-              </View>
-              <Text style={styles.actionLabel}>Hotspots</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity style={styles.actionCard} onPress={handleDeviceMapScreen}>
-                          <View style={[styles.actionIconBg, { backgroundColor: '#FFA50020' }]}>
-                            <Image source={require('../assets/monitor.png')} style={styles.actionIcon} />
-                          </View>
-                          <Text style={styles.actionLabel}>Shipments</Text>
-                        </TouchableOpacity>
-
-            <TouchableOpacity style={styles.actionCard} onPress={handleStationsScreen}>
-              <View style={[styles.actionIconBg, { backgroundColor: '#00BCD420' }]}>
-                <Image source={require('../assets/station.png')} style={styles.actionIcon} />
-              </View>
-              <Text style={styles.actionLabel}>Stations</Text>
-            </TouchableOpacity>
-          */}
-        </View>
-      </View>
 
       <View style={styles.alarmCard}>
         <View style={styles.alarmInfo}>

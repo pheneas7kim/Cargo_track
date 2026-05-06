@@ -16,21 +16,68 @@ import serverURL from '../config';
 const { width } = Dimensions.get('window');
 const SCAN_SIZE = width * 0.7;
 
+// Command constants
+const FIXED_COMMAND = '(P43,888888)'; // Joint Tech command
+const TELEMATICS_COMMAND = '*269#8,888888'; // Telematics default command
+
 const QrPaymentScanner = () => {
   const [scannedData, setScannedData] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [resultMessage, setResultMessage] = useState(null);
+  const [deviceType, setDeviceType] = useState(null); // 'TELEMATICS' or 'JOINT_TECH'
 
-  const FIXED_COMMAND = '(P43,888888)';
+  // Send command to Telematics device (8 digits - POST request)
+  const sendTelematicsCommand = async (deviceSn, command) => {
+    try {
+      const url = `${serverURL}devices/command/set`;
+      const formJson = {
+        deviceSn: deviceSn,
+        command: command || TELEMATICS_COMMAND
+      };
 
-  const sendCommand = async (deviceSn) => {
+      console.log('==============================');
+      console.log('🚀 SENDING TELEMATICS COMMAND (8 digits)');
+      console.log('Device SN:', deviceSn);
+      console.log('Command:', command || TELEMATICS_COMMAND);
+      console.log('URL:', url);
+      console.log('Request Body:', formJson);
+      console.log('==============================');
+
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(formJson),
+      });
+
+      console.log('📡 Response Status:', response.status);
+
+      const data = await response.json();
+
+      console.log('📦 Response Data:', data);
+      console.log('==============================');
+
+      if (response.status === 200 && data && data.status === 200) {
+        return { success: true, message: data.message || 'Command sent successfully' };
+      } else {
+        return { success: false, message: data?.message || 'Failed to send command' };
+      }
+    } catch (error) {
+      // console.log('❌ TELEMATICS REQUEST FAILED:', error);
+      return { success: false, message: error.message || 'Network error' };
+    }
+  };
+
+  // Send command to Joint Tech device (10 digits - GET request with fixed command)
+  const sendJointTechCommand = async (deviceSn) => {
     try {
       const url = `${serverURL}joint-tech/command/${deviceSn}?command=${encodeURIComponent(
         FIXED_COMMAND
       )}`;
 
       console.log('==============================');
-      console.log('🚀 SENDING COMMAND REQUEST');
+      console.log('🚀 SENDING JOINT TECH COMMAND (10 digits)');
       console.log('Device SN:', deviceSn);
       console.log('Command:', FIXED_COMMAND);
       console.log('URL:', url);
@@ -51,63 +98,106 @@ const QrPaymentScanner = () => {
         throw new Error(`HTTP ${response.status}`);
       }
 
-      return data;
+      return { success: true, message: `Command sent: ${FIXED_COMMAND}` };
     } catch (error) {
-      console.log('❌ REQUEST FAILED:', error);
-      throw error;
+      // console.log('❌ JOINT TECH REQUEST FAILED:', error);
+      return { success: false, message: error.message || 'Failed to send command' };
+    }
+  };
+
+  // Process device based on barcode length
+  const processDevice = async (deviceSn) => {
+    setIsLoading(true);
+    setResultMessage(null);
+
+    try {
+      let response;
+      let detectedType = '';
+      
+      // Check barcode length to determine device type
+      if (deviceSn.length === 8) {
+        detectedType = 'TELEMATICS';
+        setDeviceType('TELEMATICS');
+        console.log('✅ Detected Telematics device (8 digits)');
+        response = await sendTelematicsCommand(deviceSn, TELEMATICS_COMMAND);
+      } 
+      else if (deviceSn.length === 10) {
+        detectedType = 'JOINT_TECH';
+        setDeviceType('JOINT_TECH');
+        console.log('✅ Detected Joint Tech device (10 digits)');
+        response = await sendJointTechCommand(deviceSn);
+      } 
+      else {
+        console.log('❌ Invalid barcode length:', deviceSn.length);
+        Snackbar.show({
+          text: `Invalid barcode length: ${deviceSn.length} digits. Expected 8 or 10 digits.`,
+          duration: 4000,
+          backgroundColor: '#FF6B6B',
+        });
+        setResultMessage(`Invalid barcode: ${deviceSn.length} digits (expected 8 or 10)`);
+        setIsLoading(false);
+        return;
+      }
+
+      if (response.success) {
+        console.log('✅ COMMAND SUCCESSFUL');
+        setResultMessage(response.message);
+        
+        Snackbar.show({
+          text: response.message,
+          duration: 3000,
+          backgroundColor: '#4ECDC4',
+        });
+      } else {
+        console.log('❌ COMMAND FAILED');
+        setResultMessage(response.message);
+        
+        Snackbar.show({
+          text: response.message,
+          duration: 3000,
+          backgroundColor: '#FF6B6B',
+        });
+      }
+    } catch (error) {
+      // console.log('❌ PROCESSING FAILED:', error);
+      // setResultMessage('Failed to send command');
+      
+      // Snackbar.show({
+      //   text: 'Failed to execute command',
+      //   duration: 3000,
+      //   backgroundColor: '#FF6B6B',
+      // });
+    } finally {
+      setIsLoading(false);
     }
   };
 
   const onReadCode = async (event) => {
     const value = event?.nativeEvent?.codeStringValue;
 
-    console.log('📷 SCANNED RAW VALUE:', value);
+    console.log('📷 SCANNED BARCODE VALUE:', value);
+    console.log('📷 BARCODE LENGTH:', value?.length);
+    console.log('📷 SCAN TYPE:', event?.nativeEvent?.codeType || 'barcode');
 
     if (!value || isLoading) return;
 
-    const deviceSn = value.trim();
-
-    console.log('🔎 PARSED DEVICE SN:', deviceSn);
-
-    if (!/^\d+$/.test(deviceSn)) {
-      console.log('⚠️ INVALID BARCODE');
+    const deviceCode = value.trim();
+    setScannedData(deviceCode);
+    
+    // Validate if it's numeric
+    if (!/^\d+$/.test(deviceCode)) {
+      console.log('❌ Invalid: Barcode contains non-numeric characters');
       Snackbar.show({
-        text: 'Invalid barcode detected',
+        text: 'Invalid barcode: Must contain only numbers',
         duration: 3000,
         backgroundColor: '#FF6B6B',
       });
+      setScannedData(null);
       return;
     }
-
-    setScannedData(deviceSn);
-    setIsLoading(true);
-    setResultMessage(null);
-
-    try {
-      await sendCommand(deviceSn);
-
-      console.log('✅ COMMAND SUCCESSFUL');
-
-      setResultMessage(`Command sent: ${FIXED_COMMAND}`);
-
-      Snackbar.show({
-        text: 'Command executed successfully',
-        duration: 3000,
-        backgroundColor: '#4ECDC4',
-      });
-    } catch (error) {
-      console.log('❌ COMMAND FAILED');
-
-      setResultMessage('Failed to send command');
-
-      Snackbar.show({
-        text: 'Failed to execute command',
-        duration: 3000,
-        backgroundColor: '#FF6B6B',
-      });
-    } finally {
-      setIsLoading(false);
-    }
+    
+    // Process based on length
+    await processDevice(deviceCode);
   };
 
   const resetScanner = () => {
@@ -115,6 +205,7 @@ const QrPaymentScanner = () => {
     setScannedData(null);
     setResultMessage(null);
     setIsLoading(false);
+    setDeviceType(null);
   };
 
   return (
@@ -124,7 +215,7 @@ const QrPaymentScanner = () => {
       {!scannedData ? (
         <>
           <Text style={styles.title}>Device Scanner</Text>
-          <Text style={styles.subtitle}>Scan barcode to send command</Text>
+          <Text style={styles.subtitle}>Scan Device Barcode</Text>
 
           <View style={styles.cameraWrapper}>
             <View style={styles.cameraFrame}>
@@ -138,22 +229,55 @@ const QrPaymentScanner = () => {
             </View>
           </View>
 
-          <Text style={styles.instructionText}>
-            Align barcode inside the frame
-          </Text>
+          <View style={styles.instructionsContainer}>
+            <Text style={styles.instructionText}>
+              Align barcode inside the frame
+            </Text>
+            <View style={styles.deviceTypesContainer}>
+              <View style={styles.deviceTypeBadge}>
+                <Text style={styles.deviceTypeIcon}>📱</Text>
+                <Text style={styles.deviceTypeText}>Telematics (8 digits)</Text>
+              </View>
+              <View style={styles.deviceTypeBadge}>
+                <Text style={styles.deviceTypeIcon}>📊</Text>
+                <Text style={styles.deviceTypeText}>Joint Tech (10 digits)</Text>
+              </View>
+            </View>
+            <Text style={styles.noteText}>
+              Device will be automatically detected based on barcode length
+            </Text>
+          </View>
         </>
       ) : (
         <View style={styles.resultContainer}>
           {isLoading ? (
-            <ActivityIndicator size="large" color="#FFD700" />
+            <>
+              <ActivityIndicator size="large" color="#FFD700" />
+              <Text style={styles.loadingText}>
+                Sending command to {deviceType === 'TELEMATICS' ? 'Telematics' : 'Joint Tech'} device...
+              </Text>
+            </>
           ) : (
             <>
-              <Text style={styles.successIcon}>OK</Text>
-              <Text style={styles.resultTitle}>Scan Complete</Text>
+              <Text style={resultMessage?.toLowerCase().includes('success') ? styles.successIcon : styles.errorIcon}>
+                {resultMessage?.toLowerCase().includes('success') ? '✓' : '✗'}
+              </Text>
+              <Text style={styles.resultTitle}>
+                {resultMessage?.toLowerCase().includes('success') ? 'Success!' : 'Failed!'}
+              </Text>
 
               {resultMessage && (
-                <Text style={styles.resultText}>{resultMessage}</Text>
+                <Text style={resultMessage?.toLowerCase().includes('success') ? styles.successText : styles.errorText}>
+                  {resultMessage}
+                </Text>
               )}
+
+              <Text style={styles.deviceInfoText}>
+                Device Type: {deviceType === 'TELEMATICS' ? 'Telematics' : 'Joint Tech'}
+              </Text>
+              <Text style={styles.deviceIdText}>
+                Device ID: {scannedData} ({scannedData.length} digits)
+              </Text>
 
               <TouchableOpacity
                 style={styles.rescanButton}
@@ -223,11 +347,53 @@ const styles = StyleSheet.create({
     borderRadius: 20,
   },
 
+  instructionsContainer: {
+    marginTop: 25,
+    alignItems: 'center',
+  },
+
   instructionText: {
     color: '#C5C6CA',
     fontSize: 15,
-    marginTop: 25,
     textAlign: 'center',
+    marginBottom: 15,
+  },
+
+  deviceTypesContainer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 15,
+    marginTop: 10,
+    marginBottom: 10,
+  },
+
+  deviceTypeBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#1C1E22',
+    paddingHorizontal: 15,
+    paddingVertical: 8,
+    borderRadius: 20,
+    marginHorizontal: 5,
+  },
+
+  deviceTypeIcon: {
+    fontSize: 16,
+    marginRight: 8,
+  },
+
+  deviceTypeText: {
+    color: '#A4A6AD',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+
+  noteText: {
+    color: '#64748B',
+    fontSize: 12,
+    textAlign: 'center',
+    marginTop: 10,
+    fontStyle: 'italic',
   },
 
   resultContainer: {
@@ -240,23 +406,60 @@ const styles = StyleSheet.create({
   },
 
   successIcon: {
-    fontSize: 40,
+    fontSize: 50,
     color: '#4ECDC4',
     marginBottom: 15,
+    fontWeight: 'bold',
+  },
+
+  errorIcon: {
+    fontSize: 50,
+    color: '#FF6B6B',
+    marginBottom: 15,
+    fontWeight: 'bold',
   },
 
   resultTitle: {
-    fontSize: 18,
+    fontSize: 20,
     color: '#FFFFFF',
     fontWeight: '700',
     marginBottom: 10,
   },
 
-  resultText: {
+  successText: {
     fontSize: 14,
-    color: '#A4FBA6',
+    color: '#4ECDC4',
+    textAlign: 'center',
+    marginBottom: 15,
+  },
+
+  errorText: {
+    fontSize: 14,
+    color: '#FF6B6B',
+    textAlign: 'center',
+    marginBottom: 15,
+  },
+
+  deviceInfoText: {
+    fontSize: 13,
+    color: '#FFD700',
+    textAlign: 'center',
+    marginBottom: 5,
+    fontWeight: '600',
+  },
+
+  deviceIdText: {
+    fontSize: 12,
+    color: '#A4A6AD',
     textAlign: 'center',
     marginBottom: 20,
+  },
+
+  loadingText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    marginTop: 15,
+    textAlign: 'center',
   },
 
   rescanButton: {
