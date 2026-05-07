@@ -38,6 +38,8 @@ import CreateTicket from './screens/CreateTicket';
 import AttatchEvidence from './screens/AttatchEvidence';
 import messaging from '@react-native-firebase/messaging';
 import RandomStopScreen from './screens/RandomStopScreen';
+import RequestEsealsScreen from './screens/RequestEsealsScreen';
+import AssignedEseals from './screens/AssignedEseals';
 import { setupAxiosLogging } from './utils/axiosLogger';
 import notifee, { AndroidImportance } from '@notifee/react-native';
 
@@ -72,6 +74,8 @@ type RootStackParamList = {
   TrackOnMap2: undefined;
   AlertsNotigicationScreen: undefined;
   RandomStopScreen: undefined;
+  RequestEsealsScreen: undefined;
+  AssignedEseals: undefined;
   CreateTicket: undefined;
   AttatchEvidence: undefined;
 };
@@ -174,6 +178,9 @@ export default function App() {
               <Stack.Screen name="TrackOnMap2" component={TrackOnMap2} options={{ headerShown: false }} />
               <Stack.Screen name="AlertsNotigicationScreen" component={AlertsNotigicationScreen} options={{ headerShown: false }} />
               <Stack.Screen name="RandomStopScreen" component={RandomStopScreen} options={{ headerShown: false }} />
+              <Stack.Screen name="RequestEsealsScreen" component={RequestEsealsScreen} options={{ headerShown: false }} />
+              <Stack.Screen name="AssignedEseals" component={AssignedEseals} options={{ headerShown: false }} />
+
 
             <Stack.Screen
               name="Withdraw"

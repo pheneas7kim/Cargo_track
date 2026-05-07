@@ -100,79 +100,101 @@ const Login = () => {
   };
 
   const handleLogin = async () => {
-      if (!email.trim() || !password.trim()) {
-        Snackbar.show({
-          text: 'Email and Password are required',
-          duration: 3000,
-          backgroundColor: '#FF6B6B',
-        });
-        return;
-      }
+    if (!email.trim() || !password.trim()) {
+      Snackbar.show({
+        text: 'Email and Password are required',
+        duration: 3000,
+        backgroundColor: '#FF6B6B',
+      });
+      return;
+    }
 
-      setLoading(true);
+    setLoading(true);
 
-      const payload = {
-        username: email,
-        password: password,
-      };
+    const payload = {
+      username: email,
+      password: password,
+    };
 
-      console.log('DEBUG: Attempting login to:', `${serverUrl}auth/signin`);
-      console.log('DEBUG: Request Payload:', JSON.stringify(payload));
+    console.log('DEBUG: Attempting login to:', `${serverUrl}auth/signin`);
+    console.log('DEBUG: Request Payload:', JSON.stringify(payload));
 
-      try {
-        const response = await fetch(`${serverUrl}auth/signin`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-          },
-          body: JSON.stringify(payload),
-        });
+    try {
+      const response = await fetch(`${serverUrl}auth/signin`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      });
 
-        // Log raw response status and headers
-        console.log('DEBUG: Response Status:', response.status);
-        console.log('DEBUG: Response Headers:', response.headers);
+      // Log raw response status and headers
+      console.log('DEBUG: Response Status:', response.status);
+      console.log('DEBUG: Response Headers:', response.headers);
 
-        const responseText = await response.text();
-        console.log('DEBUG: Raw Response Text:', responseText);
+      const responseText = await response.text();
+      console.log('DEBUG: Raw Response Text:', responseText);
 
-        if (response.ok) {
-          const data = JSON.parse(responseText);
+      if (response.ok) {
+        const data = JSON.parse(responseText);
 
-          await AsyncStorage.setItem('accessToken', data.accessToken);
-          await AsyncStorage.setItem('id', data.id.toString());
-          await AsyncStorage.setItem('name', data.name);
-          await AsyncStorage.setItem('email', data.email);
-
-          setUserLoggedIn(data);
-
-          await requestPermissionAndToken(data.id, data.accessToken);
-          setupNotificationListeners();
-
-          setLoading(false);
-          navigation.reset({
-            index: 0,
-            routes: [{ name: 'Dashboard' }],
-          });
-        } else {
-          console.log('DEBUG: Login failed. Server response:', responseText);
-          Snackbar.show({
-            text: 'Login failed. Check logs.',
-            duration: 3000,
-            backgroundColor: '#FF6B6B',
-          });
-          setLoading(false);
+        // --- Extract role information from response ---
+        let roleId = null;
+        let roleName = null;
+        if (data.roles && data.roles.length > 0) {
+          roleId = data.roles[0].roleId;
+          roleName = data.roles[0].roleName;
         }
-      } catch (error) {
-        console.log('DEBUG: Network or Request Error:', error);
+
+        // Save user data to AsyncStorage
+        await AsyncStorage.setItem('accessToken', data.accessToken);
+        await AsyncStorage.setItem('id', data.id.toString());
+        await AsyncStorage.setItem('name', data.name);
+        await AsyncStorage.setItem('email', data.email);
+
+        // Save role data to AsyncStorage (for persistence across app restarts)
+        if (roleId !== null) {
+          await AsyncStorage.setItem('roleId', roleId.toString());
+          await AsyncStorage.setItem('roleName', roleName);
+        }
+
+        setUserLoggedIn(data);
+
+        await requestPermissionAndToken(data.id, data.accessToken);
+        setupNotificationListeners();
+
+        setLoading(false);
+
+        // Reset navigation stack and pass role data to Dashboard
+        navigation.reset({
+          index: 0,
+          routes: [
+            {
+              name: 'Dashboard',
+              params: { roleId, roleName },   // <-- role info passed to Dashboard
+            },
+          ],
+        });
+      } else {
+        console.log('DEBUG: Login failed. Server response:', responseText);
         Snackbar.show({
-          text: 'Something went wrong. Please check your connection.',
+          text: 'Login failed. Check logs.',
           duration: 3000,
           backgroundColor: '#FF6B6B',
         });
         setLoading(false);
       }
-    };
+    } catch (error) {
+      console.log('DEBUG: Network or Request Error:', error);
+      Snackbar.show({
+        text: 'Something went wrong. Please check your connection.',
+        duration: 3000,
+        backgroundColor: '#FF6B6B',
+      });
+      setLoading(false);
+    }
+  };
   if (!isVisible) {
     return (
       <View style={styles.container}>

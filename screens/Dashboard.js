@@ -17,8 +17,7 @@ import {
   Switch,
   Alert
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
-import { useFocusEffect } from '@react-navigation/native';
+import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
 import { BackHandler } from 'react-native';
 import Snackbar from 'react-native-snackbar';
 import * as Animatable from 'react-native-animatable';
@@ -229,7 +228,29 @@ function HomeScreen() {
   const [isLoading, setIsLoading] = useState(false);
   const [selectedTicket, setSelectedTicket] = useState(null);
   const [modalVisible, setModalVisible] = useState(false);
+  const route = useRoute();
+  const [roleId, setRoleId] = useState(null);
+  useEffect(() => {
+    const loadRole = async () => {
+      let id = route.params?.roleId;
+      if (!id) {
+        const stored = await AsyncStorage.getItem('roleId');
+        id = stored ? parseInt(stored, 10) : null;
+      }
+      setRoleId(id);
+    };
+    loadRole();
+  }, [route.params?.roleId]);
 
+  // Helper to decide if an icon should be shown
+  const shouldShowIcon = (iconName) => {
+    if (roleId === 1) return true;
+    if (roleId === 102) {
+      const forbidden = ['Random Stop', 'Request Eseals', 'Return Eseals', 'Assigned Eseals'];
+      return !forbidden.includes(iconName);
+    }
+    return false; // any other role or missing → nothing
+  };
   // Commands list
   const commands = [
     { id: 'CMD-001', name: 'Check Status', description: 'Get real-time status of your shipment' },
@@ -563,6 +584,8 @@ function HomeScreen() {
   const handleRandomStopScreen = () => navigation.navigate('RandomStopScreen');
   const handleQrPaymentScanner = () => navigation.navigate('QrPaymentScanner');
   const handleMasterSlaveMapper = () => navigation.navigate('MasterSlaveMapper')
+  const handleRequestEsealsScreen = () => navigation.navigate('RequestEsealsScreen');
+  const handleAssignedEseals = () => navigation.navigate('AssignedEseals');
 
   const TopUpModal = () => setIsModalVisible(true);
   const withdrawModal = () => setIsModalVisibleWithdraw(true);
@@ -811,6 +834,7 @@ function HomeScreen() {
   );
 
   // HeaderComponent (unchanged except for the tracking card label)
+
   const HeaderComponent = () => (
     <>
       <View style={styles.header}>
@@ -826,104 +850,80 @@ function HomeScreen() {
               </View>
             )}
           </TouchableOpacity>
-          {/*
-          <TouchableOpacity style={styles.iconButton} onPress={handleCommandsScreen}>
-            <Image source={require('../assets/command.png')} style={styles.headerIcon} />
-          </TouchableOpacity>
-          */}
         </View>
       </View>
 
-      <View style={styles.trackingCard}>
-      {/*
-        <Text style={styles.trackingTitle}>Track Your Device</Text>
-        <View style={styles.trackingSearch}>
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Enter tracking number"
-            placeholderTextColor="#9AA9B3"
-            value={trackingNumber}
-            onChangeText={setTrackingNumber}
-          />
-          <TouchableOpacity style={styles.trackButton} onPress={handleTrackShipment}>
-            <Text style={styles.trackButtonText}>Track</Text>
-          </TouchableOpacity>
-          */}
-      </View>
-
-      <View style={styles.quickActionsGrid}>
-        <View style={styles.actionsContainer}>
-          <View style={styles.actionRow}>
-
-          <TouchableOpacity style={styles.actionCard} onPress={handleQrPaymentScanner}>
-                        <View style={[styles.actionIconBg, { backgroundColor: '#9C27B020' }]}>
-                          <Image source={require('../assets/trk.png')} style={styles.actionIcon} />
-                        </View>
-                        <Text style={styles.actionLabel}>Scan to Unlock</Text>
-                      </TouchableOpacity>
-
-                      <TouchableOpacity style={styles.actionCard} onPress={handleMasterSlaveMapper}>
-                        <View style={[styles.actionIconBg, { backgroundColor: '#FF980020' }]}>
-                          <Image source={require('../assets/geo.png')} style={styles.actionIcon} />
-                        </View>
-                        <Text style={styles.actionLabel}>Sensors Mapping</Text>
-                      </TouchableOpacity>
-
-                      <TouchableOpacity style={styles.actionCard} onPress={handleHotspotsScreen}>
-                        <View style={[styles.actionIconBg, { backgroundColor: '#E91E6320' }]}>
-                          <Image source={require('../assets/location.png')} style={styles.actionIcon} />
-                        </View>
-                        <Text style={styles.actionLabel}>T1 Mapping</Text>
-                      </TouchableOpacity>
-
-
-
-                      <TouchableOpacity style={styles.actionCard} onPress={handleTicketsScreen}>
-                                             <View style={[styles.actionIconBg, { backgroundColor: '#2196F320' }]}>
-                                               <Image source={require('../assets/phone.png')} style={styles.actionIcon} />
-                                            </View>
-                                            <Text style={styles.actionLabel}>Tickets</Text>
-                                          </TouchableOpacity>
-
-                    </View>
-
-                    <View style={styles.actionRow}>
-
-                    <TouchableOpacity style={styles.actionCard} onPress={handleTicketsScreen}>
-                                <View style={[styles.actionIconBg, { backgroundColor: '#2196F320' }]}>
-                                  <Image source={require('../assets/phone.png')} style={styles.actionIcon} />
-                                </View>
-                                <Text style={styles.actionLabel}>Tickets</Text>
-                              </TouchableOpacity>
-
-                      <TouchableOpacity style={styles.actionCard} onPress={handleRandomStopScreen}>
-                                    <View style={[styles.actionIconBg, { backgroundColor: '#2196F320' }]}>
-                                      <Image source={require('../assets/randomstop.png')} style={styles.actionIcon} />
-                                    </View>
-                                    <Text style={styles.actionLabel}>Random Stop</Text>
-                                  </TouchableOpacity>
-
-                      <TouchableOpacity style={styles.actionCard} onPress={handleAlarmsNotigicationScreen}>
-                        <View style={[styles.actionIconBg, { backgroundColor: '#FF6B6B20' }]}>
-                          <Image source={require('../assets/alarm.png')} style={styles.actionIcon} />
-                        </View>
-                        <Text style={styles.actionLabel}>Alarms</Text>
-                      </TouchableOpacity>
-
-                      <TouchableOpacity style={styles.actionCard} onPress={handleAlertsNotigicationScreen}>
-                        <View style={[styles.actionIconBg, { backgroundColor: '#4CAF5020' }]}>
-                          <Image source={require('../assets/bell.png')} style={styles.actionIcon} />
-                        </View>
-                        <Text style={styles.actionLabel}>Alerts</Text>
-                      </TouchableOpacity>
-                    </View>
-
-
+      {(roleId === 1 || roleId === 102) && (
+        <View style={styles.quickActionsGrid}>
+          <View style={styles.actionsContainer}>
+            {/* Row 1 – visible only for role 1 */}
+            {roleId === 1 && (
+              <View style={styles.actionRow}>
+                <TouchableOpacity style={styles.actionCard} onPress={handleQrPaymentScanner}>
+                  <View style={[styles.actionIconBg, { backgroundColor: '#9C27B020' }]}>
+                    <Image source={require('../assets/trk.png')} style={styles.actionIcon} />
                   </View>
+                  <Text style={styles.actionLabel}>Scan to Unlock</Text>
+                </TouchableOpacity>
 
-                <View style={styles.actionRow}>
-                {/*
-                <TouchableOpacity style={styles.actionCard} onPress={handleDevicesScreen}>
+                <TouchableOpacity style={styles.actionCard} onPress={handleMasterSlaveMapper}>
+                  <View style={[styles.actionIconBg, { backgroundColor: '#FF980020' }]}>
+                    <Image source={require('../assets/geo.png')} style={styles.actionIcon} />
+                  </View>
+                  <Text style={styles.actionLabel}>Sensors Mapping</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity style={styles.actionCard} onPress={handleHotspotsScreen}>
+                  <View style={[styles.actionIconBg, { backgroundColor: '#E91E6320' }]}>
+                    <Image source={require('../assets/location.png')} style={styles.actionIcon} />
+                  </View>
+                  <Text style={styles.actionLabel}>T1 Mapping</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity style={styles.actionCard} onPress={handleTicketsScreen}>
+                  <View style={[styles.actionIconBg, { backgroundColor: '#2196F320' }]}>
+                    <Image source={require('../assets/phone.png')} style={styles.actionIcon} />
+                  </View>
+                  <Text style={styles.actionLabel}>Tickets</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
+            {/* Row 2 – visible for both role 1 and role 102 */}
+            <View style={styles.actionRow}>
+              <TouchableOpacity style={styles.actionCard} onPress={handleRandomStopScreen}>
+                <View style={[styles.actionIconBg, { backgroundColor: '#2196F320' }]}>
+                  <Image source={require('../assets/randomstop.png')} style={styles.actionIcon} />
+                </View>
+                <Text style={styles.actionLabel}>Random Stop</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity style={styles.actionCard} onPress={handleRequestEsealsScreen}>
+                <View style={[styles.actionIconBg, { backgroundColor: '#FF6B6B20' }]}>
+                  <Image source={require('../assets/alarm.png')} style={styles.actionIcon} />
+                </View>
+                <Text style={styles.actionLabel}>Request Eseals</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity style={styles.actionCard} onPress={handleAlertsNotigicationScreen}>
+                <View style={[styles.actionIconBg, { backgroundColor: '#4CAF5020' }]}>
+                  <Image source={require('../assets/bell.png')} style={styles.actionIcon} />
+                </View>
+                <Text style={styles.actionLabel}>Return Eseals</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity style={styles.actionCard} onPress={handleAssignedEseals}>
+                <View style={[styles.actionIconBg, { backgroundColor: '#2196F320' }]}>
+                  <Image source={require('../assets/phone.png')} style={styles.actionIcon} />
+                </View>
+                <Text style={styles.actionLabel}>Assigned Eseals</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Row 3 – visible only for role 1 (admin features) */}
+            {roleId === 1 && (
+              <View style={styles.actionRow}>
+             {/*   <TouchableOpacity style={styles.actionCard} onPress={handleDevicesScreen}>
                   <View style={[styles.actionIconBg, { backgroundColor: '#9C27B020' }]}>
                     <Image source={require('../assets/trk.png')} style={styles.actionIcon} />
                   </View>
@@ -945,21 +945,23 @@ function HomeScreen() {
                 </TouchableOpacity>
 
                 <TouchableOpacity style={styles.actionCard} onPress={handleDeviceMapScreen}>
-                              <View style={[styles.actionIconBg, { backgroundColor: '#FFA50020' }]}>
-                                <Image source={require('../assets/monitor.png')} style={styles.actionIcon} />
-                              </View>
-                              <Text style={styles.actionLabel}>Shipments</Text>
-                            </TouchableOpacity>
+                  <View style={[styles.actionIconBg, { backgroundColor: '#FFA50020' }]}>
+                    <Image source={require('../assets/monitor.png')} style={styles.actionIcon} />
+                  </View>
+                  <Text style={styles.actionLabel}>Shipments</Text>
+                </TouchableOpacity>
 
                 <TouchableOpacity style={styles.actionCard} onPress={handleStationsScreen}>
                   <View style={[styles.actionIconBg, { backgroundColor: '#00BCD420' }]}>
                     <Image source={require('../assets/station.png')} style={styles.actionIcon} />
                   </View>
                   <Text style={styles.actionLabel}>Stations</Text>
-                </TouchableOpacity>
-              */}
-            </View>
+                </TouchableOpacity>*/}
+              </View>
+            )}
           </View>
+        </View>
+      )}
 
       <View style={styles.alarmCard}>
         <View style={styles.alarmInfo}>
@@ -1295,13 +1297,13 @@ const styles = StyleSheet.create({
   searchInput: { flex: 1, borderWidth: 1.5, borderColor: '#E5E5E5', borderRadius: 12, paddingHorizontal: 16, paddingVertical: 12, fontSize: 14, backgroundColor: '#FAFAFA', marginRight: 12 },
   trackButton: { backgroundColor: '#FFA500', borderRadius: 12, paddingHorizontal: 24, justifyContent: 'center', shadowColor: '#FFA500', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 3 },
   trackButtonText: { color: '#FFFFFF', fontWeight: '600', fontSize: 14 },
-  quickActionsGrid: { marginHorizontal: 20, marginBottom: 20 },
+  quickActionsGrid: { marginHorizontal: 12, marginBottom: 20 },
   actionsContainer: { gap: 16 },
   actionRow: { flexDirection: 'row', justifyContent: 'space-between' },
   actionCard: { alignItems: 'center', width: (width - 56) / 4 },
   actionIconBg: { width: 46, height: 46, borderRadius: 28, justifyContent: 'center', alignItems: 'center', marginBottom: 8 },
   actionIcon: { width: 24, height: 24 },
-  actionLabel: { fontSize: 11, color: '#333', fontWeight: '500', textAlign: 'center' },
+  actionLabel: { fontSize: 10, color: '#333', fontWeight: '500', textAlign: 'center' },
   alarmCard: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#FFFFFF', marginHorizontal: 20, marginBottom: 16, padding: 16, borderRadius: 12, shadowOpacity: 0.05, elevation: 1 },
   alarmInfo: { flexDirection: 'row', alignItems: 'center', flex: 1 },
   alarmIcon: { width: 32, height: 32, marginRight: 12, tintColor: '#FFA500' },

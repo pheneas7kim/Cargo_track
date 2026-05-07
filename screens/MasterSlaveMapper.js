@@ -182,7 +182,7 @@ const MasterSlaveMapper = () => {
   if (viewMode === 'SUMMARY') {
     return (
       <SafeAreaView style={styles.container}>
-        <StatusBar barStyle="light-content" backgroundColor="#0B0C10" />
+        <StatusBar barStyle="dark-content" backgroundColor="#0B0C10" />
         <Text style={styles.title}>Truck Mapping History</Text>
         <Text style={styles.counter}>Total Trucks: {allMappings.length}</Text>
 
@@ -223,7 +223,7 @@ const MasterSlaveMapper = () => {
   if (viewMode === 'DASHBOARD') {
     return (
       <SafeAreaView style={styles.container}>
-        <StatusBar barStyle="light-content" backgroundColor="#0B0C10" />
+        <StatusBar barStyle="dark-content" backgroundColor="#0B0C10" />
 
         <Text style={styles.title}>Master-Slave Mapper</Text>
 
