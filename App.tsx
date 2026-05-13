@@ -38,10 +38,14 @@ import CreateTicket from './screens/CreateTicket';
 import AttatchEvidence from './screens/AttatchEvidence';
 import messaging from '@react-native-firebase/messaging';
 import RandomStopScreen from './screens/RandomStopScreen';
-import RequestEsealsScreen from './screens/RequestEsealsScreen';
+import RequestEsealsList from './screens/RequestEsealsList';
+import EsealsReplacement from './screens/EsealsReplacement';
+import RequestEsealsForm from './screens/RequestEsealsForm';
 import AssignedEseals from './screens/AssignedEseals';
+import InventoryScan from './screens/InventoryScan';
 import { setupAxiosLogging } from './utils/axiosLogger';
 import notifee, { AndroidImportance } from '@notifee/react-native';
+import SpInAppUpdates, { IAUUpdateKind } from 'sp-react-native-in-app-updates';
 
 // Define the types for your stack
 type RootStackParamList = {
@@ -74,8 +78,11 @@ type RootStackParamList = {
   TrackOnMap2: undefined;
   AlertsNotigicationScreen: undefined;
   RandomStopScreen: undefined;
-  RequestEsealsScreen: undefined;
+  RequestEsealsList: undefined;
+  EsealsReplacement:undefined;
+  RequestEsealsForm: undefined;
   AssignedEseals: undefined;
+  inventoryScan: undefined;
   CreateTicket: undefined;
   AttatchEvidence: undefined;
 };
@@ -87,10 +94,28 @@ const Stack = createStackNavigator<RootStackParamList>();
 export default function App() {
   const [userName, setUserName] = useState<string>('');
 
+  // 1. In-App Updates Hook (Top Level)
+  useEffect(() => {
+    const checkUpdates = async () => {
+      const inAppUpdates = new SpInAppUpdates(false);
+      try {
+        const result = await inAppUpdates.checkNeedsUpdate();
+        if (result.shouldUpdate) {
+          inAppUpdates.startUpdate({
+            updateType: Platform.OS === 'android' ? IAUUpdateKind.IMMEDIATE : undefined,
+          });
+        }
+      } catch (error) {
+        console.log('Update Check Error:', error);
+      }
+    };
+    checkUpdates();
+  }, []);
+
+  // 2. Notifications and Main Logic Hook (Top Level)
   useEffect(() => {
     setupAxiosLogging();
 
-    // Notification Logic (Permissions, Channels, Handlers)
     const setupNotifications = async () => {
       if (Platform.OS === 'android' && Platform.Version >= 33) {
         await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS);
@@ -105,14 +130,12 @@ export default function App() {
 
     messaging().getToken().then(token => console.log("DEVICE_TOKEN:", token));
 
-    // 1. Your existing User Name logic
     const getUserName = async () => {
       const name = await AsyncStorage.getItem('name');
       if (name) setUserName(name);
     };
     getUserName();
 
-    // Foreground listener
     const unsubscribeForeground = messaging().onMessage(async remoteMessage => {
       await notifee.displayNotification({
         title: remoteMessage.notification?.title,
@@ -148,6 +171,9 @@ export default function App() {
     };
   }, []);
 
+
+
+
   return (
     <Provider store={store}>
       <NavigationContainer ref={navigationRef}>
@@ -178,8 +204,11 @@ export default function App() {
               <Stack.Screen name="TrackOnMap2" component={TrackOnMap2} options={{ headerShown: false }} />
               <Stack.Screen name="AlertsNotigicationScreen" component={AlertsNotigicationScreen} options={{ headerShown: false }} />
               <Stack.Screen name="RandomStopScreen" component={RandomStopScreen} options={{ headerShown: false }} />
-              <Stack.Screen name="RequestEsealsScreen" component={RequestEsealsScreen} options={{ headerShown: false }} />
+              <Stack.Screen name="RequestEsealsList" component={RequestEsealsList} options={{ headerShown: false }} />
+              <Stack.Screen name="EsealsReplacement" component={EsealsReplacement} options={{ headerShown: false }} />
+              <Stack.Screen name="RequestEsealsForm" component={RequestEsealsForm} options={{ headerShown: false }} />
               <Stack.Screen name="AssignedEseals" component={AssignedEseals} options={{ headerShown: false }} />
+              <Stack.Screen name="InventoryScan" component={InventoryScan} options={{ headerShown: false }} />
 
 
             <Stack.Screen

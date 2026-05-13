@@ -238,6 +238,10 @@ function HomeScreen() {
         id = stored ? parseInt(stored, 10) : null;
       }
       setRoleId(id);
+      // Set default tab based on role
+      if (id === 255) {
+        setActiveTab('tickets');
+      }
     };
     loadRole();
   }, [route.params?.roleId]);
@@ -571,6 +575,8 @@ function HomeScreen() {
     );
   };
 
+
+
   const handleNotificationsScreen = () => navigation.navigate('AlertsNotigicationScreen');
   const handleAlarmsNotigicationScreen = () => navigation.navigate('AlarmsNotigicationScreen');
   const handleTicketsScreen = () => navigation.navigate('TicketsScreen');
@@ -584,9 +590,10 @@ function HomeScreen() {
   const handleRandomStopScreen = () => navigation.navigate('RandomStopScreen');
   const handleQrPaymentScanner = () => navigation.navigate('QrPaymentScanner');
   const handleMasterSlaveMapper = () => navigation.navigate('MasterSlaveMapper')
-  const handleRequestEsealsScreen = () => navigation.navigate('RequestEsealsScreen');
+  const handleRequestEsealsList = () => navigation.navigate('RequestEsealsList');
   const handleAssignedEseals = () => navigation.navigate('AssignedEseals');
-
+  const handleInventoryScan = () => navigation.navigate('InventoryScan');
+  const handleEsealsReplacement = () => navigation.navigate('EsealsReplacement');
   const TopUpModal = () => setIsModalVisible(true);
   const withdrawModal = () => setIsModalVisibleWithdraw(true);
 
@@ -601,6 +608,9 @@ function HomeScreen() {
     setPhoneNumber2('');
     setAmount2('');
   };
+
+
+
 
   const handleAcknowledge = async (ticketId) => {
     try {
@@ -641,6 +651,24 @@ function HomeScreen() {
         backgroundColor: '#FF6B6B',
       });
     }
+  };
+
+  const handleLogout = async () => {
+    Alert.alert('Logout', 'Are you sure you want to logout?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Logout',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await AsyncStorage.multiRemove(['accessToken', 'roleId', 'id', 'refreshToken']);
+            navigation.reset({ index: 0, routes: [{ name: 'Login' }] });
+          } catch (error) {
+            Snackbar.show({ text: 'Failed to logout', duration: 3000, backgroundColor: '#FF6B6B' });
+          }
+        },
+      },
+    ]);
   };
 
   const handleSubmit = async () => {
@@ -751,6 +779,9 @@ function HomeScreen() {
     const statusColor = getStatusColor(item.status);
     const priorityColor = getPriorityColor(item.priority);
 
+
+
+
     return (
       <Animatable.View
         animation="fadeInUp"
@@ -837,11 +868,19 @@ function HomeScreen() {
 
   const HeaderComponent = () => (
     <>
+
+
       <View style={styles.header}>
         <View>
           <Text style={styles.greeting}>{getCurrentTime()}</Text>
         </View>
         <View style={styles.headerActions}>
+          {/* Logout Icon */}
+          <TouchableOpacity style={styles.iconButton} onPress={handleLogout}>
+            <Image source={require('../assets/logout.png')} style={styles.headerIcon} />
+          </TouchableOpacity>
+
+          {/* Bell Icon with Badge */}
           <TouchableOpacity style={styles.iconButton} onPress={handleNotificationsScreen}>
             <Image source={require('../assets/bell.png')} style={styles.headerIcon} />
             {notifications.filter(n => !n.read).length > 0 && (
@@ -853,7 +892,7 @@ function HomeScreen() {
         </View>
       </View>
 
-      {(roleId === 1 || roleId === 102) && (
+      {(roleId === 1 || roleId === 102 || roleId === 255 ) && (
         <View style={styles.quickActionsGrid}>
           <View style={styles.actionsContainer}>
             {/* Row 1 – visible only for role 1 */}
@@ -890,45 +929,55 @@ function HomeScreen() {
             )}
 
             {/* Row 2 – visible for both role 1 and role 102 */}
+
             <View style={styles.actionRow}>
+            {roleId !== 255 && (
               <TouchableOpacity style={styles.actionCard} onPress={handleRandomStopScreen}>
                 <View style={[styles.actionIconBg, { backgroundColor: '#2196F320' }]}>
                   <Image source={require('../assets/randomstop.png')} style={styles.actionIcon} />
                 </View>
                 <Text style={styles.actionLabel}>Random Stop</Text>
-              </TouchableOpacity>
+              </TouchableOpacity> )}
 
-              <TouchableOpacity style={styles.actionCard} onPress={handleRequestEsealsScreen}>
+
+              {roleId !== 255 && (
+              <TouchableOpacity style={styles.actionCard} onPress={handleRequestEsealsList}>
                 <View style={[styles.actionIconBg, { backgroundColor: '#FF6B6B20' }]}>
                   <Image source={require('../assets/alarm.png')} style={styles.actionIcon} />
                 </View>
                 <Text style={styles.actionLabel}>Request Eseals</Text>
-              </TouchableOpacity>
+              </TouchableOpacity> )}
 
-              <TouchableOpacity style={styles.actionCard} onPress={handleAlertsNotigicationScreen}>
+
+              {roleId !== 255 && (
+              <TouchableOpacity style={styles.actionCard} onPress={handleEsealsReplacement}>
                 <View style={[styles.actionIconBg, { backgroundColor: '#4CAF5020' }]}>
                   <Image source={require('../assets/bell.png')} style={styles.actionIcon} />
                 </View>
-                <Text style={styles.actionLabel}>Return Eseals</Text>
-              </TouchableOpacity>
+                <Text style={styles.actionLabel}>Eseals Replacement</Text>
+              </TouchableOpacity> )}
 
+
+              {roleId !== 255 && (
               <TouchableOpacity style={styles.actionCard} onPress={handleAssignedEseals}>
                 <View style={[styles.actionIconBg, { backgroundColor: '#2196F320' }]}>
                   <Image source={require('../assets/phone.png')} style={styles.actionIcon} />
                 </View>
                 <Text style={styles.actionLabel}>Assigned Eseals</Text>
-              </TouchableOpacity>
+              </TouchableOpacity>)}
             </View>
 
             {/* Row 3 – visible only for role 1 (admin features) */}
-            {roleId === 1 && (
+            {roleId === 255 && (
               <View style={styles.actionRow}>
-             {/*   <TouchableOpacity style={styles.actionCard} onPress={handleDevicesScreen}>
+                <TouchableOpacity style={styles.actionCard} onPress={handleInventoryScan}>
                   <View style={[styles.actionIconBg, { backgroundColor: '#9C27B020' }]}>
                     <Image source={require('../assets/trk.png')} style={styles.actionIcon} />
                   </View>
-                  <Text style={styles.actionLabel}>Devices</Text>
+                  <Text style={styles.actionLabel}>Scan to Add Devices</Text>
                 </TouchableOpacity>
+
+                {/*
 
                 <TouchableOpacity style={styles.actionCard} onPress={handleGeofencesScreen}>
                   <View style={[styles.actionIconBg, { backgroundColor: '#FF980020' }]}>
@@ -980,14 +1029,19 @@ function HomeScreen() {
       </View>
 
       <View style={styles.tabs}>
-        <TouchableOpacity
-          style={[styles.tab, activeTab === 'shipments' && styles.activeTab]}
-          onPress={() => setActiveTab('shipments')}
-        >
-          <Text style={[styles.tabText, activeTab === 'shipments' && styles.activeTabText]}>
-            Shipments
-          </Text>
-        </TouchableOpacity>
+        {/* Only show Shipments tab if role is not 255 */}
+        {roleId !== 255 && (
+          <TouchableOpacity
+            style={[styles.tab, activeTab === 'shipments' && styles.activeTab]}
+            onPress={() => setActiveTab('shipments')}
+          >
+            <Text style={[styles.tabText, activeTab === 'shipments' && styles.activeTabText]}>
+              Shipments
+            </Text>
+          </TouchableOpacity>
+        )}
+
+        {/* Tickets tab - visible for all roles */}
         <TouchableOpacity
           style={[styles.tab, activeTab === 'tickets' && styles.activeTab]}
           onPress={() => setActiveTab('tickets')}
@@ -996,14 +1050,18 @@ function HomeScreen() {
             Tickets
           </Text>
         </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.tab, activeTab === 'alerts' && styles.activeTab]}
-          onPress={() => setActiveTab('alerts')}
-        >
-          <Text style={[styles.tabText, activeTab === 'alerts' && styles.activeTabText]}>
-            Alerts
-          </Text>
-        </TouchableOpacity>
+
+        {/* Only show Alerts tab if role is not 255 */}
+        {roleId !== 255 && (
+          <TouchableOpacity
+            style={[styles.tab, activeTab === 'alerts' && styles.activeTab]}
+            onPress={() => setActiveTab('alerts')}
+          >
+            <Text style={[styles.tabText, activeTab === 'alerts' && styles.activeTabText]}>
+              Alerts
+            </Text>
+          </TouchableOpacity>
+        )}
       </View>
     </>
   );
