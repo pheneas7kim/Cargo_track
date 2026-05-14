@@ -31,7 +31,7 @@ const getAuthToken = async () => {
 const TrackOnMap = () => {
   const navigation = useNavigation();
   const route = useRoute();
-  const { shipment } = route.params || {};
+  const { ticket } = route.params || {};
 
   const [loading, setLoading] = useState(true);
   const [mapReady, setMapReady] = useState(false);
@@ -49,32 +49,32 @@ const TrackOnMap = () => {
   let refreshInterval = useRef(null);
 
   useEffect(() => {
-    if (!shipment) {
-      Alert.alert('Error', 'No shipment data provided');
+    if (!ticket) {
+      Alert.alert('Error', 'No ticket data provided');
       navigation.goBack();
       return;
     }
 
-    // Initialize coordinates from passed shipment
-    if (shipment.latitude && shipment.longitude) {
+    // Initialize coordinates from passed ticket
+    if (ticket.latitude && ticket.longitude) {
       setCurrentLocation({
-        latitude: shipment.latitude,
-        longitude: shipment.longitude,
+        latitude: ticket.latitude,
+        longitude: ticket.longitude,
       });
     }
-    if (shipment.originCoord) {
-      setOriginCoord(shipment.originCoord);
-    } else if (shipment.originLat && shipment.originLng) {
-      setOriginCoord({ latitude: shipment.originLat, longitude: shipment.originLng });
-    } else if (shipment.origin) {
+    if (ticket.originCoord) {
+      setOriginCoord(ticket.originCoord);
+    } else if (ticket.originLat && ticket.originLng) {
+      setOriginCoord({ latitude: ticket.originLat, longitude: ticket.originLng });
+    } else if (ticket.origin) {
       // Optionally geocode if needed (skip for brevity)
     }
 
-    if (shipment.destCoord) {
-      setDestCoord(shipment.destCoord);
-    } else if (shipment.destLat && shipment.destLng) {
-      setDestCoord({ latitude: shipment.destLat, longitude: shipment.destLng });
-    } else if (shipment.destination) {
+    if (ticket.destCoord) {
+      setDestCoord(ticket.destCoord);
+    } else if (ticket.destLat && ticket.destLng) {
+      setDestCoord({ latitude: ticket.destLat, longitude: ticket.destLng });
+    } else if (ticket.destination) {
       // Optionally geocode
     }
 
@@ -110,7 +110,7 @@ const TrackOnMap = () => {
   };
 
   const refreshLocation = async () => {
-    if (!shipment || !shipment.trackingNumber) return;
+    if (!ticket || !ticket.trackingNumber) return;
     setRefreshing(true);
     try {
       const token = await getAuthToken();
@@ -123,7 +123,7 @@ const TrackOnMap = () => {
       if (!response.ok) throw new Error('Failed to fetch telemetry');
       const data = await response.json();
 
-      const device = data.find(d => d.t1Number === shipment.trackingNumber);
+      const device = data.find(d => d.t1Number === ticket.trackingNumber);
       if (device && device.latitude && device.longitude) {
         const newLoc = {
           latitude: device.latitude,
@@ -180,7 +180,7 @@ const TrackOnMap = () => {
   };
 
   const getStatusColor = () => {
-    return shipment?.statusColor || '#FFA500';
+    return ticket?.statusColor || '#FFA500';
   };
 
   const centerOnLocation = (lat, lng, zoomLevel = 0.01) => {
@@ -261,20 +261,20 @@ const TrackOnMap = () => {
           <View style={[styles.typeBadge, { backgroundColor: getStatusColor() + '20' }]}>
             <Icon name="local-shipping" size={16} color={getStatusColor()} />
             <Text style={[styles.typeText, { color: getStatusColor() }]}>
-              {shipment.status || 'In Transit'}
+              {ticket.status || 'In Transit'}
             </Text>
           </View>
           {refreshing && <ActivityIndicator size="small" color="#FFA500" />}
         </View>
 
-        <Text style={styles.infoName}>{shipment.trackingNumber}</Text>
-        <Text style={styles.infoDescription}>{shipment.deviceName || shipment.deviceSn}</Text>
+        <Text style={styles.infoName}>{ticket.trackingNumber}</Text>
+        <Text style={styles.infoDescription}>{ticket.deviceName || ticket.deviceSn}</Text>
 
         <View style={styles.infoDetails}>
           <View style={styles.infoDetail}>
             <Icon name="place" size={16} color="#666" />
             <Text style={styles.infoDetailText}>
-              {shipment.origin || 'Origin'} → {shipment.destination || 'Destination'}
+              {ticket.origin || 'Origin'} → {ticket.destination || 'Destination'}
             </Text>
           </View>
           <View style={styles.infoDetail}>
@@ -283,10 +283,10 @@ const TrackOnMap = () => {
               Last Update: {lastUpdate ? lastUpdate.toLocaleTimeString() : 'N/A'}
             </Text>
           </View>
-          {shipment.speedKmh !== undefined && (
+          {ticket.speedKmh !== undefined && (
             <View style={styles.infoDetail}>
               <Icon name="speed" size={16} color="#666" />
-              <Text style={styles.infoDetailText}>Speed: {shipment.speedKmh} km/h</Text>
+              <Text style={styles.infoDetailText}>Speed: {ticket.speedKmh} km/h</Text>
             </View>
           )}
         </View>
@@ -387,7 +387,7 @@ const TrackOnMap = () => {
             <Marker
               coordinate={currentLocation}
               title="Current Location"
-              description={shipment.location || 'Device current position'}
+              description={ticket.location || 'Device current position'}
               anchor={{ x: 0.5, y: 0.5 }}
             >
               <View style={[styles.centerMarker, { borderColor: getStatusColor() }]}>
@@ -397,31 +397,31 @@ const TrackOnMap = () => {
               </View>
               <Callout>
                 <View style={styles.calloutContainer}>
-                  <Text style={styles.calloutTitle}>{shipment.trackingNumber}</Text>
-                  <Text style={styles.calloutText}>Status: {shipment.status}</Text>
-                  <Text style={styles.calloutText}>Speed: {shipment.speedKmh} km/h</Text>
+                  <Text style={styles.calloutTitle}>{ticket.trackingNumber}</Text>
+                  <Text style={styles.calloutText}>Status: {ticket.status}</Text>
+                  <Text style={styles.calloutText}>Speed: {ticket.speedKmh} km/h</Text>
                 </View>
               </Callout>
             </Marker>
           )}
 
           {originCoord && (
-            <Marker coordinate={originCoord} title="Origin" description={shipment.origin} pinColor="#4CAF50">
+            <Marker coordinate={originCoord} title="Origin" description={ticket.origin} pinColor="#4CAF50">
               <Callout>
                 <View style={styles.calloutContainer}>
                   <Text style={styles.calloutTitle}>Origin</Text>
-                  <Text style={styles.calloutText}>{shipment.origin}</Text>
+                  <Text style={styles.calloutText}>{ticket.origin}</Text>
                 </View>
               </Callout>
             </Marker>
           )}
 
           {destCoord && (
-            <Marker coordinate={destCoord} title="Destination" description={shipment.destination} pinColor="#2196F3">
+            <Marker coordinate={destCoord} title="Destination" description={ticket.destination} pinColor="#2196F3">
               <Callout>
                 <View style={styles.calloutContainer}>
                   <Text style={styles.calloutTitle}>Destination</Text>
-                  <Text style={styles.calloutText}>{shipment.destination}</Text>
+                  <Text style={styles.calloutText}>{ticket.destination}</Text>
                 </View>
               </Callout>
             </Marker>

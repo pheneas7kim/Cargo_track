@@ -81,7 +81,7 @@ const AttachEvidence = ({ route, navigation }) => {
           Alert.alert('Success', 'All evidence uploaded successfully!', [
             {
               text: 'OK',
-              onPress: () => navigation.navigate('Tickets')
+              onPress: () => navigation.navigate('Dashboard')
             }
           ]);
         }

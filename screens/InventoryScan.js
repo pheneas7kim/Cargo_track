@@ -23,6 +23,7 @@ import serverURL from '../config';
 
 const { width } = Dimensions.get('window');
 const SCAN_SIZE = width * 0.7;
+const STORAGE_KEY = '@inventory_devices';
 
 const InventoryScan = ({ navigation }) => {
   const [devices, setDevices] = useState([]);
@@ -36,40 +37,95 @@ const InventoryScan = ({ navigation }) => {
   const [errorDetails, setErrorDetails] = useState(null);
   const [authToken, setAuthToken] = useState(null);
 
-  // 🔐 Load auth token once on mount
+  // Save devices to AsyncStorage
+  const saveDevicesToStorage = async (devicesList) => {
+    try {
+      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(devicesList));
+      console.log('💾 Saved devices to storage:', devicesList.length);
+    } catch (error) {
+      console.error('❌ Failed to save devices:', error);
+    }
+  };
+
+  // Load devices from AsyncStorage
+  const loadDevicesFromStorage = async () => {
+    try {
+      const stored = await AsyncStorage.getItem(STORAGE_KEY);
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        console.log('📦 Loaded devices from storage:', parsed.length);
+        return parsed;
+      }
+    } catch (error) {
+      console.error('❌ Failed to load devices:', error);
+    }
+    return [];
+  };
+
+  // 🔐 Load auth token once on mount AND load stored devices
   useEffect(() => {
-    const loadAuth = async () => {
+    const loadAuthAndDevices = async () => {
       try {
         const token = await AsyncStorage.getItem('accessToken');
         console.log('🔐 Token loaded:', token ? '✓ Exists' : '✗ Missing');
         setAuthToken(token);
+
+        // Load persisted devices FIRST
+        const storedDevices = await loadDevicesFromStorage();
+        if (storedDevices.length > 0) {
+          console.log(`📦 Loaded ${storedDevices.length} devices from storage`);
+          setDevices(storedDevices);
+        }
+
+        // Then try to fetch from API (with valid token)
+        if (token) {
+          await fetchDevices(token);
+        } else {
+          setLoading(false);
+        }
       } catch (e) {
         console.error('❌ Failed to load token:', e);
+        setLoading(false);
       }
     };
-    loadAuth();
-    fetchDevices();
+    loadAuthAndDevices();
   }, []);
 
-  // Fetch devices from API
-  const fetchDevices = async () => {
+  // Fetch devices from API - accepts token param
+  const fetchDevices = async (token) => {
     try {
-      const headers = { 'Content-Type': 'application/json' };
-      if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
+      const headers = {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      };
 
       const response = await fetch(`${serverURL}devices`, { headers });
 
       if (response.status === 401) {
-        console.warn('⚠️ API 401 - token may be expired');
+        console.warn('⚠️ API 401 - token may be expired, using stored devices only');
+        setLoading(false);
+        setRefreshing(false);
         return;
       }
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
       const data = await response.json();
-      setDevices(data.content || []);
+      const apiDevices = data.content || [];
+
+      // Merge with stored devices (avoid duplicates by serialNo)
+      setDevices(prevDevices => {
+        const merged = [...prevDevices];
+        apiDevices.forEach(apiDevice => {
+          if (!merged.some(d => d.serialNo === apiDevice.serialNo)) {
+            merged.push(apiDevice);
+          }
+        });
+        // Save merged list to storage
+        saveDevicesToStorage(merged);
+        return merged;
+      });
     } catch (error) {
       console.error('❌ Fetch error:', error.message);
-      // Continue with empty list - local scanning still works
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -78,18 +134,46 @@ const InventoryScan = ({ navigation }) => {
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
-    fetchDevices();
-  }, []);
+    if (authToken) {
+      fetchDevices(authToken);
+    } else {
+      setRefreshing(false);
+    }
+  }, [authToken]);
 
-  // 🔍 Extract clean serial number - strips prefixes like "Device_"
+  // 🔍 Extract clean serial number - strips prefixes like "Device_" and handles URLs
   const extractSerialNumber = (rawValue) => {
     if (!rawValue) return null;
     let cleaned = rawValue.trim();
+
+    // Try to extract from URL if it's a web address
+    if (cleaned.startsWith('http://') || cleaned.startsWith('https://')) {
+      // Extract domain without TLD
+      const domainMatch = cleaned.match(/:\/\/(?:www\.)?([^\/]+)/);
+      if (domainMatch) {
+        const domain = domainMatch[1];
+        // Remove .com, .co.ke, .org, .net etc and get the meaningful part
+        const baseName = domain.replace(/\.(com|co\.ke|org|net|io)$/i, '');
+        cleaned = baseName;
+      }
+    }
+
     // Remove common prefixes (case-insensitive)
-    cleaned = cleaned.replace(/^(Device_|SN:|SERIAL:|ID:|QR:|CODE:)/i, '');
-    // Extract first alphanumeric sequence of 8-12 characters
-    const match = cleaned.match(/[A-Za-z0-9]{8,12}/);
-    return match ? match[0] : null;
+    cleaned = cleaned.replace(/^(Device_|SN:|SERIAL:|ID:|QR:|CODE:|jointcontrols\.com\/)/i, '');
+
+    // Look for alphanumeric sequence (at least 6 characters)
+    const match = cleaned.match(/[A-Z0-9]{6,}/i);
+
+    if (match) {
+      return match[0].toUpperCase();
+    }
+
+    // If no match, check if cleaned is purely digits (for barcodes)
+    if (/^\d+$/.test(cleaned) && cleaned.length >= 8) {
+      return cleaned;
+    }
+
+    return null;
   };
 
   // 📷 Handle scanned code (barcode OR QR code)
@@ -124,7 +208,7 @@ const InventoryScan = ({ navigation }) => {
   };
 
   // ✅ ALWAYS add to local list first
-  const addDeviceToLocalList = (serialNo) => {
+  const addDeviceToLocalList = async (serialNo) => {
     const isJointTech = serialNo.length === 10;
 
     const newDevice = {
@@ -160,16 +244,25 @@ const InventoryScan = ({ navigation }) => {
       conditionId: 1,
       conditionCode: 'G01',
       conditionName: 'Good',
+      scannedAt: new Date().toISOString(), // Add timestamp for tracking
     };
 
     setDevices((prev) => {
       // Avoid duplicates
       if (prev.some((d) => d.serialNo === serialNo)) {
         console.log('⚠️ Device already in list:', serialNo);
+        Snackbar.show({
+          text: `⚠️ ${serialNo} already in inventory`,
+          duration: 1500,
+          backgroundColor: '#FF9800',
+        });
         return prev;
       }
       console.log('✅ Added to local list:', serialNo);
-      return [newDevice, ...prev];
+      const updatedList = [newDevice, ...prev];
+      // Save to storage immediately
+      saveDevicesToStorage(updatedList);
+      return updatedList;
     });
 
     Snackbar.show({
@@ -228,7 +321,9 @@ const InventoryScan = ({ navigation }) => {
       if (response.ok) {
         console.log('✅ API sync successful');
         setResultMessage('Synced to server');
-        fetchDevices(); // Refresh list with real server data
+        if (authToken) {
+          await fetchDevices(authToken); // Refresh list with real server data
+        }
       } else if (response.status === 401) {
         console.warn('⚠️ API 401 - token expired');
         setResultMessage('Saved locally (login to sync)');
@@ -460,7 +555,7 @@ const InventoryScan = ({ navigation }) => {
   );
 };
 
-//  Styles
+// Styles
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F8F9FA' },
   header: {

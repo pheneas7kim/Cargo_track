@@ -17,6 +17,7 @@ import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
 import Icon from 'react-native-vector-icons/MaterialIcons';
+import Ionicons from 'react-native-vector-icons/Ionicons';
 import Snackbar from 'react-native-snackbar';
 import serverUrl from '../config';
 
@@ -37,7 +38,7 @@ const RequestEsealsList = () => {
         headers: { Authorization: `Bearer ${token}` },
       });
 
-      console.log('API Response:', response.data); // Debug log
+      console.log('API Response:', response.data);
 
       if (response.data && Array.isArray(response.data)) {
         setRequests(response.data);
@@ -148,10 +149,8 @@ const RequestEsealsList = () => {
           </View>
         </View>
 
-        {/* Request ID */}
         <Text style={styles.requestId}>Request #{item.id}</Text>
 
-        {/* Quantity with icon */}
         <View style={styles.quantityContainer}>
           <Icon name="inventory" size={20} color="#FFA500" />
           <Text style={styles.quantity}>
@@ -159,7 +158,6 @@ const RequestEsealsList = () => {
           </Text>
         </View>
 
-        {/* Reason */}
         <View style={styles.reasonContainer}>
           <Icon name="description" size={16} color="#666" />
           <Text style={styles.reasonLabel}>Reason:</Text>
@@ -168,7 +166,6 @@ const RequestEsealsList = () => {
           {item.reason || 'No reason provided'}
         </Text>
 
-        {/* Additional Info */}
         <View style={styles.infoGrid}>
           <View style={styles.infoItem}>
             <Icon name="person" size={14} color="#888" />
@@ -193,7 +190,6 @@ const RequestEsealsList = () => {
           )}
         </View>
 
-        {/* Rejection reason if any */}
         {item.status === 'REJECTED' && item.rejectionReason && (
           <View style={styles.rejectionRow}>
             <Icon name="error-outline" size={16} color="#F44336" />
@@ -202,10 +198,8 @@ const RequestEsealsList = () => {
           </View>
         )}
 
-        {/* Separator line before footer */}
         <View style={styles.footerSeparator} />
 
-        {/* Footer with tap hint */}
         <View style={styles.cardFooter}>
           <Icon name="touch-app" size={14} color="#BBB" />
           <Text style={styles.tapHint}>Tap for details</Text>
@@ -226,18 +220,26 @@ const RequestEsealsList = () => {
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#F8F9FA" />
 
-      <View style={styles.header}>
-        <View>
+      {/* Custom Header with Back Button */}
+      <View style={styles.customHeader}>
+        <TouchableOpacity
+          onPress={() => navigation.goBack()}
+          style={styles.backButton}
+          activeOpacity={0.7}
+        >
+          <Ionicons name="arrow-back" size={24} color="#1A1A1A" />
+        </TouchableOpacity>
+        <View style={styles.headerContent}>
           <Text style={styles.headerTitle}>My E-Seal Requests</Text>
-          <Text style={styles.headerSubtitle}>
-            Total: {requests.length} request{requests.length !== 1 ? 's' : ''}
-          </Text>
-        </View>
-        <View style={styles.statsContainer}>
-          <View style={styles.statBadge}>
-            <Text style={styles.statText}>
-              Pending: {requests.filter(r => r.status === 'PENDING').length}
+          <View style={styles.headerStats}>
+            <Text style={styles.headerSubtitle}>
+              Total: {requests.length} request{requests.length !== 1 ? 's' : ''}
             </Text>
+            <View style={styles.pendingBadge}>
+              <Text style={styles.pendingText}>
+                Pending: {requests.filter(r => r.status === 'PENDING').length}
+              </Text>
+            </View>
           </View>
         </View>
       </View>
@@ -366,37 +368,45 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: '#F8F9FA',
   },
-  header: {
+  customHeader: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 20,
+    paddingHorizontal: 16,
     paddingTop: Platform.OS === 'ios' ? 60 : 40,
     paddingBottom: 16,
     backgroundColor: '#FFFFFF',
     borderBottomWidth: 1,
     borderBottomColor: '#F0F0F0',
   },
+  backButton: {
+    padding: 8,
+    marginRight: 12,
+  },
+  headerContent: {
+    flex: 1,
+  },
   headerTitle: {
-    fontSize: 24,
+    fontSize: 20,
     fontWeight: '700',
     color: '#1A1A1A',
   },
-  headerSubtitle: {
-    fontSize: 12,
-    color: '#888',
-    marginTop: 4,
-  },
-  statsContainer: {
+  headerStats: {
     flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 4,
+    gap: 12,
   },
-  statBadge: {
+  headerSubtitle: {
+    fontSize: 13,
+    color: '#666',
+  },
+  pendingBadge: {
     backgroundColor: '#FFF3E0',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 12,
   },
-  statText: {
+  pendingText: {
     fontSize: 12,
     fontWeight: '600',
     color: '#FF9800',

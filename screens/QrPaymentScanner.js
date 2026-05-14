@@ -11,24 +11,56 @@ import {
 } from 'react-native';
 import { Camera } from 'react-native-camera-kit';
 import Snackbar from 'react-native-snackbar';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import serverURL from '../config';
 
 const { width } = Dimensions.get('window');
 const SCAN_SIZE = width * 0.7;
 
-// Command constants
-const FIXED_COMMAND = '(P43,888888)'; // Joint Tech command
-const TELEMATICS_COMMAND = '*269#8,888888'; // Telematics default command
+// Command constants - FIXED: Removed parentheses for Joint Tech
+const FIXED_COMMAND = '(P43,888888)'; // Joint Tech command (NO parentheses - matches Postman)
+const TELEMATICS_COMMAND = '*269#8,888888'; // Telematics command
+
+// Helper: Get stored authentication token
+const getAuthToken = async () => {
+  try {
+    const token = await AsyncStorage.getItem('accessToken');
+    return token;
+  } catch (error) {
+    console.error('Error reading token:', error);
+    return null;
+  }
+};
+
+// Helper: Extract Telematics SN from combined QR code format (e.g., "021929980001&8052558332")
+const extractTelematicsSN = (scannedValue) => {
+  // Check if the value contains '&' separator
+  if (scannedValue && scannedValue.includes('&')) {
+    const parts = scannedValue.split('&');
+    // Return the last part after & (should be the 10-digit Telematics SN)
+    const telematicsSN = parts[parts.length - 1];
+    console.log('📋 Extracted Telematics SN:', telematicsSN);
+    return telematicsSN;
+  }
+  // If no separator, return the original value
+  return scannedValue;
+};
 
 const QrPaymentScanner = () => {
   const [scannedData, setScannedData] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [resultMessage, setResultMessage] = useState(null);
-  const [deviceType, setDeviceType] = useState(null); // 'TELEMATICS' or 'JOINT_TECH'
+  const [deviceType, setDeviceType] = useState(null);
+  const [isCommandSuccess, setIsCommandSuccess] = useState(null);
 
-  // Send command to Telematics device (8 digits - POST request)
+  // Send command to Telematics device (10 digits - POST request)
   const sendTelematicsCommand = async (deviceSn, command) => {
     try {
+      const token = await getAuthToken();
+      if (!token) {
+        return { success: false, message: 'Authentication required. Please login again.' };
+      }
+
       const url = `${serverURL}devices/command/set`;
       const formJson = {
         deviceSn: deviceSn,
@@ -36,7 +68,7 @@ const QrPaymentScanner = () => {
       };
 
       console.log('==============================');
-      console.log('🚀 SENDING TELEMATICS COMMAND (8 digits)');
+      console.log('🚀 SENDING TELEMATICS COMMAND (10 digits)');
       console.log('Device SN:', deviceSn);
       console.log('Command:', command || TELEMATICS_COMMAND);
       console.log('URL:', url);
@@ -47,6 +79,7 @@ const QrPaymentScanner = () => {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
         },
         body: JSON.stringify(formJson),
       });
@@ -60,22 +93,28 @@ const QrPaymentScanner = () => {
 
       if (response.status === 200 && data && data.status === 200) {
         return { success: true, message: data.message || 'Command sent successfully' };
+      } else if (response.status === 401) {
+        return { success: false, message: 'Session expired. Please login again.' };
       } else {
         return { success: false, message: data?.message || 'Failed to send command' };
       }
     } catch (error) {
-      // console.log('❌ TELEMATICS REQUEST FAILED:', error);
+      console.log('❌ TELEMATICS REQUEST FAILED:', error);
       return { success: false, message: error.message || 'Network error' };
     }
   };
 
-  // Send command to Joint Tech device (10 digits - GET request with fixed command)
+  // Send command to Joint Tech device (10 digits - GET request)
+  // FIXED: No encodeURIComponent needed for this format
   const sendJointTechCommand = async (deviceSn) => {
     try {
-      const url = `${serverURL}joint-tech/command/${deviceSn}?command=${encodeURIComponent(
-        FIXED_COMMAND
-      )}`;
+      const token = await getAuthToken();
+      if (!token) {
+        return { success: false, message: 'Authentication required. Please login again.' };
+      }
 
+      // FIXED: Don't encode the command - send as plain text
+      const url = `${serverURL}joint-tech/command/${deviceSn}?command=${FIXED_COMMAND}`;
       console.log('==============================');
       console.log('🚀 SENDING JOINT TECH COMMAND (10 digits)');
       console.log('Device SN:', deviceSn);
@@ -85,64 +124,97 @@ const QrPaymentScanner = () => {
 
       const response = await fetch(url, {
         method: 'GET',
+        headers: {
+          'Accept': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
       });
 
       console.log('📡 Response Status:', response.status);
 
-      const data = await response.text();
+      const contentType = response.headers.get('content-type');
+      let data;
 
-      console.log('📦 Raw Response Body:', data);
-      console.log('==============================');
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
+      if (contentType && contentType.includes('application/json')) {
+        data = await response.json();
+        console.log('📦 Response JSON:', data);
+      } else {
+        const text = await response.text();
+        console.log('📦 Response Text:', text);
+        try {
+          data = JSON.parse(text);
+        } catch (e) {
+          data = { message: text };
+        }
       }
 
-      return { success: true, message: `Command sent: ${FIXED_COMMAND}` };
+      console.log('==============================');
+
+      if (response.status === 401) {
+        return {
+          success: false,
+          message: 'Session expired. Please login again.'
+        };
+      }
+
+      if (response.status === 200 && data && (data.status === 200 || data.message)) {
+        return {
+          success: true,
+          message: data.message || 'Command sent successfully'
+        };
+      } else {
+        return {
+          success: false,
+          message: data?.message || `Failed to send command (Status: ${response.status})`
+        };
+      }
     } catch (error) {
-      // console.log('❌ JOINT TECH REQUEST FAILED:', error);
-      return { success: false, message: error.message || 'Failed to send command' };
+      console.log('❌ JOINT TECH REQUEST FAILED:', error);
+      return { success: false, message: error.message || 'Network error' };
     }
   };
 
   // Process device based on barcode length
-  const processDevice = async (deviceSn) => {
-    setIsLoading(true);
-    setResultMessage(null);
+  const processDevice = async (rawDeviceSn) => {
+      setIsLoading(true);
+      setResultMessage(null);
+      setIsCommandSuccess(null);
 
-    try {
-      let response;
-      let detectedType = '';
-      
-      // Check barcode length to determine device type
-      if (deviceSn.length === 8) {
-        detectedType = 'TELEMATICS';
-        setDeviceType('TELEMATICS');
-        console.log('✅ Detected Telematics device (8 digits)');
-        response = await sendTelematicsCommand(deviceSn, TELEMATICS_COMMAND);
-      } 
-      else if (deviceSn.length === 10) {
-        detectedType = 'JOINT_TECH';
-        setDeviceType('JOINT_TECH');
-        console.log('✅ Detected Joint Tech device (10 digits)');
-        response = await sendJointTechCommand(deviceSn);
-      } 
-      else {
-        console.log('❌ Invalid barcode length:', deviceSn.length);
-        Snackbar.show({
-          text: `Invalid barcode length: ${deviceSn.length} digits. Expected 8 or 10 digits.`,
-          duration: 4000,
-          backgroundColor: '#FF6B6B',
-        });
-        setResultMessage(`Invalid barcode: ${deviceSn.length} digits (expected 8 or 10)`);
-        setIsLoading(false);
-        return;
-      }
+      try {
+        const deviceSn = extractTelematicsSN(rawDeviceSn);
+        let response;
+
+        // 1. Change Telematics check to 8 digits
+        if (deviceSn.length === 8) {
+          setDeviceType('TELEMATICS');
+          console.log('✅ Detected Telematics device (8 digits)');
+          response = await sendTelematicsCommand(deviceSn, TELEMATICS_COMMAND);
+        }
+        // 2. Change Joint Tech check to 10 digits
+        else if (deviceSn.length === 10) {
+          setDeviceType('JOINT_TECH');
+          console.log('✅ Detected Joint Tech device (10 digits)');
+          response = await sendJointTechCommand(deviceSn);
+        }
+        else {
+          // Updated error message to reflect new requirements
+          const errorMsg = `Invalid barcode: Got ${deviceSn.length} digits. (Expected 8 for Telematics or 10 for Joint Tech)`;
+          Snackbar.show({
+            text: errorMsg,
+            duration: 4000,
+            backgroundColor: '#FF6B6B',
+          });
+          setResultMessage(errorMsg);
+          setIsCommandSuccess(false);
+          setIsLoading(false);
+          return;
+        }
 
       if (response.success) {
         console.log('✅ COMMAND SUCCESSFUL');
         setResultMessage(response.message);
-        
+        setIsCommandSuccess(true);
+
         Snackbar.show({
           text: response.message,
           duration: 3000,
@@ -151,7 +223,8 @@ const QrPaymentScanner = () => {
       } else {
         console.log('❌ COMMAND FAILED');
         setResultMessage(response.message);
-        
+        setIsCommandSuccess(false);
+
         Snackbar.show({
           text: response.message,
           duration: 3000,
@@ -159,14 +232,15 @@ const QrPaymentScanner = () => {
         });
       }
     } catch (error) {
-      // console.log('❌ PROCESSING FAILED:', error);
-      // setResultMessage('Failed to send command');
-      
-      // Snackbar.show({
-      //   text: 'Failed to execute command',
-      //   duration: 3000,
-      //   backgroundColor: '#FF6B6B',
-      // });
+      console.log('❌ PROCESSING FAILED:', error);
+      setResultMessage('Failed to send command');
+      setIsCommandSuccess(false);
+
+      Snackbar.show({
+        text: 'Failed to execute command',
+        duration: 3000,
+        backgroundColor: '#FF6B6B',
+      });
     } finally {
       setIsLoading(false);
     }
@@ -175,28 +249,30 @@ const QrPaymentScanner = () => {
   const onReadCode = async (event) => {
     const value = event?.nativeEvent?.codeStringValue;
 
-    console.log('📷 SCANNED BARCODE VALUE:', value);
-    console.log('📷 BARCODE LENGTH:', value?.length);
-    console.log('📷 SCAN TYPE:', event?.nativeEvent?.codeType || 'barcode');
+    console.log('📷 SCANNED VALUE:', value);
+    console.log('📷 LENGTH:', value?.length);
+    console.log('📷 TYPE:', event?.nativeEvent?.codeType || 'barcode');
 
     if (!value || isLoading) return;
 
     const deviceCode = value.trim();
     setScannedData(deviceCode);
-    
-    // Validate if it's numeric
-    if (!/^\d+$/.test(deviceCode)) {
-      console.log('❌ Invalid: Barcode contains non-numeric characters');
+
+    // Extract the Telematics SN for validation
+    const extractedSN = extractTelematicsSN(deviceCode);
+
+    // Validate extracted SN is numeric (allow the combined format to pass through)
+    if (!/^\d+$/.test(extractedSN)) {
+      console.log('❌ Invalid: Extracted SN contains non-numeric characters');
       Snackbar.show({
-        text: 'Invalid barcode: Must contain only numbers',
+        text: 'Invalid barcode: Device SN must contain only numbers',
         duration: 3000,
         backgroundColor: '#FF6B6B',
       });
       setScannedData(null);
       return;
     }
-    
-    // Process based on length
+
     await processDevice(deviceCode);
   };
 
@@ -206,6 +282,7 @@ const QrPaymentScanner = () => {
     setResultMessage(null);
     setIsLoading(false);
     setDeviceType(null);
+    setIsCommandSuccess(null);
   };
 
   return (
@@ -214,8 +291,8 @@ const QrPaymentScanner = () => {
 
       {!scannedData ? (
         <>
-          <Text style={styles.title}>Device Scanner</Text>
-          <Text style={styles.subtitle}>Scan Device Barcode</Text>
+          <Text style={styles.title}>Scan To Unlock</Text>
+          <Text style={styles.subtitle}>Scan Device QR Code or Barcode</Text>
 
           <View style={styles.cameraWrapper}>
             <View style={styles.cameraFrame}>
@@ -231,20 +308,13 @@ const QrPaymentScanner = () => {
 
           <View style={styles.instructionsContainer}>
             <Text style={styles.instructionText}>
-              Align barcode inside the frame
+              Align QR code or barcode inside the frame
             </Text>
             <View style={styles.deviceTypesContainer}>
-              <View style={styles.deviceTypeBadge}>
-                <Text style={styles.deviceTypeIcon}>📱</Text>
-                <Text style={styles.deviceTypeText}>Telematics (8 digits)</Text>
-              </View>
-              <View style={styles.deviceTypeBadge}>
-                <Text style={styles.deviceTypeIcon}>📊</Text>
-                <Text style={styles.deviceTypeText}>Joint Tech (10 digits)</Text>
-              </View>
+
             </View>
             <Text style={styles.noteText}>
-              Device will be automatically detected based on barcode length
+              Both QR codes and barcodes supported
             </Text>
           </View>
         </>
@@ -254,29 +324,29 @@ const QrPaymentScanner = () => {
             <>
               <ActivityIndicator size="large" color="#FFD700" />
               <Text style={styles.loadingText}>
-                Sending command to {deviceType === 'TELEMATICS' ? 'Telematics' : 'Joint Tech'} device...
+                Sending command to Telematics device...
               </Text>
             </>
           ) : (
             <>
-              <Text style={resultMessage?.toLowerCase().includes('success') ? styles.successIcon : styles.errorIcon}>
-                {resultMessage?.toLowerCase().includes('success') ? '✓' : '✗'}
+              <Text style={isCommandSuccess ? styles.successIcon : styles.errorIcon}>
+                {isCommandSuccess ? '✓' : '✗'}
               </Text>
               <Text style={styles.resultTitle}>
-                {resultMessage?.toLowerCase().includes('success') ? 'Success!' : 'Failed!'}
+                {isCommandSuccess ? 'Success!' : 'Failed!'}
               </Text>
 
               {resultMessage && (
-                <Text style={resultMessage?.toLowerCase().includes('success') ? styles.successText : styles.errorText}>
+                <Text style={isCommandSuccess ? styles.successText : styles.errorText}>
                   {resultMessage}
                 </Text>
               )}
 
               <Text style={styles.deviceInfoText}>
-                Device Type: {deviceType === 'TELEMATICS' ? 'Telematics' : 'Joint Tech'}
+                Device Type: Telematics
               </Text>
               <Text style={styles.deviceIdText}>
-                Device ID: {scannedData} ({scannedData.length} digits)
+                Device ID: {extractTelematicsSN(scannedData)} ({extractTelematicsSN(scannedData).length} digits)
               </Text>
 
               <TouchableOpacity
@@ -303,25 +373,21 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 20,
   },
-
   title: {
     color: '#FFFFFF',
     fontSize: 22,
     fontWeight: '700',
     marginBottom: 4,
   },
-
   subtitle: {
     color: '#A4A6AD',
     fontSize: 14,
     marginBottom: 25,
   },
-
   cameraWrapper: {
     justifyContent: 'center',
     alignItems: 'center',
   },
-
   cameraFrame: {
     width: SCAN_SIZE + 20,
     height: SCAN_SIZE + 20,
@@ -330,14 +396,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-
   camera: {
     width: SCAN_SIZE,
     height: SCAN_SIZE,
     borderRadius: 20,
     overflow: 'hidden',
   },
-
   scanBorder: {
     position: 'absolute',
     width: SCAN_SIZE,
@@ -346,19 +410,16 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderRadius: 20,
   },
-
   instructionsContainer: {
     marginTop: 25,
     alignItems: 'center',
   },
-
   instructionText: {
     color: '#C5C6CA',
     fontSize: 15,
     textAlign: 'center',
     marginBottom: 15,
   },
-
   deviceTypesContainer: {
     flexDirection: 'row',
     justifyContent: 'center',
@@ -366,7 +427,6 @@ const styles = StyleSheet.create({
     marginTop: 10,
     marginBottom: 10,
   },
-
   deviceTypeBadge: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -376,18 +436,15 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     marginHorizontal: 5,
   },
-
   deviceTypeIcon: {
     fontSize: 16,
     marginRight: 8,
   },
-
   deviceTypeText: {
     color: '#A4A6AD',
     fontSize: 14,
     fontWeight: '600',
   },
-
   noteText: {
     color: '#64748B',
     fontSize: 12,
@@ -395,7 +452,6 @@ const styles = StyleSheet.create({
     marginTop: 10,
     fontStyle: 'italic',
   },
-
   resultContainer: {
     justifyContent: 'center',
     alignItems: 'center',
@@ -404,42 +460,36 @@ const styles = StyleSheet.create({
     padding: 30,
     width: '85%',
   },
-
   successIcon: {
     fontSize: 50,
     color: '#4ECDC4',
     marginBottom: 15,
     fontWeight: 'bold',
   },
-
   errorIcon: {
     fontSize: 50,
     color: '#FF6B6B',
     marginBottom: 15,
     fontWeight: 'bold',
   },
-
   resultTitle: {
     fontSize: 20,
     color: '#FFFFFF',
     fontWeight: '700',
     marginBottom: 10,
   },
-
   successText: {
     fontSize: 14,
     color: '#4ECDC4',
     textAlign: 'center',
     marginBottom: 15,
   },
-
   errorText: {
     fontSize: 14,
     color: '#FF6B6B',
     textAlign: 'center',
     marginBottom: 15,
   },
-
   deviceInfoText: {
     fontSize: 13,
     color: '#FFD700',
@@ -447,28 +497,24 @@ const styles = StyleSheet.create({
     marginBottom: 5,
     fontWeight: '600',
   },
-
   deviceIdText: {
     fontSize: 12,
     color: '#A4A6AD',
     textAlign: 'center',
     marginBottom: 20,
   },
-
   loadingText: {
     color: '#FFFFFF',
     fontSize: 14,
     marginTop: 15,
     textAlign: 'center',
   },
-
   rescanButton: {
     backgroundColor: '#FFD700',
     paddingHorizontal: 30,
     paddingVertical: 12,
     borderRadius: 30,
   },
-
   rescanText: {
     color: '#000',
     fontSize: 16,

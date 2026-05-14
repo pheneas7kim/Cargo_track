@@ -36,12 +36,15 @@ const RandomStopScreen = () => {
   const [createModalVisible, setCreateModalVisible] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [incidentTypes, setIncidentTypes] = useState([]);
+  const [loadingIncidentTypes, setLoadingIncidentTypes] = useState(false);
+  const [showIncidentDropdown, setShowIncidentDropdown] = useState(false);
 
-  // Form State matching your POST body requirements
   const [newStop, setNewStop] = useState({
-    vehicleId: 1, // Defaulting as per your example
-    vehiclePlateNumber: '',
+    plateNumber: '',
     reason: '',
+    incidentTypeId: null,
+    incidentTypeName: '',
   });
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -52,7 +55,35 @@ const RandomStopScreen = () => {
       Animated.timing(fadeAnim, { toValue: 1, duration: 600, useNativeDriver: true }),
       Animated.timing(slideAnim, { toValue: 0, duration: 500, useNativeDriver: true }),
     ]).start();
+    fetchIncidentTypes();
   }, []);
+
+  const fetchIncidentTypes = async () => {
+    setLoadingIncidentTypes(true);
+    try {
+      const token = await AsyncStorage.getItem('accessToken');
+      const response = await axios.get(`${serverUrl}incident-types`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+
+      if (response.data && Array.isArray(response.data)) {
+        setIncidentTypes(response.data);
+      } else if (response.data && response.data.content) {
+        setIncidentTypes(response.data.content);
+      } else {
+        setIncidentTypes([]);
+      }
+    } catch (error) {
+      console.error('Error fetching incident types:', error);
+      Snackbar.show({
+        text: 'Failed to load incident types',
+        backgroundColor: '#FF6B6B',
+        duration: 3000,
+      });
+    } finally {
+      setLoadingIncidentTypes(false);
+    }
+  };
 
   useFocusEffect(
     useCallback(() => {
@@ -87,29 +118,61 @@ const RandomStopScreen = () => {
   };
 
   const handleCreateStop = async () => {
+    console.log('=== SUBMIT BUTTON PRESSED ===');
+    console.log('Form data before validation:', {
+      vehiclePlateNumber: newStop.vehiclePlateNumber,
+      reason: newStop.reason,
+      vehicleId: newStop.vehicleId,
+      incidentTypeId: newStop.incidentTypeId
+    });
+
     if (!newStop.vehiclePlateNumber || !newStop.reason) {
+      console.log('Validation failed: Missing required fields');
       Snackbar.show({ text: 'Plate Number and Reason are required', duration: 2000, backgroundColor: '#FF6B6B' });
       return;
     }
 
+    if (!newStop.incidentTypeId) {
+      console.log('Validation failed: Missing incident type');
+      Snackbar.show({ text: 'Please select an incident type', duration: 2000, backgroundColor: '#FF6B6B' });
+      return;
+    }
+
+    console.log('Validation passed. Starting submission...');
     setSubmitting(true);
+
     try {
       const token = await AsyncStorage.getItem('accessToken');
-      // POST body matches your tested Postman structure
-      await axios.post(`${serverUrl}random-stops`, {
+      console.log('Token retrieved:', token ? 'Token exists (length: ' + token.length + ')' : 'NO TOKEN FOUND');
+
+      const postData = {
         ...newStop,
         requestedAt: new Date().toISOString(),
-      }, {
+      };
+      console.log('POST URL:', `${serverUrl}random-stops`);
+      console.log('POST Data:', JSON.stringify(postData, null, 2));
+
+      // POST body matches your tested Postman structure
+      const response = await axios.post(`${serverUrl}random-stops`, postData, {
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
       });
 
+      console.log('SUCCESS - Response status:', response.status);
+      console.log('SUCCESS - Response data:', response.data);
+
       Snackbar.show({ text: 'Request submitted successfully', duration: 2000, backgroundColor: '#4CAF50' });
       setCreateModalVisible(false);
-      setNewStop({ vehicleId: 1, vehiclePlateNumber: '', reason: '' });
+      setNewStop({ vehicleId: 1, vehiclePlateNumber: '', reason: '', incidentTypeId: null, incidentTypeName: '' });
       fetchStops();
     } catch (error) {
+      console.log('ERROR - Submission failed');
+      console.log('Error status:', error.response?.status);
+      console.log('Error message:', error.message);
+      console.log('Error response data:', error.response?.data);
+
       Snackbar.show({ text: 'Submission failed', duration: 3000, backgroundColor: '#FF6B6B' });
     } finally {
+      console.log('Submission completed. Submitting state:', false);
       setSubmitting(false);
     }
   };
@@ -198,9 +261,27 @@ const RandomStopScreen = () => {
               <TextInput
                 style={styles.input}
                 value={newStop.vehiclePlateNumber}
-                onChangeText={(text) => setNewStop({...newStop, vehiclePlateNumber: text.toUpperCase()})}
-                placeholder="e.g. KCT102P"
+                onChangeText={(text) =>
+                  setNewStop({
+                    ...newStop,
+                    vehiclePlateNumber: text.toUpperCase(),
+                  })
+                }
+                placeholder="e.g. 123 456 A"
+                placeholderTextColor="#000"
+                autoCapitalize="characters"
               />
+
+              <Text style={styles.label}>Incident Type *</Text>
+              <TouchableOpacity
+                style={styles.dropdownButton}
+                onPress={() => setShowIncidentDropdown(true)}
+              >
+                <Text style={newStop.incidentTypeName ? styles.dropdownText : styles.dropdownPlaceholder}>
+                  {newStop.incidentTypeName || 'Select incident type'}
+                </Text>
+                <Icon name="arrow-drop-down" size={24} color="#666" />
+              </TouchableOpacity>
 
               <Text style={styles.label}>Reason</Text>
               <TextInput
@@ -209,6 +290,7 @@ const RandomStopScreen = () => {
                 value={newStop.reason}
                 onChangeText={(text) => setNewStop({...newStop, reason: text})}
                 placeholder="Enter reason for stop..."
+                placeholderTextColor="#000"
               />
 
               <TouchableOpacity
@@ -221,6 +303,59 @@ const RandomStopScreen = () => {
             </ScrollView>
           </View>
         </View>
+      </Modal>
+
+      {/* Incident Type Dropdown Modal */}
+      <Modal
+        visible={showIncidentDropdown}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowIncidentDropdown(false)}
+      >
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setShowIncidentDropdown(false)}
+        >
+          <View style={styles.dropdownModalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Select Incident Type</Text>
+              <TouchableOpacity onPress={() => setShowIncidentDropdown(false)}>
+                <Icon name="close" size={24} color="#666" />
+              </TouchableOpacity>
+            </View>
+
+            {loadingIncidentTypes ? (
+              <ActivityIndicator size="large" color="#FFA500" />
+            ) : incidentTypes.length === 0 ? (
+              <View style={styles.emptyDropdownContainer}>
+                <Text style={styles.emptyDropdownText}>No incident types found</Text>
+              </View>
+            ) : (
+              <ScrollView>
+                {incidentTypes.map((type) => (
+                  <TouchableOpacity
+                    key={type.id}
+                    style={styles.dropdownOption}
+                    onPress={() => {
+                      setNewStop({
+                        ...newStop,
+                        incidentTypeId: type.id,
+                        incidentTypeName: type.name || type.incidentTypeName
+                      });
+                      setShowIncidentDropdown(false);
+                    }}
+                  >
+                    <Text style={styles.dropdownOptionText}>{type.name || type.incidentTypeName}</Text>
+                    {newStop.incidentTypeId === type.id && (
+                      <Icon name="check" size={20} color="#FFA500" />
+                    )}
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            )}
+          </View>
+        </TouchableOpacity>
       </Modal>
 
       {/* Detail Modal */}
@@ -291,11 +426,50 @@ const styles = StyleSheet.create({
   footerInfo: { fontSize: 11, color: '#888' },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
   modalContent: { backgroundColor: '#FFF', borderTopLeftRadius: 25, borderTopRightRadius: 25, padding: 20, minHeight: '50%' },
+  dropdownModalContent: { backgroundColor: '#FFF', borderRadius: 25, padding: 20, width: '90%', maxHeight: '70%', alignSelf: 'center' },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 20 },
   modalTitle: { fontSize: 18, fontWeight: 'bold', color: '#1A1A1A' },
   closeIcon: { fontSize: 22, color: '#999' },
   label: { fontWeight: '600', marginBottom: 8, marginTop: 15, color: '#444' },
   input: { backgroundColor: '#F5F5F5', borderRadius: 10, padding: 12, color: '#000' },
+  dropdownButton: {
+    backgroundColor: '#F5F5F5',
+    borderRadius: 10,
+    padding: 12,
+    marginTop: 8,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  dropdownText: {
+    color: '#000',
+    fontSize: 16,
+  },
+  dropdownPlaceholder: {
+    color: '#999',
+    fontSize: 16,
+  },
+  dropdownOption: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F5F5F5',
+  },
+  dropdownOptionText: {
+    fontSize: 16,
+    color: '#333',
+  },
+  emptyDropdownContainer: {
+    padding: 20,
+    alignItems: 'center',
+  },
+  emptyDropdownText: {
+    fontSize: 14,
+    color: '#999',
+  },
   submitButton: { backgroundColor: '#FFA500', marginTop: 30, padding: 16, borderRadius: 12, alignItems: 'center' },
   submitButtonText: { color: '#FFF', fontWeight: 'bold', fontSize: 16 },
   detailRow: { marginBottom: 15, borderBottomWidth: 1, borderBottomColor: '#F0F0F0', paddingBottom: 8 },

@@ -45,6 +45,7 @@ const TrackOnMap = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [lastUpdate, setLastUpdate] = useState(null);
+  const [hasCoordinates, setHasCoordinates] = useState(false);
 
   const mapRef = useRef(null);
   let refreshInterval = useRef(null);
@@ -56,35 +57,41 @@ const TrackOnMap = () => {
       return;
     }
 
-    // 1. Calculate values locally first
+    // Set coordinates directly from Ticket
     let initialOrigin = null;
     let initialDest = null;
+    let initialLocation = null;
 
     if (Ticket) {
+      // Set current location from Ticket data
       if (Ticket.latitude && Ticket.longitude) {
-        setCurrentLocation({
+        initialLocation = {
           latitude: Ticket.latitude,
           longitude: Ticket.longitude,
-        });
+        };
+        setCurrentLocation(initialLocation);
+        setHasCoordinates(true);
       }
 
+      // Set origin coordinates
       if (Ticket.originCoord) {
         initialOrigin = Ticket.originCoord;
       } else if (Ticket.originLat && Ticket.originLng) {
         initialOrigin = { latitude: Ticket.originLat, longitude: Ticket.originLng };
       }
+      setOriginCoord(initialOrigin);
+      if (initialOrigin) setHasCoordinates(true);
 
+      // Set destination coordinates
       if (Ticket.destCoord) {
         initialDest = Ticket.destCoord;
       } else if (Ticket.destLat && Ticket.destLng) {
         initialDest = { latitude: Ticket.destLat, longitude: Ticket.destLng };
       }
-
-      // 2. Update states
-      setOriginCoord(initialOrigin);
       setDestCoord(initialDest);
+      if (initialDest) setHasCoordinates(true);
 
-      // 3. Set route points immediately using the local variables
+      // Set route points immediately
       if (initialOrigin && initialDest) {
         setRoutePoints([initialOrigin, initialDest]);
       }
@@ -93,6 +100,7 @@ const TrackOnMap = () => {
     setLoading(false);
     setLastUpdate(new Date());
 
+    // Start auto-refresh if enabled
     if (autoRefresh) {
       startAutoRefresh();
     }
@@ -102,22 +110,24 @@ const TrackOnMap = () => {
     };
   }, []);
 
-  // 4. Add this to auto-zoom once the map is ready
+  // Auto-zoom to fit all coordinates once map is ready
   useEffect(() => {
-    if (mapReady && mapRef.current) {
+    if (mapReady && mapRef.current && hasCoordinates) {
       const coords = [];
       if (originCoord) coords.push(originCoord);
       if (destCoord) coords.push(destCoord);
       if (currentLocation) coords.push(currentLocation);
 
       if (coords.length > 0) {
-        mapRef.current.fitToCoordinates(coords, {
-          edgePadding: { top: 50, right: 50, bottom: 50, left: 50 },
-          animated: true,
-        });
+        setTimeout(() => {
+          mapRef.current.fitToCoordinates(coords, {
+            edgePadding: { top: 50, right: 50, bottom: 50, left: 50 },
+            animated: true,
+          });
+        }, 500);
       }
     }
-  }, [mapReady, originCoord, destCoord, currentLocation]);
+  }, [mapReady, originCoord, destCoord, currentLocation, hasCoordinates]);
 
   const startAutoRefresh = () => {
     if (refreshInterval.current) clearInterval(refreshInterval.current);
@@ -134,46 +144,47 @@ const TrackOnMap = () => {
   };
 
   const refreshLocation = async () => {
-      if (!trackingNumber) return;
-      setRefreshing(true);
-      try {
-        const token = await getAuthToken();
-        if (!token) throw new Error('No token');
+    if (!trackingNumber) return;
+    setRefreshing(true);
+    try {
+      const token = await getAuthToken();
+      if (!token) throw new Error('No token');
 
-        const response = await fetch(`${API_BASE}/api/v1/telemetry/by-t1/${trackingNumber}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
+      const response = await fetch(`${API_BASE}/api/v1/telemetry/by-t1/${trackingNumber}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
 
-        if (!response.ok) throw new Error('Failed to fetch telemetry');
-        const device = await response.json();
+      if (!response.ok) throw new Error('Failed to fetch telemetry');
+      const device = await response.json();
 
-        if (device && device.latitude && device.longitude) {
-          const newLoc = {
-            latitude: device.latitude,
-            longitude: device.longitude,
-          };
+      if (device && device.latitude && device.longitude) {
+        const newLoc = {
+          latitude: device.latitude,
+          longitude: device.longitude,
+        };
 
-          setCurrentLocation(newLoc);
-          setLastUpdate(new Date());
+        setCurrentLocation(newLoc);
+        setLastUpdate(new Date());
+        setHasCoordinates(true);
 
-          if (mapRef.current) {
-            mapRef.current.animateToRegion(
-              {
-                latitude: newLoc.latitude,
-                longitude: newLoc.longitude,
-                latitudeDelta: 0.01,
-                longitudeDelta: 0.01,
-              },
-              500
-            );
-          }
+        if (mapRef.current) {
+          mapRef.current.animateToRegion(
+            {
+              latitude: newLoc.latitude,
+              longitude: newLoc.longitude,
+              latitudeDelta: 0.01,
+              longitudeDelta: 0.01,
+            },
+            500
+          );
         }
-      } catch (error) {
-        console.error('Refresh error:', error);
-      } finally {
-        setRefreshing(false);
       }
-    };
+    } catch (error) {
+      console.error('Refresh error:', error);
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   const getMapTypeValue = () => {
     switch (mapType) {
@@ -214,6 +225,62 @@ const TrackOnMap = () => {
       }
       return newVal;
     });
+  };
+
+  // Calculate initial region based on available Ticket data
+  const getInitialRegion = () => {
+    // Priority 1: Current location from Ticket
+    if (Ticket?.latitude && Ticket?.longitude) {
+      return {
+        latitude: Ticket.latitude,
+        longitude: Ticket.longitude,
+        latitudeDelta: 0.02,
+        longitudeDelta: 0.02,
+      };
+    }
+    // Priority 2: Origin coordinates
+    if (Ticket?.originLat && Ticket?.originLng) {
+      return {
+        latitude: Ticket.originLat,
+        longitude: Ticket.originLng,
+        latitudeDelta: 0.05,
+        longitudeDelta: 0.05,
+      };
+    }
+    // Priority 3: Destination coordinates
+    if (Ticket?.destLat && Ticket?.destLng) {
+      return {
+        latitude: Ticket.destLat,
+        longitude: Ticket.destLng,
+        latitudeDelta: 0.05,
+        longitudeDelta: 0.05,
+      };
+    }
+    // Priority 4: Origin Coord object
+    if (Ticket?.originCoord) {
+      return {
+        latitude: Ticket.originCoord.latitude,
+        longitude: Ticket.originCoord.longitude,
+        latitudeDelta: 0.05,
+        longitudeDelta: 0.05,
+      };
+    }
+    // Priority 5: Destination Coord object
+    if (Ticket?.destCoord) {
+      return {
+        latitude: Ticket.destCoord.latitude,
+        longitude: Ticket.destCoord.longitude,
+        latitudeDelta: 0.05,
+        longitudeDelta: 0.05,
+      };
+    }
+    // Fallback to Kenya (should not happen if data is valid)
+    return {
+      latitude: -1.286389,
+      longitude: 36.817223,
+      latitudeDelta: 0.05,
+      longitudeDelta: 0.05,
+    };
   };
 
   const renderHeader = () => (
@@ -339,6 +406,7 @@ const TrackOnMap = () => {
     </View>
   );
 
+  // Show loading while checking for coordinates
   if (loading) {
     return (
       <SafeAreaView style={styles.container}>
@@ -351,19 +419,25 @@ const TrackOnMap = () => {
     );
   }
 
-  const initialRegion = currentLocation
-    ? {
-        latitude: currentLocation.latitude,
-        longitude: currentLocation.longitude,
-        latitudeDelta: 0.02,
-        longitudeDelta: 0.02,
-      }
-    : {
-        latitude: -1.286389,
-        longitude: 36.817223,
-        latitudeDelta: 0.05,
-        longitudeDelta: 0.05,
-      };
+  // If no coordinates available after loading, show error
+  if (!hasCoordinates && !loading) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <StatusBar barStyle="dark-content" backgroundColor="#F8F9FA" />
+        <View style={styles.loadingContainer}>
+          <Icon name="location-off" size={64} color="#FF6B6B" />
+          <Text style={styles.errorText}>No location data available</Text>
+          <Text style={styles.errorSubtext}>Unable to display map coordinates</Text>
+          <TouchableOpacity
+            style={styles.goBackButton}
+            onPress={() => navigation.goBack()}
+          >
+            <Text style={styles.goBackButtonText}>Go Back</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container}>
@@ -383,7 +457,7 @@ const TrackOnMap = () => {
           showsScale={true}
           zoomControlEnabled={true}
           onMapReady={() => setMapReady(true)}
-          initialRegion={initialRegion}
+          initialRegion={getInitialRegion()}
         >
           {routePoints.length > 0 && (
             <Polyline
@@ -398,7 +472,6 @@ const TrackOnMap = () => {
             <Marker
               coordinate={currentLocation}
               title="Current Location"
-              // Use ?. to safely access properties
               description={Ticket?.location || 'Device current position'}
               anchor={{ x: 0.5, y: 0.5 }}
             >
@@ -409,7 +482,6 @@ const TrackOnMap = () => {
               </View>
               <Callout>
                 <View style={styles.calloutContainer}>
-                  {/* Use ?. here as well for safety */}
                   <Text style={styles.calloutTitle}>{Ticket?.trackingNumber || trackingNumber}</Text>
                   <Text style={styles.calloutText}>Status: {Ticket?.status || 'Active'}</Text>
                   {Ticket?.speedKmh && <Text style={styles.calloutText}>Speed: {Ticket.speedKmh} km/h</Text>}
@@ -419,22 +491,22 @@ const TrackOnMap = () => {
           )}
 
           {originCoord && (
-            <Marker coordinate={originCoord} title="Origin" description={Ticket.origin} pinColor="#4CAF50">
+            <Marker coordinate={originCoord} title="Origin" description={Ticket?.origin} pinColor="#4CAF50">
               <Callout>
                 <View style={styles.calloutContainer}>
                   <Text style={styles.calloutTitle}>Origin</Text>
-                  <Text style={styles.calloutText}>{Ticket.origin}</Text>
+                  <Text style={styles.calloutText}>{Ticket?.origin}</Text>
                 </View>
               </Callout>
             </Marker>
           )}
 
           {destCoord && (
-            <Marker coordinate={destCoord} title="Destination" description={Ticket.destination} pinColor="#2196F3">
+            <Marker coordinate={destCoord} title="Destination" description={Ticket?.destination} pinColor="#2196F3">
               <Callout>
                 <View style={styles.calloutContainer}>
                   <Text style={styles.calloutTitle}>Destination</Text>
-                  <Text style={styles.calloutText}>{Ticket.destination}</Text>
+                  <Text style={styles.calloutText}>{Ticket?.destination}</Text>
                 </View>
               </Callout>
             </Marker>
@@ -596,6 +668,16 @@ const styles = StyleSheet.create({
   calloutText: { fontSize: 11, color: '#666', marginBottom: 2 },
   loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   loadingText: { marginTop: 12, fontSize: 14, color: '#666' },
+  errorText: { marginTop: 16, fontSize: 18, fontWeight: '600', color: '#FF6B6B' },
+  errorSubtext: { marginTop: 8, fontSize: 14, color: '#666', textAlign: 'center' },
+  goBackButton: {
+    marginTop: 24,
+    backgroundColor: '#FFA500',
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 12,
+  },
+  goBackButtonText: { color: '#FFF', fontWeight: '600', fontSize: 16 },
 });
 
 export default TrackOnMap;

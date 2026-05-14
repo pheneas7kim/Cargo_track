@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import Ionicons from 'react-native-vector-icons/Ionicons';
 import { SafeAreaView, View, TouchableOpacity, Image, PermissionsAndroid, Platform } from 'react-native';
 import { NavigationContainer, createNavigationContainerRef } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack'; // Import createStackNavigator
@@ -28,6 +29,7 @@ import  DeviceMapScreenView from './screens/DeviceMapScreenView'; // Import the 
 import CommandsScreen from './screens/CommandsScreen'; // Import the Onboarding screen
 import TrackOnMap from './screens/TrackOnMap'; // Import the Onboarding screen
 import TrackOnMap2 from './screens/TrackOnMap2';
+import SensorList from './screens/SensorList';
 import AlertsNotigicationScreen from './screens/AlertsNotigicationScreen'; // Import the Onboarding screen
 import store from './Store';
 import { Provider } from 'react-redux';
@@ -67,6 +69,7 @@ type RootStackParamList = {
   NotificationsScreen: undefined;
   AlarmsNotigicationScreen: undefined;
   TicketsScreen: undefined;
+  SensorList: undefined;
   DevicesScreen: undefined;
   DeviceMapScreen: undefined;
   HotspotsScreen: undefined;
@@ -192,6 +195,7 @@ export default function App() {
             <Stack.Screen name="Dashboard" component={Dashboard} options={{ headerShown: false }} />
             <Stack.Screen name="NotificationsScreen" component={NotificationsScreen} options={{ headerShown: false }} />
             <Stack.Screen name="AlarmsNotigicationScreen" component={AlarmsNotigicationScreen} options={{ headerShown: false }} />
+              <Stack.Screen name="SensorList" component={SensorList} options={{ headerShown: false }} />
               <Stack.Screen name="TicketsScreen" component={TicketsScreen} options={{ headerShown: false }} />
               <Stack.Screen name="DevicesScreen" component={DevicesScreen} options={{ headerShown: false }} />
               <Stack.Screen name="DeviceMapScreen" component={DeviceMapScreen} options={{ headerShown: false }} />
@@ -204,11 +208,55 @@ export default function App() {
               <Stack.Screen name="TrackOnMap2" component={TrackOnMap2} options={{ headerShown: false }} />
               <Stack.Screen name="AlertsNotigicationScreen" component={AlertsNotigicationScreen} options={{ headerShown: false }} />
               <Stack.Screen name="RandomStopScreen" component={RandomStopScreen} options={{ headerShown: false }} />
-              <Stack.Screen name="RequestEsealsList" component={RequestEsealsList} options={{ headerShown: false }} />
               <Stack.Screen name="EsealsReplacement" component={EsealsReplacement} options={{ headerShown: false }} />
-              <Stack.Screen name="RequestEsealsForm" component={RequestEsealsForm} options={{ headerShown: false }} />
+
               <Stack.Screen name="AssignedEseals" component={AssignedEseals} options={{ headerShown: false }} />
-              <Stack.Screen name="InventoryScan" component={InventoryScan} options={{ headerShown: false }} />
+
+              <Stack.Screen
+                name="RequestEsealsList"
+                component={RequestEsealsList}
+                options={{ headerShown: false }}
+              />
+
+              <Stack.Screen
+                              name="MasterSlaveMapper"
+                              component={MasterSlaveMapper}
+                              options={{ headerShown: false }}
+                            />
+
+              <Stack.Screen
+                            name="RequestEsealsForm"
+                            component={RequestEsealsList}
+                            options={{ headerShown: true,
+                            headerLeft: () => (
+                                <TouchableOpacity
+                                onPress={() => navigationRef.goBack()}
+                                style={{ marginLeft: 16 }}
+                              >
+                                <Ionicons name="arrow-back" size={24} color="#000" />
+                                </TouchableOpacity>
+                              ),
+                              }}
+                            />
+
+
+
+              <Stack.Screen
+                name="InventoryScan"
+                component={InventoryScan}
+                options={{
+                  headerShown: true,
+                  title: 'Scan Inventory',
+                  headerLeft: () => (
+                    <TouchableOpacity
+                      onPress={() => navigationRef.goBack()}
+                      style={{ marginLeft: 16 }}
+                    >
+                      <Ionicons name="arrow-back" size={24} color="#000" />
+                    </TouchableOpacity>
+                  ),
+                }}
+              />
 
 
             <Stack.Screen
@@ -254,7 +302,7 @@ export default function App() {
               name="QrPaymentScanner"
               component={QrPaymentScanner}
               options={{
-                title: 'Scan To Pay',
+                title: 'Scan To Unlock',
                 headerTitleStyle: {
                   fontSize: 16,
                   fontWeight: '600',
@@ -262,16 +310,6 @@ export default function App() {
               }}
             /> }
 
-            <Stack.Screen
-              name ="MasterSlaveMapper"
-              component = {MasterSlaveMapper}
-              options={{
-                  title: 'Map Sensors',
-                  headerTitleStyle:{
-                      fontSize: 16,
-                      fontWeight: '600',
-                      },
-                  }}/>
 
 
             <Stack.Screen

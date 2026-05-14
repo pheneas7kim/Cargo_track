@@ -230,6 +230,7 @@ function HomeScreen() {
   const [modalVisible, setModalVisible] = useState(false);
   const route = useRoute();
   const [roleId, setRoleId] = useState(null);
+
   useEffect(() => {
     const loadRole = async () => {
       let id = route.params?.roleId;
@@ -238,8 +239,10 @@ function HomeScreen() {
         id = stored ? parseInt(stored, 10) : null;
       }
       setRoleId(id);
-      // Set default tab based on role
-      if (id === 255) {
+      // FOR ROLE 257: Force activeTab to 'tickets' only
+      if (id === 257) {
+        setActiveTab('tickets');
+      } else if (id === 255) {
         setActiveTab('tickets');
       }
     };
@@ -498,18 +501,28 @@ function HomeScreen() {
   };
 
   const loadAllData = async () => {
-    await Promise.all([
-      fetchShipments(),
-      fetchTickets(),
-      fetchAlerts(),
-      fetchNotifications(),
-    ]);
+    // For role 257, only fetch tickets, skip shipments and alerts
+    if (roleId === 257) {
+      await Promise.all([
+        fetchTickets(),
+        // Don't fetch shipments or alerts for role 257
+      ]);
+    } else {
+      await Promise.all([
+        fetchShipments(),
+        fetchTickets(),
+        fetchAlerts(),
+        fetchNotifications(),
+      ]);
+    }
   };
 
   // ---------------------- Lifecycle ----------------------
   useEffect(() => {
-    loadAllData();
-  }, []);
+    if (roleId !== null) {
+      loadAllData();
+    }
+  }, [roleId]);
 
   useFocusEffect(
     React.useCallback(() => {
@@ -521,9 +534,12 @@ function HomeScreen() {
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await loadAllData();
+    if (roleId === 257) {
+      await fetchTickets();
+    } else {
+      await loadAllData();
+    }
     setRefreshing(false);
-    // Snackbar.show({ text: 'Dashboard refreshed', duration: 2000, backgroundColor: '#4CAF50' });
   };
 
   // ---------------------- Handlers ----------------------
@@ -594,6 +610,7 @@ function HomeScreen() {
   const handleAssignedEseals = () => navigation.navigate('AssignedEseals');
   const handleInventoryScan = () => navigation.navigate('InventoryScan');
   const handleEsealsReplacement = () => navigation.navigate('EsealsReplacement');
+  const handleSensorList = () => navigation.navigate('SensorList');
   const TopUpModal = () => setIsModalVisible(true);
   const withdrawModal = () => setIsModalVisibleWithdraw(true);
 
@@ -634,7 +651,7 @@ function HomeScreen() {
     try {
       await resolveTicket(ticketId, {
         content: 'Resolved from mobile app',
-        evidenceUrls: [], // we’ll wire images here next
+        evidenceUrls: [], // we'll wire images here next
       });
 
       Snackbar.show({
@@ -779,9 +796,6 @@ function HomeScreen() {
     const statusColor = getStatusColor(item.status);
     const priorityColor = getPriorityColor(item.priority);
 
-
-
-
     return (
       <Animatable.View
         animation="fadeInUp"
@@ -864,12 +878,9 @@ function HomeScreen() {
     </Animatable.View>
   );
 
-  // HeaderComponent (unchanged except for the tracking card label)
-
+  // HeaderComponent
   const HeaderComponent = () => (
     <>
-
-
       <View style={styles.header}>
         <View>
           <Text style={styles.greeting}>{getCurrentTime()}</Text>
@@ -892,7 +903,7 @@ function HomeScreen() {
         </View>
       </View>
 
-      {(roleId === 1 || roleId === 102 || roleId === 255 ) && (
+      {(roleId === 1 || roleId === 102 || roleId === 255 || roleId === 103 || roleId === 257) && (
         <View style={styles.quickActionsGrid}>
           <View style={styles.actionsContainer}>
             {/* Row 1 – visible only for role 1 */}
@@ -912,11 +923,11 @@ function HomeScreen() {
                   <Text style={styles.actionLabel}>Sensors Mapping</Text>
                 </TouchableOpacity>
 
-                <TouchableOpacity style={styles.actionCard} onPress={handleHotspotsScreen}>
+                <TouchableOpacity style={styles.actionCard} onPress={handleSensorList}>
                   <View style={[styles.actionIconBg, { backgroundColor: '#E91E6320' }]}>
                     <Image source={require('../assets/location.png')} style={styles.actionIcon} />
                   </View>
-                  <Text style={styles.actionLabel}>T1 Mapping</Text>
+                  <Text style={styles.actionLabel}>Mapped Sensors</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity style={styles.actionCard} onPress={handleTicketsScreen}>
@@ -928,47 +939,59 @@ function HomeScreen() {
               </View>
             )}
 
+            {/* Row for role 103 - only Tickets */}
+            {roleId === 103 && (
+              <View style={styles.actionRow}>
+                <TouchableOpacity style={styles.actionCard} onPress={handleTicketsScreen}>
+                  <View style={[styles.actionIconBg, { backgroundColor: '#2196F320' }]}>
+                    <Image source={require('../assets/phone.png')} style={styles.actionIcon} />
+                  </View>
+                  <Text style={styles.actionLabel}>Tickets</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
             {/* Row 2 – visible for both role 1 and role 102 */}
-
             <View style={styles.actionRow}>
-            {roleId !== 255 && (
-              <TouchableOpacity style={styles.actionCard} onPress={handleRandomStopScreen}>
-                <View style={[styles.actionIconBg, { backgroundColor: '#2196F320' }]}>
-                  <Image source={require('../assets/randomstop.png')} style={styles.actionIcon} />
-                </View>
-                <Text style={styles.actionLabel}>Random Stop</Text>
-              </TouchableOpacity> )}
+              {roleId !== 255 && roleId !== 103 && roleId !== 257 && (
+                <TouchableOpacity style={styles.actionCard} onPress={handleRandomStopScreen}>
+                  <View style={[styles.actionIconBg, { backgroundColor: '#2196F320' }]}>
+                    <Image source={require('../assets/randomstop.png')} style={styles.actionIcon} />
+                  </View>
+                  <Text style={styles.actionLabel}>Random Stop</Text>
+                </TouchableOpacity>
+              )}
 
+              {roleId !== 255 && roleId !== 103 && roleId !== 257 && (
+                <TouchableOpacity style={styles.actionCard} onPress={handleRequestEsealsList}>
+                  <View style={[styles.actionIconBg, { backgroundColor: '#FF6B6B20' }]}>
+                    <Image source={require('../assets/alarm.png')} style={styles.actionIcon} />
+                  </View>
+                  <Text style={styles.actionLabel}>Request Eseals</Text>
+                </TouchableOpacity>
+              )}
 
-              {roleId !== 255 && (
-              <TouchableOpacity style={styles.actionCard} onPress={handleRequestEsealsList}>
-                <View style={[styles.actionIconBg, { backgroundColor: '#FF6B6B20' }]}>
-                  <Image source={require('../assets/alarm.png')} style={styles.actionIcon} />
-                </View>
-                <Text style={styles.actionLabel}>Request Eseals</Text>
-              </TouchableOpacity> )}
+              {roleId !== 102 && roleId !== 103 && roleId !== 255 && roleId !== 257 && (
+                <TouchableOpacity style={styles.actionCard} onPress={handleEsealsReplacement}>
+                  <View style={[styles.actionIconBg, { backgroundColor: '#4CAF5020' }]}>
+                    <Image source={require('../assets/bell.png')} style={styles.actionIcon} />
+                  </View>
+                  <Text style={styles.actionLabel}>Eseals Replacement</Text>
+                </TouchableOpacity>
+              )}
 
-
-              {roleId !== 255 && (
-              <TouchableOpacity style={styles.actionCard} onPress={handleEsealsReplacement}>
-                <View style={[styles.actionIconBg, { backgroundColor: '#4CAF5020' }]}>
-                  <Image source={require('../assets/bell.png')} style={styles.actionIcon} />
-                </View>
-                <Text style={styles.actionLabel}>Eseals Replacement</Text>
-              </TouchableOpacity> )}
-
-
-              {roleId !== 255 && (
-              <TouchableOpacity style={styles.actionCard} onPress={handleAssignedEseals}>
-                <View style={[styles.actionIconBg, { backgroundColor: '#2196F320' }]}>
-                  <Image source={require('../assets/phone.png')} style={styles.actionIcon} />
-                </View>
-                <Text style={styles.actionLabel}>Assigned Eseals</Text>
-              </TouchableOpacity>)}
+              {roleId !== 255 && roleId !== 103 && roleId !== 257 && (
+                <TouchableOpacity style={styles.actionCard} onPress={handleAssignedEseals}>
+                  <View style={[styles.actionIconBg, { backgroundColor: '#2196F320' }]}>
+                    <Image source={require('../assets/phone.png')} style={styles.actionIcon} />
+                  </View>
+                  <Text style={styles.actionLabel}>Assigned Eseals</Text>
+                </TouchableOpacity>
+              )}
             </View>
 
             {/* Row 3 – visible only for role 1 (admin features) */}
-            {roleId === 255 && (
+            {roleId === 1 && (
               <View style={styles.actionRow}>
                 <TouchableOpacity style={styles.actionCard} onPress={handleInventoryScan}>
                   <View style={[styles.actionIconBg, { backgroundColor: '#9C27B020' }]}>
@@ -976,8 +999,6 @@ function HomeScreen() {
                   </View>
                   <Text style={styles.actionLabel}>Scan to Add Devices</Text>
                 </TouchableOpacity>
-
-                {/*
 
                 <TouchableOpacity style={styles.actionCard} onPress={handleGeofencesScreen}>
                   <View style={[styles.actionIconBg, { backgroundColor: '#FF980020' }]}>
@@ -1005,32 +1026,34 @@ function HomeScreen() {
                     <Image source={require('../assets/station.png')} style={styles.actionIcon} />
                   </View>
                   <Text style={styles.actionLabel}>Stations</Text>
-                </TouchableOpacity>*/}
+                </TouchableOpacity>
               </View>
             )}
           </View>
         </View>
       )}
 
-      <View style={styles.alarmCard}>
-        <View style={styles.alarmInfo}>
-          <Image source={require('../assets/alarm.png')} style={styles.alarmIcon} />
-          <View>
-            <Text style={styles.alarmTitle}>Delivery Alarms</Text>
-            <Text style={styles.alarmSubtitle}>Get notified about your shipments</Text>
+      {roleId !== 257 && (
+        <View style={styles.alarmCard}>
+          <View style={styles.alarmInfo}>
+            <Image source={require('../assets/alarm.png')} style={styles.alarmIcon} />
+            <View>
+              <Text style={styles.alarmTitle}>Delivery Alarms</Text>
+              <Text style={styles.alarmSubtitle}>Get notified about your shipments</Text>
+            </View>
           </View>
+          <Switch
+            value={alarmEnabled}
+            onValueChange={setAlarmEnabled}
+            trackColor={{ false: '#767577', true: '#FFA500' }}
+            thumbColor={alarmEnabled ? '#FFFFFF' : '#f4f3f4'}
+          />
         </View>
-        <Switch
-          value={alarmEnabled}
-          onValueChange={setAlarmEnabled}
-          trackColor={{ false: '#767577', true: '#FFA500' }}
-          thumbColor={alarmEnabled ? '#FFFFFF' : '#f4f3f4'}
-        />
-      </View>
+      )}
 
       <View style={styles.tabs}>
-        {/* Only show Shipments tab if role is not 255 */}
-        {roleId !== 255 && (
+        {/* Only show Shipments tab if role is not 255, not 103, and not 257 */}
+        {roleId !== 255 && roleId !== 103 && roleId !== 257 && (
           <TouchableOpacity
             style={[styles.tab, activeTab === 'shipments' && styles.activeTab]}
             onPress={() => setActiveTab('shipments')}
@@ -1041,18 +1064,20 @@ function HomeScreen() {
           </TouchableOpacity>
         )}
 
-        {/* Tickets tab - visible for all roles */}
-        <TouchableOpacity
-          style={[styles.tab, activeTab === 'tickets' && styles.activeTab]}
-          onPress={() => setActiveTab('tickets')}
-        >
-          <Text style={[styles.tabText, activeTab === 'tickets' && styles.activeTabText]}>
-            Tickets
-          </Text>
-        </TouchableOpacity>
+        {/* Tickets tab - visible for all roles except maybe hide for some? Keep for 257 */}
+        {(roleId !== 103) && (
+          <TouchableOpacity
+            style={[styles.tab, activeTab === 'tickets' && styles.activeTab]}
+            onPress={() => setActiveTab('tickets')}
+          >
+            <Text style={[styles.tabText, activeTab === 'tickets' && styles.activeTabText]}>
+              Tickets
+            </Text>
+          </TouchableOpacity>
+        )}
 
-        {/* Only show Alerts tab if role is not 255 */}
-        {roleId !== 255 && (
+        {/* Only show Alerts tab if role is not 255, not 103, and not 257 */}
+        {roleId !== 255 && roleId !== 103 && roleId !== 257 && (
           <TouchableOpacity
             style={[styles.tab, activeTab === 'alerts' && styles.activeTab]}
             onPress={() => setActiveTab('alerts')}
@@ -1067,6 +1092,34 @@ function HomeScreen() {
   );
 
   const renderContent = () => {
+    // FOR ROLE 257: Always show tickets, ignore activeTab
+    if (roleId === 257) {
+      return (
+        <FlatList
+          data={tickets}
+          keyExtractor={item => item.id}
+          renderItem={renderTicket}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+          contentContainerStyle={styles.listContent}
+          showsVerticalScrollIndicator={false}
+          ListHeaderComponent={HeaderComponent}
+          ListEmptyComponent={
+            loadingTickets ? (
+              <View style={styles.loaderContainer}>
+                <ActivityIndicator size="large" color="#FFA500" />
+                <Text style={styles.loaderText}>Loading tickets...</Text>
+              </View>
+            ) : (
+              <View style={styles.emptyContainer}>
+                <Text style={styles.emptyText}>No tickets found</Text>
+              </View>
+            )
+          }
+        />
+      );
+    }
+
+    // Original logic for other roles
     const isLoading = activeTab === 'shipments' ? loadingShipments :
                       activeTab === 'tickets' ? loadingTickets :
                       loadingAlerts;
@@ -1108,7 +1161,7 @@ function HomeScreen() {
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
       {renderContent()}
 
-      {/* Modals (unchanged) */}
+      {/* Modals */}
       <Modal
         visible={isTrackingModalVisible}
         animationType="slide"
@@ -1198,148 +1251,141 @@ function HomeScreen() {
         </View>
       </Modal>
 
-      {activeTab === 'tickets' && (
-        <>
-          <TouchableOpacity style={styles.fab} onPress={handleCreateTicket}>
-            <Text style={styles.fabText}>+</Text>
-          </TouchableOpacity>
+      {/* FAB - Only show for role 257 */}
+      {roleId === 257 && (
+        <TouchableOpacity style={styles.fab} onPress={handleCreateTicket}>
+          <Text style={styles.fabText}>+</Text>
+        </TouchableOpacity>
+      )}
 
-          {/* Ticket Detail Modal */}
-          <Modal
-            visible={modalVisible}
-            animationType="slide"
-            transparent={true}
-            onRequestClose={() => setModalVisible(false)}
-          >
-            <View style={styles.modalOverlay}>
-              <Animatable.View animation="slideInUp" duration={300} style={styles.modalContent}>
+      {/* Ticket Detail Modal */}
+      <Modal
+        visible={modalVisible}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <Animatable.View animation="slideInUp" duration={300} style={styles.modalContent}>
+            {/* Header */}
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Ticket Details</Text>
+              <TouchableOpacity onPress={() => setModalVisible(false)}>
+                <Text style={styles.closeButtonText}>✕</Text>
+              </TouchableOpacity>
+            </View>
 
-                {/* Header */}
-                <View style={styles.modalHeader}>
-                  <Text style={styles.modalTitle}>Ticket Details</Text>
-                  <TouchableOpacity onPress={() => setModalVisible(false)}>
-                    <Text style={styles.closeButtonText}>✕</Text>
+            {/* Body */}
+            {selectedTicket && (
+              <>
+                <ScrollView style={styles.modalBody}>
+                  {/* Ticket Header */}
+                  <View style={styles.ticketDetailHeader}>
+                    <Text style={styles.ticketDetailNumber}>
+                      {selectedTicket.ticketNumber || `#${selectedTicket.id}`}
+                    </Text>
+                    <View style={[styles.statusBadgeLarge,
+                      { backgroundColor: getTicketStatusInfo(selectedTicket.status).color + '20' }]}>
+                      <Text style={[styles.statusTextLarge, { color: getTicketStatusInfo(selectedTicket.status).color }]}>
+                        {getTicketStatusInfo(selectedTicket.status).text}
+                      </Text>
+                    </View>
+                  </View>
+
+                  <Text style={styles.ticketDetailTitle}>{selectedTicket.subject}</Text>
+                  <Text style={styles.ticketDetailDescription}>
+                    {cleanTicketDescription(selectedTicket.description)}
+                  </Text>
+
+                  {/* Ticket Info Grid */}
+                  <View style={styles.infoGrid}>
+                    <View style={styles.infoItem}>
+                      <Text style={styles.infoLabel}>Priority</Text>
+                      <View style={[styles.priorityBadgeLarge,
+                        { backgroundColor: getPriorityColor(selectedTicket.priority) + '20' }]}>
+                        <Text style={[styles.priorityTextLarge, { color: getPriorityColor(selectedTicket.priority) }]}>
+                          {selectedTicket.priority}
+                        </Text>
+                      </View>
+                    </View>
+
+                    {selectedTicket.t1Number && (
+                      <View style={styles.infoItem}>
+                        <Text style={styles.infoLabel}>T1 Number</Text>
+                        <Text style={styles.infoValue}>{selectedTicket.t1Number}</Text>
+                      </View>
+                    )}
+
+                    {selectedTicket.truckReg && (
+                      <View style={styles.infoItem}>
+                        <Text style={styles.infoLabel}>Device</Text>
+                        <Text style={styles.infoValue}>{selectedTicket.truckReg}</Text>
+                      </View>
+                    )}
+
+                    <View style={styles.infoItem}>
+                      <Text style={styles.infoLabel}>Created</Text>
+                      <Text style={styles.infoValue}>
+                        {selectedTicket.createdAt}
+                      </Text>
+                    </View>
+
+                    {selectedTicket.updatedAt && (
+                      <View style={styles.infoItem}>
+                        <Text style={styles.infoLabel}>Last Updated</Text>
+                        <Text style={styles.infoValue}>
+                          {new Date(selectedTicket.updatedAt).toLocaleString()}
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+
+                  {/* Track on Map Button - Only show if t1Number exists */}
+                  {selectedTicket.t1Number && (
+                    <TouchableOpacity
+                      style={[styles.mapButton, { flexDirection: 'row', justifyContent: 'center', gap: 8 }]}
+                      onPress={() => {
+                        setModalVisible(false);
+                        const shipment = shipments.find(s => s.trackingNumber === selectedTicket.t1Number);
+                        if (shipment) {
+                          navigation.navigate('TrackOnMap2', { shipment });
+                        } else {
+                          navigation.navigate('TrackOnMap', { t1Number: selectedTicket.t1Number });
+                        }
+                      }}
+                    >
+                      <Image source={require('../assets/map.png')} style={{ width: 20, height: 20 }} />
+                      <Text style={styles.mapButtonText}>Track on Map</Text>
+                    </TouchableOpacity>
+                  )}
+                </ScrollView>
+
+                {/* ACTION BUTTONS */}
+                <View style={styles.modalActions}>
+                  <TouchableOpacity
+                    style={styles.submitButton}
+                    onPress={() => handleAcknowledge(selectedTicket.id)}
+                  >
+                    <Text style={styles.submitButtonText}>Acknowledge</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={styles.submitButton}
+                    onPress={() => handleResolve(selectedTicket.id)}
+                  >
+                    <Text style={styles.submitButtonText}>Resolve</Text>
                   </TouchableOpacity>
                 </View>
-
-                {/* Body */}
-
-                {selectedTicket && (
-                  <>
-                    <ScrollView style={styles.modalBody}>
-                      {/* Ticket Header */}
-                      <View style={styles.ticketDetailHeader}>
-                        <Text style={styles.ticketDetailNumber}>
-                          {selectedTicket.ticketNumber || `#${selectedTicket.id}`}
-                        </Text>
-                        <View style={[styles.statusBadgeLarge,
-                          { backgroundColor: getTicketStatusInfo(selectedTicket.status).color + '20' }]}>
-                          <Text style={[styles.statusTextLarge, { color: getTicketStatusInfo(selectedTicket.status).color }]}>
-                            {getTicketStatusInfo(selectedTicket.status).text}
-                          </Text>
-                        </View>
-                      </View>
-
-                      <Text style={styles.ticketDetailTitle}>{selectedTicket.subject}</Text>
-                      <Text style={styles.ticketDetailDescription}>
-                        {cleanTicketDescription(selectedTicket.description)}
-                      </Text>
-
-                      {/* Ticket Info Grid */}
-                      <View style={styles.infoGrid}>
-                        <View style={styles.infoItem}>
-                          <Text style={styles.infoLabel}>Priority</Text>
-                          <View style={[styles.priorityBadgeLarge,
-                            { backgroundColor: getPriorityColor(selectedTicket.priority) + '20' }]}>
-                            <Text style={[styles.priorityTextLarge, { color: getPriorityColor(selectedTicket.priority) }]}>
-                              {selectedTicket.priority}
-                            </Text>
-                          </View>
-                        </View>
-
-                        {selectedTicket.t1Number && (
-                          <View style={styles.infoItem}>
-                            <Text style={styles.infoLabel}>T1 Number</Text>
-                            <Text style={styles.infoValue}>{selectedTicket.t1Number}</Text>
-                          </View>
-                        )}
-
-                        {selectedTicket.truckReg && (
-                          <View style={styles.infoItem}>
-                            <Text style={styles.infoLabel}>Device</Text>
-                            <Text style={styles.infoValue}>{selectedTicket.truckReg}</Text>
-                          </View>
-                        )}
-
-                        <View style={styles.infoItem}>
-                          <Text style={styles.infoLabel}>Created</Text>
-                          <Text style={styles.infoValue}>
-                            {selectedTicket.createdAt}
-                          </Text>
-                        </View>
-
-                        {selectedTicket.updatedAt && (
-                          <View style={styles.infoItem}>
-                            <Text style={styles.infoLabel}>Last Updated</Text>
-                            <Text style={styles.infoValue}>
-                              {new Date(selectedTicket.updatedAt).toLocaleString()}
-                            </Text>
-                          </View>
-                        )}
-                      </View>
-
-                      {/* Track on Map Button - Only show if t1Number exists */}
-                      {selectedTicket.t1Number && (
-                        <TouchableOpacity
-                          style={[styles.mapButton, { flexDirection: 'row', justifyContent: 'center', gap: 8 }]}
-                          onPress={() => {
-                            setModalVisible(false);
-                            // Navigate to TrackOnMap2 screen with t1Number
-                            const shipment = shipments.find(s => s.trackingNumber === selectedTicket.t1Number);
-                            if (shipment) {
-                              navigation.navigate('TrackOnMap2', { shipment });
-                            } else {
-                              // Fallback: pass just the T1 number if shipment not in local state
-                              navigation.navigate('TrackOnMap2', { t1Number: selectedTicket.t1Number });
-                            }
-                          }}
-
-                        >
-                          <Image source={require('../assets/map.png')} style={{ width: 20, height: 20 }} />
-                          <Text style={styles.mapButtonText}>Track on Map</Text>
-                        </TouchableOpacity>
-                      )}
-                    </ScrollView>
-
-                    {/* ACTION BUTTONS - KEEP THESE */}
-                    <View style={styles.modalActions}>
-                      <TouchableOpacity
-                        style={styles.submitButton}
-                        onPress={() => handleAcknowledge(selectedTicket.id)}
-                      >
-                        <Text style={styles.submitButtonText}>Acknowledge</Text>
-                      </TouchableOpacity>
-
-                      <TouchableOpacity
-                        style={styles.submitButton}
-                        onPress={() => handleResolve(selectedTicket.id)}
-                      >
-                        <Text style={styles.submitButtonText}>Resolve</Text>
-                      </TouchableOpacity>
-                    </View>
-                  </>
-                )}
-
-              </Animatable.View>
-            </View>
-          </Modal>
-        </>
-      )}
+              </>
+            )}
+          </Animatable.View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
 
-// Styles (unchanged – same as provided)
+// Styles
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F8F9FA' },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingTop: 60, paddingBottom: 20 },
@@ -1392,8 +1438,8 @@ const styles = StyleSheet.create({
   progressText: { fontSize: 12, color: '#666', marginTop: 4 },
   shipmentDetails: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12, paddingTop: 8, borderTopWidth: 1, borderTopColor: '#F0F0F0' },
   detailItem: { flex: 1 },
-  detailLabel: { fontSize: 12, color: '#666',  marginTop: 10,},
-  detailValue: { fontSize: 16, color: '#333',  marginBottom: 5,},
+  detailLabel: { fontSize: 12, color: '#666', marginTop: 10 },
+  detailValue: { fontSize: 16, color: '#333', marginBottom: 5 },
   shipmentActions: { flexDirection: 'row', gap: 12 },
   actionBtn: { flex: 1, backgroundColor: '#F5F5F5', paddingVertical: 10, borderRadius: 10, alignItems: 'center' },
   actionBtnText: { fontSize: 13, color: '#FFA500', fontWeight: '500' },
@@ -1406,7 +1452,6 @@ const styles = StyleSheet.create({
   notificationMessage: { fontSize: 12, color: '#666', marginBottom: 4 },
   notificationTime: { fontSize: 10, color: '#999' },
   ticketCard: { backgroundColor: '#FFFFFF', borderRadius: 16, marginHorizontal: 16, padding: 24, marginBottom: 12, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 3 },
-  ticketHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
   ticketId: { fontSize: 12, color: '#999', fontWeight: '500' },
   priorityBadge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
   priorityText: { fontSize: 10, fontWeight: '600' },
@@ -1420,10 +1465,10 @@ const styles = StyleSheet.create({
   alertTitle: { fontSize: 14, fontWeight: '600', color: '#1A1A1A', marginBottom: 4 },
   alertMessage: { fontSize: 12, color: '#666', marginBottom: 8 },
   alertTime: { fontSize: 10, color: '#999' },
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end', },
-  modalContent: { backgroundColor: '#FFF', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, maxHeight: '80%',},
-  modalHeader: { flexDirection: 'row',  justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, },
-  modalTitle: { fontSize: 18, fontWeight: 'bold', },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+  modalContent: { backgroundColor: '#FFF', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, maxHeight: '80%' },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
+  modalTitle: { fontSize: 18, fontWeight: 'bold' },
   closeButtonText: { fontSize: 24, color: '#999' },
   modalBody: { padding: 20 },
   detailTitle: { fontSize: 12, fontWeight: '600', color: '#999', marginTop: 12, marginBottom: 4 },
@@ -1445,40 +1490,31 @@ const styles = StyleSheet.create({
   submitButton: { flex: 1, paddingVertical: 14, borderRadius: 12, backgroundColor: '#FFA500', alignItems: 'center' },
   submitButtonDisabled: { backgroundColor: '#CCCCCC' },
   submitButtonText: { fontSize: 16, fontWeight: '600', color: '#FFFFFF' },
-  closeButtonText: { fontSize: 20, color: '#333', },
   loaderContainer: { padding: 40, alignItems: 'center' },
   loaderText: { marginTop: 12, fontSize: 14, color: '#666' },
   emptyContainer: { padding: 40, alignItems: 'center' },
   emptyText: { fontSize: 14, color: '#999' },
-  ticketDetailHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16,},
-  ticketDetailNumber: { fontSize: 14, fontWeight: '600', color: '#666', },
-  statusBadgeLarge: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8,  },
-  statusTextLarge: { fontSize: 12, fontWeight: '600',},
-  ticketDetailTitle: { fontSize: 20, fontWeight: '700', color: '#1A1A1A', marginBottom: 12, },
-  ticketDetailDescription: {fontSize: 14, color: '#666',  lineHeight: 20, marginBottom: 24,  },
-  infoGrid: { flexDirection: 'row', flexWrap: 'wrap',  gap: 16, marginBottom: 24, paddingBottom: 24, borderBottomWidth: 1, borderBottomColor: '#F0F0F0', },
-  infoItem: { flex: 1, minWidth: '45%', },
-  infoLabel: { fontSize: 11, fontWeight: '600', color: '#999', marginBottom: 6,  },
-  infoValue: { fontSize: 13, color: '#333', fontWeight: '500', },
-  priorityBadgeLarge: { flexDirection: 'row',  alignItems: 'center',  alignSelf: 'flex-start', paddingHorizontal: 10,  paddingVertical: 4, borderRadius: 8, gap: 6, },
-  priorityTextLarge: {fontSize: 12, fontWeight: '600', },
-  animationWrapper: { marginHorizontal: 8, marginBottom: 12, },
-  ticketHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12,},
-  ticketNumberContainer: {flexDirection: 'row', alignItems: 'center', gap: 8,},
-  ticketNumber: { fontSize: 12, fontWeight: '600', color: '#666',},
-  priorityBadge: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, gap: 4, },
-  priorityIcon: { fontSize: 10, },
-  priorityText: { fontSize: 10, fontWeight: '600', },
-  statusText: { fontSize: 10, fontWeight: '600', color: '#666',},
-  ticketTitle: {fontSize: 16, fontWeight: '600', color: '#1A1A1A', marginBottom: 8,},
-  ticketDescription: { fontSize: 14, color: '#666', lineHeight: 20, marginBottom: 12, },
-  ticketFooter: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginBottom: 8, },
-  footerItem: { flexDirection: 'row', alignItems: 'center',  gap: 4, },
-  footerIcon: {  fontSize: 12, },
-  footerText: {fontSize: 11, color: '#999', },
-  commentsCount: { flexDirection: 'row',  alignItems: 'center', gap: 4, paddingTop: 8, borderTopWidth: 1, borderTopColor: '#F0F0F0', },
-  commentsIcon: { fontSize: 12, },
-  commentsText: {fontSize: 11, color: '#FFA500',},
+  ticketDetailHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
+  ticketDetailNumber: { fontSize: 14, fontWeight: '600', color: '#666' },
+  statusBadgeLarge: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 },
+  statusTextLarge: { fontSize: 12, fontWeight: '600' },
+  ticketDetailTitle: { fontSize: 20, fontWeight: '700', color: '#1A1A1A', marginBottom: 12 },
+  ticketDetailDescription: { fontSize: 14, color: '#666', lineHeight: 20, marginBottom: 24 },
+  infoGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 16, marginBottom: 24, paddingBottom: 24, borderBottomWidth: 1, borderBottomColor: '#F0F0F0' },
+  infoItem: { flex: 1, minWidth: '45%' },
+  infoLabel: { fontSize: 11, fontWeight: '600', color: '#999', marginBottom: 6 },
+  infoValue: { fontSize: 13, color: '#333', fontWeight: '500' },
+  priorityBadgeLarge: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8, gap: 6 },
+  priorityTextLarge: { fontSize: 12, fontWeight: '600' },
+  animationWrapper: { marginHorizontal: 8, marginBottom: 12 },
+  ticketNumber: { fontSize: 12, fontWeight: '600', color: '#666' },
+  ticketTitle: { fontSize: 16, fontWeight: '600', color: '#1A1A1A', marginBottom: 8 },
+  footerItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  footerIcon: { fontSize: 12 },
+  footerText: { fontSize: 11, color: '#999' },
+  commentsCount: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingTop: 8, borderTopWidth: 1, borderTopColor: '#F0F0F0' },
+  commentsIcon: { fontSize: 12 },
+  commentsText: { fontSize: 11, color: '#FFA500' },
 });
 
 export default HomeScreen;
