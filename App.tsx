@@ -44,6 +44,7 @@ import RequestEsealsList from './screens/RequestEsealsList';
 import EsealsReplacement from './screens/EsealsReplacement';
 import RequestEsealsForm from './screens/RequestEsealsForm';
 import AssignedEseals from './screens/AssignedEseals';
+import ReceiveDevicesScreen from './screens/ReceiveDevicesScreen';
 import InventoryScan from './screens/InventoryScan';
 import { setupAxiosLogging } from './utils/axiosLogger';
 import notifee, { AndroidImportance } from '@notifee/react-native';
@@ -85,6 +86,7 @@ type RootStackParamList = {
   EsealsReplacement:undefined;
   RequestEsealsForm: undefined;
   AssignedEseals: undefined;
+  ReceiveDevicesScreen: undefined;
   inventoryScan: undefined;
   CreateTicket: undefined;
   AttatchEvidence: undefined;
@@ -209,6 +211,7 @@ export default function App() {
               <Stack.Screen name="AlertsNotigicationScreen" component={AlertsNotigicationScreen} options={{ headerShown: false }} />
               <Stack.Screen name="RandomStopScreen" component={RandomStopScreen} options={{ headerShown: false }} />
               <Stack.Screen name="EsealsReplacement" component={EsealsReplacement} options={{ headerShown: false }} />
+              <Stack.Screen name="ReceiveDevicesScreen" component={ReceiveDevicesScreen} options={{ headerShown: false }}/>
 
               <Stack.Screen name="AssignedEseals" component={AssignedEseals} options={{ headerShown: false }} />
 

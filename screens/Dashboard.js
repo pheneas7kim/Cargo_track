@@ -150,6 +150,111 @@ const getAuthToken = async () => {
     return null;
   }
 };
+
+// Add this function to fetch store ID for the logged-in user
+const fetchUserStore = async () => {
+  try {
+    const token = await getAuthToken();
+    const userId = await AsyncStorage.getItem('id');
+
+    if (!token || !userId) {
+      console.log('No token or user ID found');
+      return null;
+    }
+
+    console.log('Fetching store for user:', userId);
+
+    // Try multiple possible endpoints
+    const endpoints = [
+//      `${API_BASE}/api/v1/stores/user/${userId}`,
+//      `${API_BASE}/api/v1/users/${userId}/store`,
+//      `${API_BASE}/api/v1/stores/by-user/${userId}`,
+//      `${API_BASE}/api/v1/stores/assigned/${userId}`,
+//      `${API_BASE}/api/v1/stores?userId=${userId}`,
+      `${API_BASE}/api/v1/users/getUserByID?users_id=${userId}`,
+    ];
+
+    for (const url of endpoints) {
+      try {
+        console.log('Trying endpoint:', url);
+        const response = await fetch(url, {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          console.log('Store data found at', url, ':', data);
+
+          // Extract store ID based on response structure
+          let storeId = null;
+          let storeName = null;
+
+          // Check for stores array (your actual API response structure)
+          if (data.stores && Array.isArray(data.stores) && data.stores.length > 0) {
+            storeId = data.stores[0].id;
+            storeName = data.stores[0].name;
+            console.log('Found store in stores array:', { storeId, storeName });
+          }
+          // Check for direct id property
+          else if (data.id) {
+            storeId = data.id;
+            storeName = data.name;
+            console.log('Found store with direct id:', { storeId, storeName });
+          }
+          // Check for storeId property
+          else if (data.storeId) {
+            storeId = data.storeId;
+            storeName = data.storeName;
+            console.log('Found store with storeId property:', { storeId, storeName });
+          }
+          // Check if response is an array
+          else if (Array.isArray(data) && data.length > 0) {
+            storeId = data[0].id;
+            storeName = data[0].name;
+            console.log('Found store in array response:', { storeId, storeName });
+          }
+          // Check for nested store object
+          else if (data.store && data.store.id) {
+            storeId = data.store.id;
+            storeName = data.store.name;
+            console.log('Found store in nested store object:', { storeId, storeName });
+          }
+
+          if (storeId) {
+            // Save to AsyncStorage
+            await AsyncStorage.setItem('storeId', storeId.toString());
+            if (storeName) {
+              await AsyncStorage.setItem('storeName', storeName);
+            }
+            console.log('Store saved successfully to AsyncStorage:', { storeId, storeName });
+
+            // Verify the save
+            const verifiedStoreId = await AsyncStorage.getItem('storeId');
+            console.log('Verified storeId in AsyncStorage:', verifiedStoreId);
+
+            return { storeId, storeName };
+          } else {
+            console.log('No store ID found in response structure');
+          }
+        } else {
+          console.log(`Endpoint ${url} returned status:`, response.status);
+        }
+      } catch (err) {
+        console.log(`Error with endpoint ${url}:`, err.message);
+      }
+    }
+
+    console.log('No store endpoint found for user');
+    return null;
+  } catch (error) {
+    console.error('Error fetching store:', error);
+    return null;
+  }
+};
+
 const acknowledgeTicket = async (ticketId) => {
   const token = await getAuthToken();
 
@@ -244,6 +349,13 @@ function HomeScreen() {
         setActiveTab('tickets');
       } else if (id === 255) {
         setActiveTab('tickets');
+      }
+
+      // NEW: Fetch store ID for STORE role (202)
+      if (id === 202) {
+        console.log('STORE role detected, fetching store info...');
+        await fetchUserStore();
+
       }
     };
     loadRole();
@@ -507,7 +619,8 @@ function HomeScreen() {
         fetchTickets(),
         // Don't fetch shipments or alerts for role 257
       ]);
-    } else {
+    }
+    else {
       await Promise.all([
         fetchShipments(),
         fetchTickets(),
@@ -609,6 +722,7 @@ function HomeScreen() {
   const handleRequestEsealsList = () => navigation.navigate('RequestEsealsList');
   const handleAssignedEseals = () => navigation.navigate('AssignedEseals');
   const handleInventoryScan = () => navigation.navigate('InventoryScan');
+  const handleReceiveDevicesScreen = () => navigation.navigate('ReceiveDevicesScreen');
   const handleEsealsReplacement = () => navigation.navigate('EsealsReplacement');
   const handleSensorList = () => navigation.navigate('SensorList');
   const TopUpModal = () => setIsModalVisible(true);
@@ -990,16 +1104,13 @@ function HomeScreen() {
               )}
             </View>
 
+
+
+
+
             {/* Row 3 – visible only for role 1 (admin features) */}
             {roleId === 1 && (
               <View style={styles.actionRow}>
-                <TouchableOpacity style={styles.actionCard} onPress={handleInventoryScan}>
-                  <View style={[styles.actionIconBg, { backgroundColor: '#9C27B020' }]}>
-                    <Image source={require('../assets/trk.png')} style={styles.actionIcon} />
-                  </View>
-                  <Text style={styles.actionLabel}>Scan to Add Devices</Text>
-                </TouchableOpacity>
-
                 <TouchableOpacity style={styles.actionCard} onPress={handleGeofencesScreen}>
                   <View style={[styles.actionIconBg, { backgroundColor: '#FF980020' }]}>
                     <Image source={require('../assets/geo.png')} style={styles.actionIcon} />
@@ -1033,23 +1144,56 @@ function HomeScreen() {
         </View>
       )}
 
-      {roleId !== 257 && (
-        <View style={styles.alarmCard}>
-          <View style={styles.alarmInfo}>
-            <Image source={require('../assets/alarm.png')} style={styles.alarmIcon} />
-            <View>
-              <Text style={styles.alarmTitle}>Delivery Alarms</Text>
-              <Text style={styles.alarmSubtitle}>Get notified about your shipments</Text>
-            </View>
-          </View>
-          <Switch
-            value={alarmEnabled}
-            onValueChange={setAlarmEnabled}
-            trackColor={{ false: '#767577', true: '#FFA500' }}
-            thumbColor={alarmEnabled ? '#FFFFFF' : '#f4f3f4'}
-          />
+
+
+{/* Fixed the conditional logic using proper parenthesis mapping */}
+{( roleId === 1 ||  roleId ===202 ) && (
+  <View style={styles.actionRow}>
+  {( roleId === 1 ) && (
+    <TouchableOpacity style={styles.actionCard} onPress={handleInventoryScan}>
+      <View style={[styles.actionIconBg, { backgroundColor: '#9C27B020' }]}>
+        <Image source={require('../assets/trk.png')} style={styles.actionIcon} />
+      </View>
+      <Text style={styles.actionLabel}>Scan to Add Devices</Text>
+    </TouchableOpacity> )}
+
+    {/* Removed the unstyled wrapper view so both cards are direct siblings */}
+    {(roleId === 202 || roleId === 1 ) && (
+      <TouchableOpacity style={styles.actionCard} onPress={handleReceiveDevicesScreen}>
+        <View style={[styles.actionIconBg, { backgroundColor: '#9C27B020' }]}>
+          <Image source={require('../assets/trk.png')} style={styles.actionIcon} />
         </View>
-      )}
+        <Text style={styles.actionLabel}>Receive</Text>
+      </TouchableOpacity>
+    )}
+  </View>
+)}
+
+
+
+
+
+
+
+
+      {roleId !== 257 && (
+              <View style={styles.alarmCard}>
+                <View style={styles.alarmInfo}>
+                  <Image source={require('../assets/alarm.png')} style={styles.alarmIcon} />
+                  <View>
+                    <Text style={styles.alarmTitle}>Delivery Alarms</Text>
+                    <Text style={styles.alarmSubtitle}>Get notified about your shipments</Text>
+                  </View>
+                </View>
+                <Switch
+                  value={alarmEnabled}
+                  onValueChange={setAlarmEnabled}
+                  trackColor={{ false: '#767577', true: '#FFA500' }}
+                  thumbColor={alarmEnabled ? '#FFFFFF' : '#f4f3f4'}
+                />
+              </View>
+            )}
+
 
       <View style={styles.tabs}>
         {/* Only show Shipments tab if role is not 255, not 103, and not 257 */}
@@ -1075,6 +1219,7 @@ function HomeScreen() {
             </Text>
           </TouchableOpacity>
         )}
+
 
         {/* Only show Alerts tab if role is not 255, not 103, and not 257 */}
         {roleId !== 255 && roleId !== 103 && roleId !== 257 && (
@@ -1252,7 +1397,7 @@ function HomeScreen() {
       </Modal>
 
       {/* FAB - Only show for role 257 */}
-      {roleId === 257 && (
+      {roleId === 255 && (
         <TouchableOpacity style={styles.fab} onPress={handleCreateTicket}>
           <Text style={styles.fabText}>+</Text>
         </TouchableOpacity>
@@ -1403,8 +1548,8 @@ const styles = StyleSheet.create({
   trackButtonText: { color: '#FFFFFF', fontWeight: '600', fontSize: 14 },
   quickActionsGrid: { marginHorizontal: 12, marginBottom: 20 },
   actionsContainer: { gap: 16 },
-  actionRow: { flexDirection: 'row', justifyContent: 'space-between' },
-  actionCard: { alignItems: 'center', width: (width - 56) / 4 },
+  actionRow: {flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'flex-start', },
+  actionCard: { width: '22%', marginHorizontal: '1.5%', marginBottom: 15, alignItems: 'center', },
   actionIconBg: { width: 46, height: 46, borderRadius: 28, justifyContent: 'center', alignItems: 'center', marginBottom: 8 },
   actionIcon: { width: 24, height: 24 },
   actionLabel: { fontSize: 10, color: '#333', fontWeight: '500', textAlign: 'center' },
