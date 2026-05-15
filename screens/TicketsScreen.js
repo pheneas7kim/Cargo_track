@@ -755,7 +755,7 @@ const TicketsScreen = () => {
                                     style={styles.trackOnMapButton}
                                     onPress={() => {
                                       setModalVisible(false);
-                                      navigation.navigate('TrackShipment', {
+                                      navigation.navigate('TrackOnMap2', {
                                         t1Number: selectedTicket.t1Number,
                                         ticketId: selectedTicket.id
                                       });

@@ -1495,7 +1495,7 @@ function HomeScreen() {
                         if (shipment) {
                           navigation.navigate('TrackOnMap2', { shipment });
                         } else {
-                          navigation.navigate('TrackOnMap', { t1Number: selectedTicket.t1Number });
+                          navigation.navigate('TrackOnMap2', { t1Number: selectedTicket.t1Number });
                         }
                       }}
                     >
