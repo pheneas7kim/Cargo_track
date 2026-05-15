@@ -61,16 +61,7 @@ const getTicketStatusInfo = (status) => {
   }
 };
 
-const getStatusColor = (status) => {
-    switch (status?.toUpperCase()) {
-      case 'ACKNOWLEDGED':
-        return '#FFA500';
-      case 'RESOLVED':
-        return '#2196F3';
-      default:
-        return '#666';
-    }
-  };
+
 
 const formatDate = (dateString) => {
     if (!dateString) return 'N/A';
@@ -1076,15 +1067,14 @@ function HomeScreen() {
                 </TouchableOpacity>
               )}
 
-              {roleId !== 255 && roleId !== 103 && roleId !== 257 && (
-                <TouchableOpacity style={styles.actionCard} onPress={handleRequestEsealsList}>
-                  <View style={[styles.actionIconBg, { backgroundColor: '#FF6B6B20' }]}>
-                    <Image source={require('../assets/alarm.png')} style={styles.actionIcon} />
-                  </View>
-                  <Text style={styles.actionLabel}>Request Eseals</Text>
-                </TouchableOpacity>
-              )}
-
+             {(roleId === 102 || (roleId !== 255 && roleId !== 103 && roleId !== 257)) && (
+               <TouchableOpacity style={styles.actionCard} onPress={handleRequestEsealsList}>
+                 <View style={[styles.actionIconBg, { backgroundColor: '#FF6B6B20' }]}>
+                   <Image source={require('../assets/alarm.png')} style={styles.actionIcon} />
+                 </View>
+                 <Text style={styles.actionLabel}>Request Eseals</Text>
+               </TouchableOpacity>
+             )}
               {roleId !== 102 && roleId !== 103 && roleId !== 255 && roleId !== 257 && (
                 <TouchableOpacity style={styles.actionCard} onPress={handleEsealsReplacement}>
                   <View style={[styles.actionIconBg, { backgroundColor: '#4CAF5020' }]}>
@@ -1175,7 +1165,7 @@ function HomeScreen() {
 
 
 
-
+{/*
       {roleId !== 257 && (
               <View style={styles.alarmCard}>
                 <View style={styles.alarmInfo}>
@@ -1193,7 +1183,7 @@ function HomeScreen() {
                 />
               </View>
             )}
-
+*/}
 
       <View style={styles.tabs}>
         {/* Only show Shipments tab if role is not 255, not 103, and not 257 */}

@@ -104,7 +104,6 @@ const RandomStopScreen = () => {
         }
       );
 
-      // Mapping specifically to your "content" array
       if (response.data && response.data.content) {
         setStops(response.data.content);
       }
@@ -117,16 +116,45 @@ const RandomStopScreen = () => {
     }
   };
 
+  // Helper function to format plate numbers
+  const formatPlateNumber = (text) => {
+    // Remove any existing spaces and convert to uppercase
+    let cleaned = text.replace(/\s/g, '').toUpperCase();
+
+    // If the length is 7 or more, try to format as "XXX NNN X" pattern
+    if (cleaned.length >= 7) {
+      // Example: KDX002T -> KDX 002 T
+      const part1 = cleaned.substring(0, 3);
+      const part2 = cleaned.substring(3, 6);
+      const part3 = cleaned.substring(6, 7);
+      if (part3) {
+        return `${part1} ${part2} ${part3}`;
+      } else if (part2) {
+        return `${part1} ${part2}`;
+      }
+    }
+    return cleaned;
+  };
+
   const handleCreateStop = async () => {
     console.log('=== SUBMIT BUTTON PRESSED ===');
+
+    // Normalize the plate number: trim spaces and ensure single spaces between parts
+    const normalizedPlateNumber = newStop.plateNumber
+      .trim()
+      .replace(/\s+/g, ' ')  // Replace multiple spaces with single space
+      .toUpperCase();
+
+    console.log('Original plate number:', newStop.plateNumber);
+    console.log('Normalized plate number:', normalizedPlateNumber);
+
     console.log('Form data before validation:', {
-      vehiclePlateNumber: newStop.vehiclePlateNumber,
+      plateNumber: normalizedPlateNumber,
       reason: newStop.reason,
-      vehicleId: newStop.vehicleId,
       incidentTypeId: newStop.incidentTypeId
     });
 
-    if (!newStop.vehiclePlateNumber || !newStop.reason) {
+    if (!normalizedPlateNumber || !newStop.reason) {
       console.log('Validation failed: Missing required fields');
       Snackbar.show({ text: 'Plate Number and Reason are required', duration: 2000, backgroundColor: '#FF6B6B' });
       return;
@@ -146,13 +174,14 @@ const RandomStopScreen = () => {
       console.log('Token retrieved:', token ? 'Token exists (length: ' + token.length + ')' : 'NO TOKEN FOUND');
 
       const postData = {
-        ...newStop,
-        requestedAt: new Date().toISOString(),
+        plateNumber: normalizedPlateNumber,  // Use normalized version
+        reason: newStop.reason,
+        incidentTypeId: newStop.incidentTypeId
       };
+
       console.log('POST URL:', `${serverUrl}random-stops`);
       console.log('POST Data:', JSON.stringify(postData, null, 2));
 
-      // POST body matches your tested Postman structure
       const response = await axios.post(`${serverUrl}random-stops`, postData, {
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
       });
@@ -160,9 +189,26 @@ const RandomStopScreen = () => {
       console.log('SUCCESS - Response status:', response.status);
       console.log('SUCCESS - Response data:', response.data);
 
-      Snackbar.show({ text: 'Request submitted successfully', duration: 2000, backgroundColor: '#4CAF50' });
+      // Check if the vehicle was found
+      if (response.data.vehiclePlateNumber === null) {
+        Snackbar.show({
+          text: `⚠️ Stop created but vehicle "${normalizedPlateNumber}" not found in system`,
+          duration: 5000,
+          backgroundColor: '#FFA500'
+        });
+      } else {
+        Snackbar.show({ text: '✓ Request submitted successfully', duration: 2000, backgroundColor: '#4CAF50' });
+      }
+
       setCreateModalVisible(false);
-      setNewStop({ vehicleId: 1, vehiclePlateNumber: '', reason: '', incidentTypeId: null, incidentTypeName: '' });
+
+      setNewStop({
+        plateNumber: '',
+        reason: '',
+        incidentTypeId: null,
+        incidentTypeName: ''
+      });
+
       fetchStops();
     } catch (error) {
       console.log('ERROR - Submission failed');
@@ -170,7 +216,14 @@ const RandomStopScreen = () => {
       console.log('Error message:', error.message);
       console.log('Error response data:', error.response?.data);
 
-      Snackbar.show({ text: 'Submission failed', duration: 3000, backgroundColor: '#FF6B6B' });
+      let errorMessage = 'Submission failed';
+      if (error.response?.status === 404) {
+        errorMessage = 'Vehicle plate number not found in system';
+      } else if (error.response?.data?.message) {
+        errorMessage = error.response.data.message;
+      }
+
+      Snackbar.show({ text: errorMessage, duration: 3000, backgroundColor: '#FF6B6B' });
     } finally {
       console.log('Submission completed. Submitting state:', false);
       setSubmitting(false);
@@ -189,19 +242,19 @@ const RandomStopScreen = () => {
       >
         <View style={styles.cardHeader}>
           <View>
-            <Text style={styles.plateText}>{item.vehiclePlateNumber}</Text>
+            <Text style={styles.plateText}>{item.vehiclePlateNumber || '⚠️ Vehicle Not Found'}</Text>
             <Text style={styles.ticketText}>{item.ticketNumber || 'No Ticket'}</Text>
           </View>
           <View style={[styles.statusBadge, { backgroundColor: getStatusColor(item.status) + '20' }]}>
-            <Text style={[styles.statusText, { color: getStatusColor(item.status) }]}>{item.status}</Text>
+            <Text style={[styles.statusText, { color: getStatusColor(item.status) }]}>{item.status || 'PENDING'}</Text>
           </View>
         </View>
 
-        <Text style={styles.reasonText} numberOfLines={1}>Reason: {item.reason}</Text>
+        <Text style={styles.reasonText} numberOfLines={1}>Reason: {item.reason || 'No reason provided'}</Text>
 
         <View style={styles.cardFooter}>
-          <Text style={styles.footerInfo}>By: {item.requestedByName}</Text>
-          <Text style={styles.footerInfo}>{new Date(item.createdAt).toLocaleDateString()}</Text>
+          <Text style={styles.footerInfo}>By: {item.requestedByName || 'Unknown'}</Text>
+          <Text style={styles.footerInfo}>{item.createdAt ? new Date(item.createdAt).toLocaleDateString() : 'Unknown date'}</Text>
         </View>
       </TouchableOpacity>
     </Animatable.View>
@@ -236,7 +289,7 @@ const RandomStopScreen = () => {
       </Animated.View>
 
       <FlatList
-        data={stops.filter(s => s.vehiclePlateNumber.toLowerCase().includes(searchQuery.toLowerCase()))}
+        data={stops.filter(s => s.vehiclePlateNumber && s.vehiclePlateNumber.toLowerCase().includes(searchQuery.toLowerCase()))}
         keyExtractor={item => item.id.toString()}
         renderItem={renderStopItem}
         contentContainerStyle={styles.listContent}
@@ -260,14 +313,14 @@ const RandomStopScreen = () => {
               <Text style={styles.label}>Vehicle Plate Number</Text>
               <TextInput
                 style={styles.input}
-                value={newStop.vehiclePlateNumber}
+                value={newStop.plateNumber}
                 onChangeText={(text) =>
                   setNewStop({
                     ...newStop,
-                    vehiclePlateNumber: text.toUpperCase(),
+                    plateNumber: formatPlateNumber(text),
                   })
                 }
-                placeholder="e.g. 123 456 A"
+                placeholder="e.g. AAA 001 A"
                 placeholderTextColor="#000"
                 autoCapitalize="characters"
               />
@@ -370,7 +423,7 @@ const RandomStopScreen = () => {
               <View style={styles.modalBody}>
                 <View style={styles.detailRow}>
                   <Text style={styles.detailLabel}>Plate Number</Text>
-                  <Text style={styles.detailValue}>{selectedStop.vehiclePlateNumber}</Text>
+                  <Text style={styles.detailValue}>{selectedStop.vehiclePlateNumber || 'N/A'}</Text>
                 </View>
                 <View style={styles.detailRow}>
                   <Text style={styles.detailLabel}>Ticket Number</Text>
@@ -378,15 +431,15 @@ const RandomStopScreen = () => {
                 </View>
                 <View style={styles.detailRow}>
                   <Text style={styles.detailLabel}>Reason</Text>
-                  <Text style={styles.detailValue}>{selectedStop.reason}</Text>
+                  <Text style={styles.detailValue}>{selectedStop.reason || 'No reason provided'}</Text>
                 </View>
                 <View style={styles.detailRow}>
                   <Text style={styles.detailLabel}>Status</Text>
-                  <Text style={[styles.detailValue, { color: getStatusColor(selectedStop.status) }]}>{selectedStop.status}</Text>
+                  <Text style={[styles.detailValue, { color: getStatusColor(selectedStop.status) }]}>{selectedStop.status || 'PENDING'}</Text>
                 </View>
                 <View style={styles.detailRow}>
                   <Text style={styles.detailLabel}>Requested By</Text>
-                  <Text style={styles.detailValue}>{selectedStop.requestedByName}</Text>
+                  <Text style={styles.detailValue}>{selectedStop.requestedByName || 'Unknown'}</Text>
                 </View>
                 <View style={styles.detailRow}>
                   <Text style={styles.detailLabel}>Approved By</Text>
