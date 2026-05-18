@@ -371,6 +371,20 @@ function HomeScreen() {
   ];
 
   // ---------------------- API Calls with Bearer Token ----------------------
+  const getStatusColor = (status) => {
+    switch (status?.toUpperCase()) {
+      case 'OPEN':
+        return '#FF6B6B';
+      case 'IN_PROGRESS':
+        return '#FFA500';
+      case 'RESOLVED':
+        return '#4CAF50';
+      case 'CLOSED':
+        return '#2196F3';
+      default:
+        return '#999';
+    }
+  };
   const fetchShipments = async () => {
     try {
       setLoadingShipments(true);
@@ -738,11 +752,15 @@ function HomeScreen() {
     try {
       await acknowledgeTicket(ticketId);
       Snackbar.show({
-        text: 'Ticket acknowledged',
+        text: 'Ticket acknowledged successfully',
         duration: 2000,
         backgroundColor: '#4CAF50',
       });
-      fetchTickets();
+      // Close modal first
+      setModalVisible(false);
+      setSelectedTicket(null);
+      // Refresh tickets
+      await fetchTickets();
     } catch (e) {
       Snackbar.show({
         text: 'Failed to acknowledge ticket',
@@ -754,18 +772,17 @@ function HomeScreen() {
 
   const handleResolve = async (ticketId) => {
     try {
-      await resolveTicket(ticketId, {
-        content: 'Resolved from mobile app',
-        evidenceUrls: [], // we'll wire images here next
-      });
-
+      await resolveTicket(ticketId);
       Snackbar.show({
-        text: 'Ticket resolved',
+        text: 'Ticket resolved successfully',
         duration: 2000,
         backgroundColor: '#4CAF50',
       });
-
-      fetchTickets();
+      // Close modal first
+      setModalVisible(false);
+      setSelectedTicket(null);
+      // Refresh tickets
+      await fetchTickets();
     } catch (e) {
       Snackbar.show({
         text: 'Failed to resolve ticket',
@@ -898,8 +915,9 @@ function HomeScreen() {
   );
 
   const renderTicket = ({ item, index }) => {
-    const statusColor = getStatusColor(item.status);
+    const statusColor = getTicketStatusInfo(item.status).color;
     const priorityColor = getPriorityColor(item.priority);
+    const statusInfo = getTicketStatusInfo(item.status);
 
     return (
       <Animatable.View
@@ -925,7 +943,12 @@ function HomeScreen() {
                   {item.priority}
                 </Text>
               </View>
-              <Text style={styles.statusText}>{item.status || 'Open'}</Text>
+              {/* Status Badge - Added this */}
+              <View style={[styles.statusBadgeSmall, { backgroundColor: statusColor + '20' }]}>
+                <Text style={[styles.statusTextSmall, { color: statusColor }]}>
+                  {statusInfo.text}
+                </Text>
+              </View>
             </View>
 
             {/* Title */}
@@ -970,7 +993,6 @@ function HomeScreen() {
       </Animatable.View>
     );
   };
-
   const renderAlert = ({ item, index }) => (
     <Animatable.View
       animation="fadeInUp"
@@ -1495,22 +1517,38 @@ function HomeScreen() {
                   )}
                 </ScrollView>
 
-                {/* ACTION BUTTONS */}
-                <View style={styles.modalActions}>
-                  <TouchableOpacity
-                    style={styles.submitButton}
-                    onPress={() => handleAcknowledge(selectedTicket.id)}
-                  >
-                    <Text style={styles.submitButtonText}>Acknowledge</Text>
-                  </TouchableOpacity>
+                {/* ACTION BUTTONS - Only show if ticket is not already resolved/closed */}
+                {selectedTicket && selectedTicket.status !== 'RESOLVED' && selectedTicket.status !== 'CLOSED' && (
+                  <View style={styles.modalActions}>
+                    <TouchableOpacity
+                      style={styles.submitButton}
+                      onPress={() => handleAcknowledge(selectedTicket.id)}
+                    >
+                      <Text style={styles.submitButtonText}>Acknowledge</Text>
+                    </TouchableOpacity>
 
-                  <TouchableOpacity
-                    style={styles.submitButton}
-                    onPress={() => handleResolve(selectedTicket.id)}
-                  >
-                    <Text style={styles.submitButtonText}>Resolve</Text>
-                  </TouchableOpacity>
-                </View>
+                    <TouchableOpacity
+                      style={styles.submitButton}
+                      onPress={() => handleResolve(selectedTicket.id)}
+                    >
+                      <Text style={styles.submitButtonText}>Resolve</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+
+                {/* Show a message if ticket is already resolved/closed */}
+                {selectedTicket && (selectedTicket.status === 'RESOLVED' || selectedTicket.status === 'CLOSED') && (
+                  <View style={styles.modalActions}>
+                    <View style={[styles.submitButton, { backgroundColor: '#4CAF50' }]}>
+                      <Text style={styles.submitButtonText}>
+                        {selectedTicket.status === 'RESOLVED' ? '✓ Resolved' : '✓ Closed'}
+                      </Text>
+                    </View>
+                  </View>
+                )}
+
+
+
               </>
             )}
           </Animatable.View>
