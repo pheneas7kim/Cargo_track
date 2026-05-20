@@ -41,6 +41,7 @@ import AttatchEvidence from './screens/AttatchEvidence';
 import messaging from '@react-native-firebase/messaging';
 import RandomStopScreen from './screens/RandomStopScreen';
 import RequestEsealsList from './screens/RequestEsealsList';
+import RequestEsealsScreen from './screens/RequestEsealsScreen';
 import EsealsReplacement from './screens/EsealsReplacement';
 import RequestEsealsForm from './screens/RequestEsealsForm';
 import AssignedEseals from './screens/AssignedEseals';
@@ -85,6 +86,7 @@ type RootStackParamList = {
   RequestEsealsList: undefined;
   EsealsReplacement:undefined;
   RequestEsealsForm: undefined;
+  RequestEsealsScreen: undefined;
   AssignedEseals: undefined;
   ReceiveDevicesScreen: undefined;
   inventoryScan: undefined;
@@ -220,6 +222,12 @@ export default function App() {
                 component={RequestEsealsList}
                 options={{ headerShown: false }}
               />
+
+              <Stack.Screen
+                              name="RequestEsealsScreen"
+                              component={RequestEsealsScreen}
+                              options={{ headerShown: false }}
+                            />
 
               <Stack.Screen
                               name="MasterSlaveMapper"

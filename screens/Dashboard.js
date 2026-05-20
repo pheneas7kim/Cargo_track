@@ -52,6 +52,8 @@ const getTicketStatusInfo = (status) => {
       return { text: 'Open', color: '#FF6B6B' };
     case 'IN_PROGRESS':
       return { text: 'In Progress', color: '#FFA500' };
+    case 'ACKNOWLEDGED':
+      return { text: 'Acknowledged', color: '#2196F3' };
     case 'RESOLVED':
       return { text: 'Resolved', color: '#4CAF50' };
     case 'CLOSED':
@@ -326,6 +328,8 @@ function HomeScreen() {
   const [modalVisible, setModalVisible] = useState(false);
   const route = useRoute();
   const [roleId, setRoleId] = useState(null);
+  const [acknowledgingTicketId, setAcknowledgingTicketId] = useState(null);
+  const [resolvingTicketId, setResolvingTicketId] = useState(null);
 
   useEffect(() => {
     const loadRole = async () => {
@@ -605,7 +609,7 @@ function HomeScreen() {
         title: notif.title || 'Notification',
         message: notif.message || notif.description,
         time: formatRelativeTime(notif.createdAt),
-        read: false,
+        read: notif.read || false,  // ← Use the API's read status
         type: notif.type?.toLowerCase() === 'alarm' ? 'alert' : 'info',
       }));
       setNotifications(transformed);
@@ -749,6 +753,9 @@ function HomeScreen() {
 
 
   const handleAcknowledge = async (ticketId) => {
+    if (acknowledgingTicketId) return; // Prevent multiple clicks
+
+    setAcknowledgingTicketId(ticketId);
     try {
       await acknowledgeTicket(ticketId);
       Snackbar.show({
@@ -767,10 +774,16 @@ function HomeScreen() {
         duration: 3000,
         backgroundColor: '#FF6B6B',
       });
+    } finally {
+      setAcknowledgingTicketId(null);
     }
   };
 
+  // Update the handleResolve function
   const handleResolve = async (ticketId) => {
+    if (resolvingTicketId) return; // Prevent multiple clicks
+
+    setResolvingTicketId(ticketId);
     try {
       await resolveTicket(ticketId);
       Snackbar.show({
@@ -789,6 +802,8 @@ function HomeScreen() {
         duration: 3000,
         backgroundColor: '#FF6B6B',
       });
+    } finally {
+      setResolvingTicketId(null);
     }
   };
 
@@ -963,7 +978,7 @@ function HomeScreen() {
             <View style={styles.ticketFooter}>
               <View style={styles.footerItem}>
                 <Text style={styles.footerIcon}>🕒</Text>
-                <Text style={styles.footerText}>{formatDate(item.createdAt)}</Text>
+                <Text style={styles.footerText}>{formatDate(item.updatedAt)}</Text>
               </View>
 
               {item.t1Number && (
@@ -1517,36 +1532,69 @@ function HomeScreen() {
                   )}
                 </ScrollView>
 
-                {/* ACTION BUTTONS - Only show if ticket is not already resolved/closed */}
-                {selectedTicket && selectedTicket.status !== 'RESOLVED' && selectedTicket.status !== 'CLOSED' && (
-                  <View style={styles.modalActions}>
-                    <TouchableOpacity
-                      style={styles.submitButton}
-                      onPress={() => handleAcknowledge(selectedTicket.id)}
-                    >
-                      <Text style={styles.submitButtonText}>Acknowledge</Text>
-                    </TouchableOpacity>
+                                {/* ACTION BUTTONS - Consolidated Logic */}
+                                {selectedTicket && (
+                                  <View style={styles.modalActions}>
+                                    {/* Case 1: Ticket is RESOLVED or CLOSED */}
+                                    {(selectedTicket.status === 'RESOLVED' || selectedTicket.status === 'CLOSED') ? (
+                                      <View style={[styles.submitButton, { backgroundColor: '#4CAF50', flex: 1 }]}>
+                                        <Text style={styles.submitButtonText}>
+                                          {selectedTicket.status === 'RESOLVED' ? '✓ Resolved' : '✓ Closed'}
+                                        </Text>
+                                      </View>
+                                    ) : (
+                                      <>
+                                        {/* Case 2: Ticket is ACKNOWLEDGED - only show Resolve button */}
+                                        {selectedTicket.status === 'ACKNOWLEDGED' ? (
+                                          <TouchableOpacity
+                                            style={[styles.submitButton, { flex: 1 }]}
+                                            onPress={() => handleResolve(selectedTicket.id)}
+                                            disabled={resolvingTicketId === selectedTicket.id}
+                                          >
+                                            {resolvingTicketId === selectedTicket.id ? (
+                                              <ActivityIndicator size="small" color="#FFFFFF" />
+                                            ) : (
+                                              <Text style={styles.submitButtonText}>Resolve</Text>
+                                            )}
+                                          </TouchableOpacity>
+                                        ) : (
+                                          <>
+                                            {/* Case 3: Ticket is OPEN/IN_PROGRESS - show both buttons */}
+                                            <TouchableOpacity
+                                              style={[
+                                                styles.submitButton,
+                                                (acknowledgingTicketId === selectedTicket.id) && styles.submitButtonDisabled
+                                              ]}
+                                              onPress={() => handleAcknowledge(selectedTicket.id)}
+                                              disabled={acknowledgingTicketId === selectedTicket.id}
+                                            >
+                                              {acknowledgingTicketId === selectedTicket.id ? (
+                                                <ActivityIndicator size="small" color="#FFFFFF" />
+                                              ) : (
+                                                <Text style={styles.submitButtonText}>Acknowledge</Text>
+                                              )}
+                                            </TouchableOpacity>
 
-                    <TouchableOpacity
-                      style={styles.submitButton}
-                      onPress={() => handleResolve(selectedTicket.id)}
-                    >
-                      <Text style={styles.submitButtonText}>Resolve</Text>
-                    </TouchableOpacity>
-                  </View>
-                )}
-
-                {/* Show a message if ticket is already resolved/closed */}
-                {selectedTicket && (selectedTicket.status === 'RESOLVED' || selectedTicket.status === 'CLOSED') && (
-                  <View style={styles.modalActions}>
-                    <View style={[styles.submitButton, { backgroundColor: '#4CAF50' }]}>
-                      <Text style={styles.submitButtonText}>
-                        {selectedTicket.status === 'RESOLVED' ? '✓ Resolved' : '✓ Closed'}
-                      </Text>
-                    </View>
-                  </View>
-                )}
-
+                                            <TouchableOpacity
+                                              style={[
+                                                styles.submitButton,
+                                                (resolvingTicketId === selectedTicket.id) && styles.submitButtonDisabled
+                                              ]}
+                                              onPress={() => handleResolve(selectedTicket.id)}
+                                              disabled={resolvingTicketId === selectedTicket.id}
+                                            >
+                                              {resolvingTicketId === selectedTicket.id ? (
+                                                <ActivityIndicator size="small" color="#FFFFFF" />
+                                              ) : (
+                                                <Text style={styles.submitButtonText}>Resolve</Text>
+                                              )}
+                                            </TouchableOpacity>
+                                          </>
+                                        )}
+                                      </>
+                                    )}
+                                  </View>
+                                )}
 
 
               </>
@@ -1624,7 +1672,7 @@ const styles = StyleSheet.create({
   notificationTitle: { fontSize: 14, fontWeight: '600', color: '#1A1A1A', marginBottom: 4 },
   notificationMessage: { fontSize: 12, color: '#666', marginBottom: 4 },
   notificationTime: { fontSize: 10, color: '#999' },
-  ticketCard: { backgroundColor: '#FFFFFF', borderRadius: 16, marginHorizontal: 16, padding: 24, marginBottom: 12, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 3 },
+  ticketCard: {backgroundColor: '#FFFFFF', borderRadius: 10, marginHorizontal: 16, padding: 10, marginBottom: 10, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.04, shadowRadius: 6, elevation: 2,},
   ticketId: { fontSize: 12, color: '#999', fontWeight: '500' },
   priorityBadge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
   priorityText: { fontSize: 10, fontWeight: '600' },
