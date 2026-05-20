@@ -14,7 +14,8 @@ import {
   ScrollView,
   TextInput,
   Animated,
-  Alert
+  Alert,
+  Image
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
@@ -35,35 +36,43 @@ const PRIORITY_ORDER = {
   'LOW': 4
 };
 
+// Helper: Get ticket status info (matching HomeScreen)
+const getTicketStatusInfo = (status) => {
+  switch (status?.toUpperCase()) {
+    case 'REPORTED':
+      return { text: 'Reported', color: '#FFA500' };
+    case 'ACKNOWLEDGED':
+      return { text: 'Acknowledged', color: '#2196F3' };
+    case 'RESOLVED':
+      return { text: 'Resolved', color: '#4CAF50' };
+    case 'CLOSED':
+      return { text: 'Closed', color: '#2196F3' };
+    default:
+      return { text: status || 'Unknown', color: '#999' };
+  }
+};
+
 const TicketsScreen = () => {
   const navigation = useNavigation();
   const [tickets, setTickets] = useState([]);
+  const [shipments, setShipments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [selectedTicket, setSelectedTicket] = useState(null);
   const [modalVisible, setModalVisible] = useState(false);
   const [filter, setFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const [acknowledgingTicketId, setAcknowledgingTicketId] = useState(null);
+  const [resolvingTicketId, setResolvingTicketId] = useState(null);
+
+  // Comments state
   const [showComments, setShowComments] = useState(false);
   const [commentText, setCommentText] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
-  // --- NEW STATE FOR CREATION ---
-  const [createModalVisible, setCreateModalVisible] = useState(false);
-  const [newTicket, setNewTicket] = useState({
-    title: '',
-    description: '',
-    priority: 'MEDIUM',
-    deviceSn: '',
-    cargoValue: 0,
-    incidentType: 'MANUAL',
-  });
-
   // Animation values
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(30)).current;
-  const STATUS_ACTIONS = ['ACKNOWLEDGED', 'RESOLVED'];
-
 
   useEffect(() => {
     Animated.parallel([
@@ -83,37 +92,139 @@ const TicketsScreen = () => {
   useFocusEffect(
     React.useCallback(() => {
       fetchTickets();
-      
+      fetchShipments();
+
       const backAction = () => {
         return false;
       };
       const backHandler = BackHandler.addEventListener('hardwareBackPress', backAction);
       return () => backHandler.remove();
     }, [])
+  );
+
+  // Fetch shipments for tracking
+  const fetchShipments = async () => {
+    try {
+      const token = await AsyncStorage.getItem('accessToken');
+      if (!token) return;
+
+      const response = await axios.get(`${serverUrl}/telemetry/latest-t1s`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+
+      if (response.data) {
+        setShipments(response.data);
+      }
+    } catch (error) {
+      console.error('Failed to fetch shipments:', error);
+    }
+  };
+
+  // Acknowledge ticket function
+  const acknowledgeTicket = async (ticketId) => {
+    const token = await AsyncStorage.getItem('accessToken');
+    const response = await axios.post(
+      `${serverUrl}/tickets/acknowledge`,
+      { ticketId: Number(ticketId), content: 'Acknowledged from mobile app' },
+      { headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' } }
+    );
+    return response.data;
+  };
+
+  // Resolve ticket function
+  const resolveTicket = async (ticketId) => {
+    const token = await AsyncStorage.getItem('accessToken');
+
+    const formData = new FormData();
+    formData.append('notes', 'Resolved from mobile app');
+
+    const response = await fetch(
+      `${serverUrl}/tickets/${ticketId}/resolve`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+        body: formData,
+      }
     );
 
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Resolve error:', errorText);
+      throw new Error('Failed to resolve ticket');
+    }
+    return await response.json();
+  };
 
+  // Add comment function
+  const addComment = async () => {
+    if (!commentText.trim()) {
+      Snackbar.show({
+        text: 'Please enter a comment',
+        duration: 2000,
+        backgroundColor: '#FF6B6B',
+      });
+      return;
+    }
 
+    setSubmitting(true);
+    try {
+      const token = await AsyncStorage.getItem('accessToken');
+      await axios.post(
+        `${serverUrl}/tickets/${selectedTicket.id}/comments`,
+        { content: commentText },
+        {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
 
+      // Refresh tickets
+      await fetchTickets();
+
+      // Update selected ticket
+      const updatedTicket = tickets.find(t => t.id === selectedTicket.id);
+      if (updatedTicket) {
+        setSelectedTicket(updatedTicket);
+      }
+
+      setCommentText('');
+      Snackbar.show({
+        text: 'Comment added successfully',
+        duration: 2000,
+        backgroundColor: '#4CAF50',
+      });
+    } catch (error) {
+      console.error('Failed to add comment:', error);
+      Snackbar.show({
+        text: 'Failed to add comment',
+        duration: 3000,
+        backgroundColor: '#FF6B6B',
+      });
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   const fetchTickets = async (isRefresh = false) => {
     try {
       if (!isRefresh) setLoading(true);
-      
+
       const token = await AsyncStorage.getItem('accessToken');
       const userObj = await AsyncStorage.getItem('user');
       const user = userObj ? JSON.parse(userObj) : null;
       const userId = user?.id || await AsyncStorage.getItem('id');
-      
+
       if (!token || !userId) {
         console.error('No token or user ID found');
         return;
       }
 
       const response = await axios.get(
-        `${serverUrl}/tickets?page=0&size=10000000&sort=createdAt,desc`,
-
-
+        `${serverUrl}/tickets/assignee/${userId}?page=0&size=10000&sort=createdAt,desc`,
         {
           headers: {
             'Authorization': `Bearer ${token}`,
@@ -122,104 +233,62 @@ const TicketsScreen = () => {
       );
 
       if (response.data && response.data.content) {
-        const ticketsData = response.data.content.map(t => ({
-          id: t.id,
-          ticketNumber: t.ticketNumber,
-          title: t.title,
-          description: t.description,
-          priority: t.priority,
-          status: t.status,
-          t1Number: t.t1Number,
-          assignedTo: t.assignee ? {
-            id: t.assignee.userId,
-            name: (t.assignee.firstName && t.assignee.lastName) 
-              ? `${t.assignee.firstName} ${t.assignee.lastName}` 
-              : (t.assignee.username || t.assignee.email || `User ${t.assignee.userId}`)
-          } : null,
-          reporter: t.reporter ? {
-            id: t.reporter.userId,
-            name: (t.reporter.firstName && t.reporter.lastName) 
-              ? `${t.reporter.firstName} ${t.reporter.lastName}` 
-              : (t.reporter.username || t.reporter.email || `User ${t.reporter.userId}`)
-          } : null,
-          sourceNotificationId: t.sourceNotificationId,
-          deviceSerialNumber: t.deviceSerialNumber,
-          geofenceName: t.geofenceName,
-          createdAt: t.createdAt,
-          updatedAt: t.updatedAt,
-          resolvedAt: t.resolvedAt,
-          closedAt: t.closedAt,
-          comments: t.comments ? t.comments.map(c => ({
-            id: c.id,
-            user: c.author ? {
-              id: c.author.userId,
-              name: (c.author.firstName && c.author.lastName) 
-                ? `${c.author.firstName} ${c.author.lastName}` 
-                : (c.author.username || c.author.email || `User ${c.author.userId}`)
-            } : { name: 'System' },
-            text: c.content,
-            oldStatus: c.oldStatus,
-            newStatus: c.newStatus,
-            createdAt: c.createdAt
-          })) : [],
-          read: false
-        })).sort((a, b) => {
+        const ticketsData = response.data.content.map(t => {
+          // Get latest status from comments if available
+          const latestStatusFromComments = t.comments && t.comments.length > 0
+            ? t.comments[t.comments.length - 1].newStatus
+            : null;
+          const finalStatus = latestStatusFromComments || t.status;
+
+          return {
+            id: t.id,
+            ticketNumber: t.ticketNumber,
+            title: t.title,
+            description: t.description,
+            priority: t.priority,
+            status: finalStatus?.toUpperCase(),
+            t1Number: t.t1Number,
+            assignedTo: t.assignee ? {
+              id: t.assignee.userId,
+              name: (t.assignee.firstName && t.assignee.lastName)
+                ? `${t.assignee.firstName} ${t.assignee.lastName}`
+                : (t.assignee.username || t.assignee.email || `User ${t.assignee.userId}`)
+            } : null,
+            reporter: t.reporter ? {
+              id: t.reporter.userId,
+              name: (t.reporter.firstName && t.reporter.lastName)
+                ? `${t.reporter.firstName} ${t.reporter.lastName}`
+                : (t.reporter.username || t.reporter.email || `User ${t.reporter.userId}`)
+            } : null,
+            sourceNotificationId: t.sourceNotificationId,
+            deviceSerialNumber: t.deviceSerialNumber,
+            geofenceName: t.geofenceName,
+            createdAt: t.createdAt,
+            updatedAt: t.updatedAt,
+            resolvedAt: t.resolvedAt,
+            closedAt: t.closedAt,
+            comments: t.comments ? t.comments.map(c => ({
+              id: c.id,
+              user: c.author ? {
+                id: c.author.userId,
+                name: (c.author.firstName && c.author.lastName)
+                  ? `${c.author.firstName} ${c.author.lastName}`
+                  : (c.author.username || c.author.email || `User ${c.author.userId}`)
+              } : { name: 'System' },
+              text: c.content,
+              oldStatus: c.oldStatus,
+              newStatus: c.newStatus,
+              createdAt: c.createdAt
+            })) : [],
+            read: false
+          };
+        }).sort((a, b) => {
           const p1 = PRIORITY_ORDER[a.priority] || 99;
           const p2 = PRIORITY_ORDER[b.priority] || 99;
           if (p1 !== p2) return p1 - p2;
           return new Date(b.createdAt) - new Date(a.createdAt);
         });
-        
-        setTickets(ticketsData);
-      } else if (Array.isArray(response.data)) {
-        // Handle case where response is array directly
-        const ticketsData = response.data.map(t => ({
-          id: t.id,
-          ticketNumber: t.ticketNumber,
-          title: t.title,
-          description: t.description,
-          priority: t.priority,
-          status: t.status,
-          assignedTo: t.assignee ? {
-            id: t.assignee.userId,
-            name: (t.assignee.firstName && t.assignee.lastName) 
-              ? `${t.assignee.firstName} ${t.assignee.lastName}` 
-              : (t.assignee.username || t.assignee.email || `User ${t.assignee.userId}`)
-          } : null,
-          reporter: t.reporter ? {
-            id: t.reporter.userId,
-            name: (t.reporter.firstName && t.reporter.lastName) 
-              ? `${t.reporter.firstName} ${t.reporter.lastName}` 
-              : (t.reporter.username || t.reporter.email || `User ${t.reporter.userId}`)
-          } : null,
-          sourceNotificationId: t.sourceNotificationId,
-          deviceSerialNumber: t.deviceSerialNumber,
-          geofenceName: t.geofenceName,
-          createdAt: t.createdAt,
-          updatedAt: t.updatedAt,
-          resolvedAt: t.resolvedAt,
-          closedAt: t.closedAt,
-          comments: t.comments ? t.comments.map(c => ({
-            id: c.id,
-            user: c.author ? {
-              id: c.author.userId,
-              name: (c.author.firstName && c.author.lastName) 
-                ? `${c.author.firstName} ${c.author.lastName}` 
-                : (c.author.username || c.author.email || `User ${c.author.userId}`)
-            } : { name: 'System' },
-            text: c.content,
-            oldStatus: c.oldStatus,
-            newStatus: c.newStatus,
-            createdAt: c.createdAt
-          })) : [],
-          read: false
-        })).sort((a, b) => {
-          const p1 = PRIORITY_ORDER[a.priority] || 99;
-          const p2 = PRIORITY_ORDER[b.priority] || 99;
-          if (p1 !== p2) return p1 - p2;
-          return new Date(b.createdAt) - new Date(a.createdAt);
-        });
-        
+
         setTickets(ticketsData);
       }
     } catch (error) {
@@ -238,17 +307,6 @@ const TicketsScreen = () => {
   const onRefresh = () => {
     setRefreshing(true);
     fetchTickets(true);
-  };
-
-  const getStatusColor = (status) => {
-    switch (status?.toUpperCase()) {
-      case 'ACKNOWLEDGED':
-        return '#FFA500';
-      case 'RESOLVED':
-        return '#2196F3';
-      default:
-        return '#666';
-    }
   };
 
   const getPriorityColor = (priority) => {
@@ -287,148 +345,100 @@ const TicketsScreen = () => {
     return date.toLocaleDateString();
   };
 
+  const cleanTicketDescription = (text) => {
+    if (!text) return '';
+    return text
+      .replace(/Location:\s*.*$/gim, '')
+      .replace(/Map:\s*https?:\/\/\S+/gim, '')
+      .replace(/https?:\/\/maps\.google\.com\/\S+/gim, '')
+      .replace(/-?\d{1,2}\.\d+,\s*-?\d{1,3}\.\d+/g, '')
+      .replace(/\n{2,}/g, '\n')
+      .trim();
+  };
+
+  const getStatusCounts = () => {
+    return {
+      all: tickets.length,
+      reported: tickets.filter(t => t.status?.toUpperCase() === 'REPORTED').length,
+      acknowledged: tickets.filter(t => t.status?.toUpperCase() === 'ACKNOWLEDGED').length,
+      resolved: tickets.filter(t => t.status?.toUpperCase() === 'RESOLVED').length,
+    };
+  };
+
   const getFilteredTickets = () => {
     let filtered = [...tickets];
-    
-    // Apply status filter
+
     switch (filter) {
+      case 'all':
+        filtered = [...tickets];
+        break;
+      case 'reported':
+        filtered = filtered.filter(t => t.status?.toUpperCase() === 'REPORTED');
+        break;
       case 'acknowledged':
         filtered = filtered.filter(t => t.status?.toUpperCase() === 'ACKNOWLEDGED');
         break;
-
       case 'resolved':
         filtered = filtered.filter(t => t.status?.toUpperCase() === 'RESOLVED');
         break;
-
-      case 'critical':
-        filtered = filtered.filter(t => t.priority?.toUpperCase() === 'CRITICAL');
-        break;
-
       default:
+        filtered = [...tickets];
         break;
     }
-    
-    // Apply search query
+
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
-      filtered = filtered.filter(t => 
+      filtered = filtered.filter(t =>
         t.title?.toLowerCase().includes(query) ||
         t.ticketNumber?.toLowerCase().includes(query) ||
         t.description?.toLowerCase().includes(query) ||
         t.deviceSerialNumber?.toLowerCase().includes(query)
       );
     }
-    
+
     return filtered;
   };
 
-  const getStatusCounts = () => {
-    return {
-      total: tickets.length,
-      open: tickets.filter(t => t.status?.toLowerCase() === 'open').length,
-      inProgress: tickets.filter(t => t.status?.toLowerCase() === 'in-progress').length,
-      resolved: tickets.filter(t => t.status?.toLowerCase() === 'resolved').length,
-      closed: tickets.filter(t => t.status?.toLowerCase() === 'closed').length,
-      critical: tickets.filter(t => t.priority?.toUpperCase() === 'CRITICAL').length
-    };
-  };
-
-  const addComment = async () => {
-    if (!commentText.trim()) {
-      Snackbar.show({
-        text: 'Please enter a comment',
-        duration: 2000,
-        backgroundColor: '#FF6B6B',
-      });
-      return;
-    }
-
-    setSubmitting(true);
+  const handleAcknowledge = async (ticketId) => {
+    if (acknowledgingTicketId) return;
+    setAcknowledgingTicketId(ticketId);
     try {
-      const token = await AsyncStorage.getItem('accessToken');
-      await axios.post(
-        `${serverUrl}/tickets/${selectedTicket.id}/comments`,
-        { content: commentText },
-        {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json',
-          },
-        }
-      );
-      
-      // Refresh ticket details
+      await acknowledgeTicket(ticketId);
+      Snackbar.show({ text: 'Ticket acknowledged successfully', duration: 2000, backgroundColor: '#4CAF50' });
+      setModalVisible(false);
+      setSelectedTicket(null);
       await fetchTickets();
-      
-      // Update selected ticket
-      const updatedTicket = tickets.find(t => t.id === selectedTicket.id);
-      if (updatedTicket) {
-        setSelectedTicket(updatedTicket);
-      }
-      
-      setCommentText('');
-      Snackbar.show({
-        text: 'Comment added successfully',
-        duration: 2000,
-        backgroundColor: '#4CAF50',
-      });
-    } catch (error) {
-      console.error('Failed to add comment:', error);
-      Snackbar.show({
-        text: 'Failed to add comment',
-        duration: 3000,
-        backgroundColor: '#FF6B6B',
-      });
+    } catch (e) {
+      Snackbar.show({ text: 'Failed to acknowledge ticket', duration: 3000, backgroundColor: '#FF6B6B' });
     } finally {
-      setSubmitting(false);
+      setAcknowledgingTicketId(null);
     }
   };
 
-  const updateTicketStatus = async (newStatus) => {
+  const handleResolve = async (ticketId) => {
+    if (resolvingTicketId) return;
+    setResolvingTicketId(ticketId);
     try {
-      const token = await AsyncStorage.getItem('accessToken');
-      await axios.patch(
-        `${serverUrl}/tickets/${selectedTicket.id}/status`,
-        { status: newStatus },
-        {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json',
-          },
-        }
-      );
-      
-      // Refresh tickets
+      await resolveTicket(ticketId);
+      Snackbar.show({ text: 'Ticket resolved successfully', duration: 2000, backgroundColor: '#4CAF50' });
+      setModalVisible(false);
+      setSelectedTicket(null);
       await fetchTickets();
-      
-      // Update selected ticket
-      const updatedTicket = tickets.find(t => t.id === selectedTicket.id);
-      if (updatedTicket) {
-        setSelectedTicket(updatedTicket);
-      }
-      
-      Snackbar.show({
-        text: `Ticket status updated to ${newStatus}`,
-        duration: 2000,
-        backgroundColor: '#4CAF50',
-      });
-    } catch (error) {
-      console.error('Failed to update status:', error);
-      Snackbar.show({
-        text: 'Failed to update status',
-        duration: 3000,
-        backgroundColor: '#FF6B6B',
-      });
+    } catch (e) {
+      Snackbar.show({ text: 'Failed to resolve ticket', duration: 3000, backgroundColor: '#FF6B6B' });
+    } finally {
+      setResolvingTicketId(null);
     }
   };
 
   const renderTicket = ({ item, index }) => {
-    const statusColor = getStatusColor(item.status);
+    const statusInfo = getTicketStatusInfo(item.status);
+    const statusColor = statusInfo.color;
     const priorityColor = getPriorityColor(item.priority);
-    
+
     return (
-      <Animatable.View 
-        animation="fadeInUp" 
+      <Animatable.View
+        animation="fadeInUp"
         delay={index * 80}
         duration={400}
         style={styles.animationWrapper}
@@ -441,40 +451,43 @@ const TicketsScreen = () => {
           }}
         >
           <View style={styles.ticketCard}>
+            {/* Top Row: Ticket Number | Priority | Status */}
             <View style={styles.ticketHeader}>
-              <View style={styles.ticketNumberContainer}>
-                <Text style={styles.ticketNumber}>{item.ticketNumber || `#${item.id}`}</Text>
-                <View style={[styles.priorityBadge, { backgroundColor: priorityColor + '20' }]}>
-                  <Text style={styles.priorityIcon}>{getPriorityIcon(item.priority)}</Text>
-                  <Text style={[styles.priorityText, { color: priorityColor }]}>
-                    {item.priority}
-                  </Text>
-                </View>
+              <Text style={styles.ticketNumber}>{item.ticketNumber || `#${item.id}`}</Text>
+              <View style={[styles.priorityBadge, { backgroundColor: priorityColor + '20' }]}>
+                <Text style={styles.priorityIcon}>{getPriorityIcon(item.priority)}</Text>
+                <Text style={[styles.priorityText, { color: priorityColor }]}>
+                  {item.priority}
+                </Text>
               </View>
-              <View style={[styles.statusBadge, { backgroundColor: statusColor + '20' }]}>
-                <Text style={[styles.statusText, { color: statusColor }]}>
-                  {item.status || 'Open'}
+              <View style={[styles.statusBadgeSmall, { backgroundColor: statusColor + '20' }]}>
+                <Text style={[styles.statusTextSmall, { color: statusColor }]}>
+                  {statusInfo.text}
                 </Text>
               </View>
             </View>
 
+            {/* Title */}
             <Text style={styles.ticketTitle}>{item.title}</Text>
+
+            {/* Description */}
             <Text style={styles.ticketDescription} numberOfLines={2}>
-              {item.description}
+              {cleanTicketDescription(item.description)}
             </Text>
 
+            {/* Bottom Row: Time, T1, Device */}
             <View style={styles.ticketFooter}>
               <View style={styles.footerItem}>
                 <Text style={styles.footerIcon}>🕒</Text>
-                <Text style={styles.footerText}>{formatDate(item.createdAt)}</Text>
+                <Text style={styles.footerText}>{formatDate(item.updatedAt || item.createdAt)}</Text>
               </View>
 
-               {item.t1Number && (
-                 <View style={styles.footerItem}>
+              {item.t1Number && (
+                <View style={styles.footerItem}>
                   <Text style={styles.footerIcon}>📄</Text>
                   <Text style={styles.footerText}>{item.t1Number}</Text>
-                 </View>
-               )}
+                </View>
+              )}
 
               {item.deviceSerialNumber && (
                 <View style={styles.footerItem}>
@@ -482,14 +495,8 @@ const TicketsScreen = () => {
                   <Text style={styles.footerText}>{item.deviceSerialNumber}</Text>
                 </View>
               )}
-              {item.geofenceName && (
-                <View style={styles.footerItem}>
-                  <Text style={styles.footerIcon}>📍</Text>
-                  <Text style={styles.footerText}>{item.geofenceName}</Text>
-                </View>
-              )}
             </View>
-            
+
             {item.comments && item.comments.length > 0 && (
               <View style={styles.commentsCount}>
                 <Text style={styles.commentsIcon}>💬</Text>
@@ -504,14 +511,15 @@ const TicketsScreen = () => {
 
   const renderHeader = () => {
     const counts = getStatusCounts();
-    
+    const totalTickets = tickets.length;
+
     return (
       <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: slideAnim }] }}>
         <View style={styles.header}>
           <View style={styles.headerTop}>
             <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-                                  <Icon name="arrow-back" size={24} color="#1A1A1A" />
-                                </TouchableOpacity>
+              <Icon name="arrow-back" size={24} color="#1A1A1A" />
+            </TouchableOpacity>
             <Text style={styles.headerTitle}>Tickets</Text>
             <TouchableOpacity
               style={styles.createButton}
@@ -537,59 +545,52 @@ const TicketsScreen = () => {
             )}
           </View>
 
-          <ScrollView 
-            horizontal 
-            showsHorizontalScrollIndicator={false} 
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.statsContainer}
           >
-            <TouchableOpacity 
+            {/* All Filter */}
+            <TouchableOpacity
               style={[styles.statCard, filter === 'all' && styles.activeStatCard]}
               onPress={() => setFilter('all')}
             >
-              <Text style={styles.statNumber}>{counts.total}</Text>
+              <Text style={[styles.statNumber, { color: '#1A1A1A' }]}>{counts.all}</Text>
               <Text style={styles.statLabel}>All</Text>
             </TouchableOpacity>
-            
-            <TouchableOpacity 
-              style={[styles.statCard, filter === 'open' && styles.activeStatCard]}
-              onPress={() => setFilter('open')}
+
+            {/* Reported Filter */}
+            <TouchableOpacity
+              style={[styles.statCard, filter === 'reported' && styles.activeStatCard]}
+              onPress={() => setFilter('reported')}
             >
-              <Text style={[styles.statNumber, { color: '#FFA500' }]}>{counts.open}</Text>
-              <Text style={styles.statLabel}>Open</Text>
+              <Text style={[styles.statNumber, { color: '#FFA500' }]}>{counts.reported}</Text>
+              <Text style={styles.statLabel}>Reported</Text>
             </TouchableOpacity>
-            
-            <TouchableOpacity 
-              style={[styles.statCard, filter === 'in-progress' && styles.activeStatCard]}
-              onPress={() => setFilter('in-progress')}
+
+            {/* Acknowledged Filter */}
+            <TouchableOpacity
+              style={[styles.statCard, filter === 'acknowledged' && styles.activeStatCard]}
+              onPress={() => setFilter('acknowledged')}
             >
-              <Text style={[styles.statNumber, { color: '#4CAF50' }]}>{counts.inProgress}</Text>
-              <Text style={styles.statLabel}>In Progress</Text>
+              <Text style={[styles.statNumber, { color: '#2196F3' }]}>{counts.acknowledged}</Text>
+              <Text style={styles.statLabel}>Acknowledged</Text>
             </TouchableOpacity>
-            
-            <TouchableOpacity 
+
+            {/* Resolved Filter */}
+            <TouchableOpacity
               style={[styles.statCard, filter === 'resolved' && styles.activeStatCard]}
               onPress={() => setFilter('resolved')}
             >
-              <Text style={[styles.statNumber, { color: '#2196F3' }]}>{counts.resolved}</Text>
+              <Text style={[styles.statNumber, { color: '#4CAF50' }]}>{counts.resolved}</Text>
               <Text style={styles.statLabel}>Resolved</Text>
             </TouchableOpacity>
-            
-            <TouchableOpacity 
-              style={[styles.statCard, filter === 'closed' && styles.activeStatCard]}
-              onPress={() => setFilter('closed')}
-            >
-              <Text style={[styles.statNumber, { color: '#9E9E9E' }]}>{counts.closed}</Text>
-              <Text style={styles.statLabel}>Closed</Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity 
-              style={[styles.statCard, filter === 'critical' && styles.activeStatCard]}
-              onPress={() => setFilter('critical')}
-            >
-              <Text style={[styles.statNumber, { color: '#FF6B6B' }]}>{counts.critical}</Text>
-              <Text style={styles.statLabel}>Critical</Text>
-            </TouchableOpacity>
           </ScrollView>
+
+          {/* Show total count */}
+          <View style={styles.totalContainer}>
+            <Text style={styles.totalText}>Total: {totalTickets} tickets</Text>
+          </View>
         </View>
       </Animated.View>
     );
@@ -610,15 +611,15 @@ const TicketsScreen = () => {
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#F8F9FA" />
-      
+
       <FlatList
         data={getFilteredTickets()}
         keyExtractor={item => item.id.toString()}
         renderItem={renderTicket}
         ListHeaderComponent={renderHeader}
         refreshControl={
-          <RefreshControl 
-            refreshing={refreshing} 
+          <RefreshControl
+            refreshing={refreshing}
             onRefresh={onRefresh}
             tintColor="#FFA500"
             colors={['#FFA500']}
@@ -631,8 +632,8 @@ const TicketsScreen = () => {
             <Text style={styles.emptyIcon}>🎫</Text>
             <Text style={styles.emptyTitle}>No tickets found</Text>
             <Text style={styles.emptyText}>
-              {searchQuery 
-                ? 'Try adjusting your search' 
+              {searchQuery
+                ? 'Try adjusting your search'
                 : filter !== 'all'
                 ? `No ${filter} tickets available`
                 : 'Create a new ticket to get started'}
@@ -656,210 +657,225 @@ const TicketsScreen = () => {
                 <Text style={styles.closeButtonText}>✕</Text>
               </TouchableOpacity>
             </View>
-            
+
             {selectedTicket && (
-              <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
-                {/* Ticket Header */}
-                <View style={styles.ticketDetailHeader}>
-                  <Text style={styles.ticketDetailNumber}>
-                    {selectedTicket.ticketNumber || `#${selectedTicket.id}`}
-                  </Text>
-                  <View style={[styles.statusBadgeLarge, 
-                    { backgroundColor: getStatusColor(selectedTicket.status) + '20' }]}>
-                    <Text style={[styles.statusTextLarge, { color: getStatusColor(selectedTicket.status) }]}>
-                      {selectedTicket.status || 'Open'}
+              <>
+                <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
+                  {/* Ticket Header */}
+                  <View style={styles.ticketDetailHeader}>
+                    <Text style={styles.ticketDetailNumber}>
+                      {selectedTicket.ticketNumber || `#${selectedTicket.id}`}
                     </Text>
-                  </View>
-                </View>
-
-                <Text style={styles.ticketDetailTitle}>{selectedTicket.title}</Text>
-                <Text style={styles.ticketDetailDescription}>
-                  {selectedTicket.description
-                    .replace(/Location: .*\n?/g, '')
-                    .replace(/Map: .*\n?/g, '')
-                    .trim()}
-                </Text>
-
-
-
-                                {/* Ticket Info Grid */}
-                                <View style={styles.infoGrid}>
-                                  <View style={styles.infoItem}>
-                                    <Text style={styles.infoLabel}>Priority</Text>
-                                    <View style={[styles.priorityBadgeLarge,
-                                      { backgroundColor: getPriorityColor(selectedTicket.priority) + '20' }]}>
-                                      <Text style={styles.priorityIconLarge}>
-                                        {getPriorityIcon(selectedTicket.priority)}
-                                      </Text>
-                                      <Text style={[styles.priorityTextLarge, { color: getPriorityColor(selectedTicket.priority) }]}>
-                                        {selectedTicket.priority}
-                                      </Text>
-                                    </View>
-                                  </View>
-
-                                   {selectedTicket.t1Number && (
-                                     <View style={styles.infoItem}>
-                                       <Text style={styles.infoLabel}>T1 Number</Text>
-                                       <Text style={styles.infoValue}>{selectedTicket.t1Number}</Text>
-                                     </View>
-                                   )}
-
-                                  {selectedTicket.deviceSerialNumber && (
-                                    <View style={styles.infoItem}>
-                                      <Text style={styles.infoLabel}>Device</Text>
-                                      <Text style={styles.infoValue}>{selectedTicket.deviceSerialNumber}</Text>
-                                    </View>
-                                  )}
-
-                                  {selectedTicket.geofenceName && (
-                                    <View style={styles.infoItem}>
-                                      <Text style={styles.infoLabel}>Geofence</Text>
-                                      <Text style={styles.infoValue}>{selectedTicket.geofenceName}</Text>
-                                    </View>
-                                  )}
-
-                                  {selectedTicket.assignedTo && (
-                                    <View style={styles.infoItem}>
-                                      <Text style={styles.infoLabel}>Assigned To</Text>
-                                      <Text style={styles.infoValue}>{selectedTicket.assignedTo.name}</Text>
-                                    </View>
-                                  )}
-
-                                  {selectedTicket.reporter && (
-                                    <View style={styles.infoItem}>
-                                      <Text style={styles.infoLabel}>Reported By</Text>
-                                      <Text style={styles.infoValue}>{selectedTicket.reporter.name}</Text>
-                                    </View>
-                                  )}
-
-                                  <View style={styles.infoItem}>
-                                    <Text style={styles.infoLabel}>Created</Text>
-                                    <Text style={styles.infoValue}>
-                                      {new Date(selectedTicket.createdAt).toLocaleString()}
-                                    </Text>
-                                  </View>
-
-                                  {selectedTicket.updatedAt && (
-                                    <View style={styles.infoItem}>
-                                      <Text style={styles.infoLabel}>Last Updated</Text>
-                                      <Text style={styles.infoValue}>
-                                        {new Date(selectedTicket.updatedAt).toLocaleString()}
-                                      </Text>
-                                    </View>
-                                  )}
-                                </View>
-
-                                {/* Track on Map Button - Only show if t1Number exists */}
-                                {selectedTicket.t1Number && (
-                                  <TouchableOpacity
-                                    style={styles.trackOnMapButton}
-                                    onPress={() => {
-                                      setModalVisible(false);
-                                      navigation.navigate('TrackOnMap2', {
-                                        t1Number: selectedTicket.t1Number,
-                                        ticketId: selectedTicket.id
-                                      });
-                                    }}
-                                  >
-                                    <Icon name="map" size={20} color="#FFFFFF" />
-                                    <Text style={styles.trackOnMapButtonText}>Track on Map</Text>
-                                  </TouchableOpacity>
-                                )}
-
-              {/*
-                <View style={styles.statusUpdateSection}>
-                  <Text style={styles.sectionTitle}>Update Status</Text>
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.statusButtons}>
-                    {STATUS_ACTIONS.map(status => (
-                      <TouchableOpacity
-                        key={status}
-                        style={[
-                          styles.statusButton,
-                          selectedTicket.status?.toLowerCase() === status.toLowerCase() && styles.activeStatusButton
-                        ]}
-                        onPress={() => updateTicketStatus(status)}
-                      >
-                        <Text style={[
-                          styles.statusButtonText,
-                          selectedTicket.status?.toLowerCase() === status.toLowerCase() && styles.activeStatusButtonText
-                        ]}>
-                          {status}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
-                  </ScrollView>
-                </View>
-
-                <View style={styles.commentsSection}>
-                  <TouchableOpacity 
-                    style={styles.commentsHeader}
-                    onPress={() => setShowComments(!showComments)}
-                  >
-                    <Text style={styles.sectionTitle}>
-                      Comments ({selectedTicket.comments?.length || 0})
-                    </Text>
-                    <Text style={styles.expandIcon}>
-                      {showComments ? '▲' : '▼'}
-                    </Text>
-                  </TouchableOpacity>
-
-
-                  {showComments && (
-                    <View style={styles.commentsList}>
-                      {selectedTicket.comments && selectedTicket.comments.length > 0 ? (
-                        selectedTicket.comments.map((comment, index) => (
-                          <View key={comment.id || index} style={styles.commentItem}>
-                            <View style={styles.commentHeader}>
-                              <Text style={styles.commentUser}>{comment.user?.name || 'System'}</Text>
-                              <Text style={styles.commentTime}>{formatDate(comment.createdAt)}</Text>
-                            </View>
-                            <Text style={styles.commentText}>{comment.text}</Text>
-                            {comment.oldStatus && comment.newStatus && (
-                              <Text style={styles.statusChangeText}>
-                                Status changed from {comment.oldStatus} to {comment.newStatus}
-                              </Text>
-                            )}
-                          </View>
-                        ))
-                      ) : (
-                        <Text style={styles.noCommentsText}>No comments yet</Text>
-                      )}
+                    <View style={[styles.statusBadgeLarge,
+                      { backgroundColor: getTicketStatusInfo(selectedTicket.status).color + '20' }]}>
+                      <Text style={[styles.statusTextLarge, { color: getTicketStatusInfo(selectedTicket.status).color }]}>
+                        {getTicketStatusInfo(selectedTicket.status).text}
+                      </Text>
                     </View>
+                  </View>
+
+                  <Text style={styles.ticketDetailTitle}>{selectedTicket.title}</Text>
+                  <Text style={styles.ticketDetailDescription}>
+                    {cleanTicketDescription(selectedTicket.description)}
+                  </Text>
+
+                  {/* Ticket Info Grid */}
+                  <View style={styles.infoGrid}>
+                    <View style={styles.infoItem}>
+                      <Text style={styles.infoLabel}>Priority</Text>
+                      <View style={[styles.priorityBadgeLarge,
+                        { backgroundColor: getPriorityColor(selectedTicket.priority) + '20' }]}>
+                        <Text style={styles.priorityIconLarge}>
+                          {getPriorityIcon(selectedTicket.priority)}
+                        </Text>
+                        <Text style={[styles.priorityTextLarge, { color: getPriorityColor(selectedTicket.priority) }]}>
+                          {selectedTicket.priority}
+                        </Text>
+                      </View>
+                    </View>
+
+                    {selectedTicket.t1Number && (
+                      <View style={styles.infoItem}>
+                        <Text style={styles.infoLabel}>T1 Number</Text>
+                        <Text style={styles.infoValue}>{selectedTicket.t1Number}</Text>
+                      </View>
+                    )}
+
+                    {selectedTicket.deviceSerialNumber && (
+                      <View style={styles.infoItem}>
+                        <Text style={styles.infoLabel}>Device</Text>
+                        <Text style={styles.infoValue}>{selectedTicket.deviceSerialNumber}</Text>
+                      </View>
+                    )}
+
+                    {selectedTicket.geofenceName && (
+                      <View style={styles.infoItem}>
+                        <Text style={styles.infoLabel}>Geofence</Text>
+                        <Text style={styles.infoValue}>{selectedTicket.geofenceName}</Text>
+                      </View>
+                    )}
+
+                    <View style={styles.infoItem}>
+                      <Text style={styles.infoLabel}>Created</Text>
+                      <Text style={styles.infoValue}>
+                        {new Date(selectedTicket.createdAt).toLocaleString()}
+                      </Text>
+                    </View>
+
+                    {selectedTicket.updatedAt && (
+                      <View style={styles.infoItem}>
+                        <Text style={styles.infoLabel}>Last Updated</Text>
+                        <Text style={styles.infoValue}>
+                          {new Date(selectedTicket.updatedAt).toLocaleString()}
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+
+                  {/* Track on Map Button - with map.png icon */}
+                  {selectedTicket.t1Number && (
+                    <TouchableOpacity
+                      style={[styles.mapButton, { flexDirection: 'row', justifyContent: 'center', gap: 8 }]}
+                      onPress={() => {
+                        setModalVisible(false);
+                        const shipment = shipments.find(s => s.t1Number === selectedTicket.t1Number);
+                        if (shipment) {
+                          navigation.navigate('TrackOnMap2', { shipment });
+                        } else {
+                          navigation.navigate('TrackOnMap2', { t1Number: selectedTicket.t1Number });
+                        }
+                      }}
+                    >
+                      <Image source={require('../assets/map.png')} style={{ width: 20, height: 20 }} />
+                      <Text style={styles.mapButtonText}>Track on Map</Text>
+                    </TouchableOpacity>
                   )}
 
-                  <View style={styles.addCommentSection}>
-                    <TextInput
-                      style={styles.commentInput}
-                      placeholder="Add a comment..."
-                      placeholderTextColor="#999"
-                      value={commentText}
-                      onChangeText={setCommentText}
-                      multiline
-                      numberOfLines={3}
-                    />
-
+                  {/* COMMENTS SECTION - PRESERVED */}
+                  <View style={styles.commentsSection}>
                     <TouchableOpacity
-                      style={[styles.submitCommentButton, submitting && styles.disabledButton]}
-                      onPress={addComment}
-                      disabled={submitting}
+                      style={styles.commentsHeader}
+                      onPress={() => setShowComments(!showComments)}
                     >
-                      {submitting ? (
-                        <ActivityIndicator size="small" color="#FFFFFF" />
-                      ) : (
-                        <Text style={styles.submitCommentText}>Post</Text>
-                      )}
+                      <Text style={styles.sectionTitle}>
+                        Comments ({selectedTicket.comments?.length || 0})
+                      </Text>
+                      <Text style={styles.expandIcon}>
+                        {showComments ? '▲' : '▼'}
+                      </Text>
                     </TouchableOpacity>
-                  </View>
-                </View>
-                */}
 
-                <TouchableOpacity 
-                  style={styles.closeModalButton}
-                  onPress={() => setModalVisible(false)}
-                >
-                  <Text style={styles.closeModalButtonText}>Close</Text>
-                </TouchableOpacity>
-              </ScrollView>
+                    {showComments && (
+                      <View style={styles.commentsList}>
+                        {selectedTicket.comments && selectedTicket.comments.length > 0 ? (
+                          selectedTicket.comments.map((comment, index) => (
+                            <View key={comment.id || index} style={styles.commentItem}>
+                              <View style={styles.commentHeader}>
+                                <Text style={styles.commentUser}>{comment.user?.name || 'System'}</Text>
+                                <Text style={styles.commentTime}>{formatDate(comment.createdAt)}</Text>
+                              </View>
+                              <Text style={styles.commentText}>{comment.text}</Text>
+                              {comment.oldStatus && comment.newStatus && (
+                                <Text style={styles.statusChangeText}>
+                                  Status changed from {comment.oldStatus} to {comment.newStatus}
+                                </Text>
+                              )}
+                            </View>
+                          ))
+                        ) : (
+                          <Text style={styles.noCommentsText}>No comments yet</Text>
+                        )}
+                      </View>
+                    )}
+
+                    <View style={styles.addCommentSection}>
+                      <TextInput
+                        style={styles.commentInput}
+                        placeholder="Add a comment..."
+                        placeholderTextColor="#999"
+                        value={commentText}
+                        onChangeText={setCommentText}
+                        multiline
+                        numberOfLines={3}
+                      />
+
+                      <TouchableOpacity
+                        style={[styles.submitCommentButton, submitting && styles.disabledButton]}
+                        onPress={addComment}
+                        disabled={submitting}
+                      >
+                        {submitting ? (
+                          <ActivityIndicator size="small" color="#FFFFFF" />
+                        ) : (
+                          <Text style={styles.submitCommentText}>Post Comment</Text>
+                        )}
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                </ScrollView>
+
+                {/* ACTION BUTTONS - Consolidated Logic */}
+                <View style={styles.modalActions}>
+                  {/* Case 1: Ticket is RESOLVED or CLOSED */}
+                  {(selectedTicket.status === 'RESOLVED' || selectedTicket.status === 'CLOSED') ? (
+                    <View style={[styles.submitButton, { backgroundColor: '#4CAF50', flex: 1 }]}>
+                      <Text style={styles.submitButtonText}>
+                        {selectedTicket.status === 'RESOLVED' ? '✓ Resolved' : '✓ Closed'}
+                      </Text>
+                    </View>
+                  ) : (
+                    <>
+                      {/* Case 2: Ticket is ACKNOWLEDGED - only show Resolve button */}
+                      {selectedTicket.status === 'ACKNOWLEDGED' ? (
+                        <TouchableOpacity
+                          style={[styles.submitButton, { flex: 1 }]}
+                          onPress={() => handleResolve(selectedTicket.id)}
+                          disabled={resolvingTicketId === selectedTicket.id}
+                        >
+                          {resolvingTicketId === selectedTicket.id ? (
+                            <ActivityIndicator size="small" color="#FFFFFF" />
+                          ) : (
+                            <Text style={styles.submitButtonText}>Resolve</Text>
+                          )}
+                        </TouchableOpacity>
+                      ) : (
+                        <>
+                          {/* Case 3: Ticket is OPEN/IN_PROGRESS - show both buttons */}
+                          <TouchableOpacity
+                            style={[
+                              styles.submitButton,
+                              (acknowledgingTicketId === selectedTicket.id) && styles.submitButtonDisabled
+                            ]}
+                            onPress={() => handleAcknowledge(selectedTicket.id)}
+                            disabled={acknowledgingTicketId === selectedTicket.id}
+                          >
+                            {acknowledgingTicketId === selectedTicket.id ? (
+                              <ActivityIndicator size="small" color="#FFFFFF" />
+                            ) : (
+                              <Text style={styles.submitButtonText}>Acknowledge</Text>
+                            )}
+                          </TouchableOpacity>
+
+                          <TouchableOpacity
+                            style={[
+                              styles.submitButton,
+                              (resolvingTicketId === selectedTicket.id) && styles.submitButtonDisabled
+                            ]}
+                            onPress={() => handleResolve(selectedTicket.id)}
+                            disabled={resolvingTicketId === selectedTicket.id}
+                          >
+                            {resolvingTicketId === selectedTicket.id ? (
+                              <ActivityIndicator size="small" color="#FFFFFF" />
+                            ) : (
+                              <Text style={styles.submitButtonText}>Resolve</Text>
+                            )}
+                          </TouchableOpacity>
+                        </>
+                      )}
+                    </>
+                  )}
+                </View>
+              </>
             )}
           </Animatable.View>
         </View>
@@ -899,11 +915,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderRadius: 20,
     backgroundColor: '#F5F5F5',
-  },
-  backButtonText: {
-    fontSize: 28,
-    color: '#1A1A1A',
-    fontWeight: '300',
   },
   headerTitle: {
     fontSize: 20,
@@ -973,22 +984,32 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: '#666',
   },
+  totalContainer: {
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: 4,
+  },
+  totalText: {
+    fontSize: 12,
+    color: '#666',
+    fontWeight: '500',
+  },
   listContent: {
     paddingBottom: 20,
   },
   animationWrapper: {
-    marginHorizontal: 16,
-    marginBottom: 12,
+    marginHorizontal: 8,
+    marginBottom: 6,
   },
   ticketCard: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 16,
+    borderRadius: 10,
+    padding: 12,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 6,
+    elevation: 2,
     borderWidth: 1,
     borderColor: '#F0F0F0',
   },
@@ -996,59 +1017,56 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 12,
-  },
-  ticketNumberContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
+    marginBottom: 8,
+    flexWrap: 'wrap',
+    gap: 6,
   },
   ticketNumber: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '600',
     color: '#666',
   },
   priorityBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
-    gap: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    borderRadius: 6,
+    gap: 3,
   },
   priorityIcon: {
-    fontSize: 10,
+    fontSize: 9,
   },
   priorityText: {
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: '600',
   },
-  statusBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
+  statusBadgeSmall: {
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    borderRadius: 6,
   },
-  statusText: {
-    fontSize: 10,
+  statusTextSmall: {
+    fontSize: 9,
     fontWeight: '600',
   },
   ticketTitle: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '600',
     color: '#1A1A1A',
-    marginBottom: 8,
+    marginBottom: 6,
   },
   ticketDescription: {
-    fontSize: 14,
+    fontSize: 12,
     color: '#666',
-    lineHeight: 20,
-    marginBottom: 12,
+    lineHeight: 17,
+    marginBottom: 10,
   },
   ticketFooter: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 12,
-    marginBottom: 8,
+    gap: 10,
+    marginBottom: 6,
   },
   footerItem: {
     flexDirection: 'row',
@@ -1059,7 +1077,7 @@ const styles = StyleSheet.create({
     fontSize: 10,
   },
   footerText: {
-    fontSize: 11,
+    fontSize: 10,
     color: '#999',
   },
   commentsCount: {
@@ -1069,12 +1087,13 @@ const styles = StyleSheet.create({
     paddingTop: 8,
     borderTopWidth: 1,
     borderTopColor: '#F0F0F0',
+    marginTop: 2,
   },
   commentsIcon: {
-    fontSize: 12,
+    fontSize: 11,
   },
   commentsText: {
-    fontSize: 11,
+    fontSize: 10,
     color: '#FFA500',
   },
   emptyContainer: {
@@ -1221,48 +1240,34 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
   },
-  statusUpdateSection: {
-    marginBottom: 24,
-    paddingBottom: 24,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F0F0F0',
-  },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#1A1A1A',
-    marginBottom: 12,
-  },
-  statusButtons: {
-    flexDirection: 'row',
-    gap: 10,
-  },
-  statusButton: {
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 8,
-    backgroundColor: '#F5F5F5',
-    marginRight: 10,
-  },
-  activeStatusButton: {
+  mapButton: {
     backgroundColor: '#FFA500',
+    borderRadius: 12,
+    paddingVertical: 14,
+    alignItems: 'center',
+    marginTop: 20,
+    marginBottom: 20,
   },
-  statusButtonText: {
-    fontSize: 12,
-    fontWeight: '500',
-    color: '#666',
-  },
-  activeStatusButtonText: {
+  mapButtonText: {
     color: '#FFFFFF',
+    fontWeight: '600',
+    fontSize: 14,
   },
+  // Comments Section Styles
   commentsSection: {
-    marginBottom: 24,
+    marginTop: 8,
+    marginBottom: 16,
   },
   commentsHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 12,
+  },
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1A1A1A',
   },
   expandIcon: {
     fontSize: 12,
@@ -1338,21 +1343,38 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     fontSize: 14,
   },
-  closeModalButton: {
-    backgroundColor: '#F5F5F5',
-    borderRadius: 12,
+  modalActions: {
+    flexDirection: 'row',
+    paddingHorizontal: 20,
+    paddingTop: 8,
+    paddingBottom: 20,
+    gap: 12,
+  },
+  submitButton: {
+    flex: 1,
     paddingVertical: 14,
+    borderRadius: 12,
+    backgroundColor: '#FFA500',
     alignItems: 'center',
-    marginTop: 8,
-    marginBottom: 20,
   },
-  closeModalButtonText: {
-    color: '#666',
-    fontWeight: '600',
+  submitButtonDisabled: {
+    backgroundColor: '#CCCCCC',
+  },
+  submitButtonText: {
     fontSize: 16,
+    fontWeight: '600',
+    color: '#FFFFFF',
   },
-  trackOnMapButton: { backgroundColor: '#FFA500', borderRadius: 12, paddingVertical: 14, alignItems: 'center', marginTop: 20, height: 52 },
-    trackOnMapButtonText: { color: '#FFFFFF', fontWeight: '600', alignItems: 'center', fontSize: 14, borderRadius: 12,  }
+  totalContainer: {
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: 4,
+  },
+  totalText: {
+    fontSize: 12,
+    color: '#666',
+    fontWeight: '500',
+  },
 });
 
 export default TicketsScreen;
