@@ -28,6 +28,127 @@ import * as Animatable from 'react-native-animatable';
 
 const { width, height } = Dimensions.get('window');
 
+// ========== TOKEN REFRESH HELPER FUNCTION ==========
+export const refreshAccessToken = async () => {
+  console.log('🔄 Attempting to refresh access token...');
+
+  try {
+    // Get current user data
+    const currentToken = await AsyncStorage.getItem('accessToken');
+    const userId = await AsyncStorage.getItem('id');
+    const userEmail = await AsyncStorage.getItem('email');
+    const userName = await AsyncStorage.getItem('name');
+
+    if (!userId || !userEmail) {
+      console.log('❌ No user data found, cannot refresh token');
+      return null;
+    }
+
+    console.log('📡 Sending refresh request for user ID:', userId);
+
+    // Prepare refresh payload
+    const refreshPayload = {
+      id: parseInt(userId),
+      username: userEmail,
+      email: userEmail,
+      name: userName,
+    };
+
+    console.log('🔄 Refresh payload:', JSON.stringify(refreshPayload));
+
+    const response = await fetch(`${serverUrl}auth/refresh-token`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'Authorization': `Bearer ${currentToken}`,
+      },
+      body: JSON.stringify(refreshPayload),
+    });
+
+    console.log('📡 Refresh response status:', response.status);
+
+    if (response.ok) {
+      const data = await response.json();
+      console.log('✅ Token refreshed successfully');
+
+      if (data.accessToken) {
+        // Save the new token
+        await AsyncStorage.setItem('accessToken', data.accessToken);
+        console.log('💾 New access token saved to AsyncStorage');
+
+        // Also update any other user data if returned
+        if (data.name) await AsyncStorage.setItem('name', data.name);
+        if (data.email) await AsyncStorage.setItem('email', data.email);
+        if (data.roles && data.roles.length > 0) {
+          await AsyncStorage.setItem('roleId', data.roles[0].roleId.toString());
+          await AsyncStorage.setItem('roleName', data.roles[0].roleName);
+        }
+
+        return data.accessToken;
+      }
+    } else {
+      console.log('❌ Token refresh failed with status:', response.status);
+      const errorText = await response.text();
+      console.log('Error response:', errorText);
+      return null;
+    }
+  } catch (error) {
+    console.error('❌ Token refresh error:', error.message);
+    return null;
+  }
+};
+
+// ========== AXIOS INTERCEPTOR SETUP (To be called once in App) ==========
+export const setupAxiosInterceptors = (axiosInstance) => {
+  // Request interceptor to add token
+  axiosInstance.interceptors.request.use(
+    async (config) => {
+      const token = await AsyncStorage.getItem('accessToken');
+      if (token) {
+        config.headers.Authorization = `Bearer ${token}`;
+      }
+      return config;
+    },
+    (error) => {
+      return Promise.reject(error);
+    }
+  );
+
+  // Response interceptor to handle token expiration
+  axiosInstance.interceptors.response.use(
+    (response) => {
+      return response;
+    },
+    async (error) => {
+      const originalRequest = error.config;
+
+      // If error is 401 (Unauthorized) and we haven't tried to refresh yet
+      if (error.response?.status === 401 && !originalRequest._retry) {
+        originalRequest._retry = true;
+
+        console.log('🔐 Token expired, attempting refresh...');
+        const newToken = await refreshAccessToken();
+
+        if (newToken) {
+          console.log('✅ Token refreshed, retrying original request');
+          originalRequest.headers.Authorization = `Bearer ${newToken}`;
+          return axiosInstance(originalRequest);
+        } else {
+          console.log('❌ Token refresh failed, redirecting to login');
+          // Clear storage and redirect to login
+          await AsyncStorage.multiRemove(['accessToken', 'id', 'name', 'email', 'roleId', 'roleName']);
+          // You'll need to trigger navigation here - can use a navigation ref or event emitter
+          return Promise.reject(error);
+        }
+      }
+
+      return Promise.reject(error);
+    }
+  );
+};
+
+// ========== MAIN LOGIN COMPONENT ==========
 const Login = () => {
   const navigation = useNavigation<NativeStackNavigationProp<any>>();
   const [email, setEmail] = useState('');
@@ -38,7 +159,7 @@ const Login = () => {
   const [passwordFocused, setPasswordFocused] = useState(false);
   const [isVisible, setIsVisible] = useState(true);
   const [hasPermission, setHasPermission] = useState(false);
-  
+
   // Animation values
   const fadeAnim = new Animated.Value(0);
   const slideAnim = new Animated.Value(50);
@@ -66,7 +187,7 @@ const Login = () => {
     }, [])
   );
 
-  /**  Request camera permission */
+  /** Request camera permission */
   useEffect(() => {
     const requestPermission = async () => {
       if (Platform.OS === 'android') {
@@ -129,9 +250,7 @@ const Login = () => {
         body: JSON.stringify(payload),
       });
 
-      // Log raw response status and headers
       console.log('DEBUG: Response Status:', response.status);
-      console.log('DEBUG: Response Headers:', response.headers);
 
       const responseText = await response.text();
       console.log('DEBUG: Raw Response Text:', responseText);
@@ -153,11 +272,19 @@ const Login = () => {
         await AsyncStorage.setItem('name', data.name);
         await AsyncStorage.setItem('email', data.email);
 
-        // Save role data to AsyncStorage (for persistence across app restarts)
+        // Also store username for refresh token
+        await AsyncStorage.setItem('username', email);
+
+        // Save role data to AsyncStorage
         if (roleId !== null) {
           await AsyncStorage.setItem('roleId', roleId.toString());
           await AsyncStorage.setItem('roleName', roleName);
         }
+
+        // Store token expiry info (optional - for debugging)
+        // Token typically expires in 1 hour, set a reminder to refresh
+        const tokenExpiryTime = Date.now() + (55 * 60 * 1000); // 55 minutes from now
+        await AsyncStorage.setItem('tokenExpiry', tokenExpiryTime.toString());
 
         setUserLoggedIn(data);
 
@@ -166,20 +293,20 @@ const Login = () => {
 
         setLoading(false);
 
-        // Reset navigation stack and pass role data to Dashboard
+        // Reset navigation stack
         navigation.reset({
           index: 0,
           routes: [
             {
               name: 'Dashboard',
-              params: { roleId, roleName },   // <-- role info passed to Dashboard
+              params: { roleId, roleName },
             },
           ],
         });
       } else {
         console.log('DEBUG: Login failed. Server response:', responseText);
         Snackbar.show({
-          text: 'Login failed. Check logs.',
+          text: 'Invalid email or password',
           duration: 3000,
           backgroundColor: '#FF6B6B',
         });
@@ -195,6 +322,7 @@ const Login = () => {
       setLoading(false);
     }
   };
+
   if (!isVisible) {
     return (
       <View style={styles.container}>
@@ -204,20 +332,20 @@ const Login = () => {
   }
 
   return (
-    <KeyboardAvoidingView 
-      style={styles.container} 
+    <KeyboardAvoidingView
+      style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
       <StatusBar barStyle="light-content" backgroundColor="#0A2B3E" />
-      
-      <ScrollView 
+
+      <ScrollView
         contentContainerStyle={styles.scrollContainer}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
         {/* Background Color */}
         <View style={styles.background} />
-        
+
         {/* Decorative Map Pattern */}
         <View style={styles.mapPattern}>
           <View style={styles.mapLine1} />
@@ -229,12 +357,12 @@ const Login = () => {
         </View>
 
         {/* Header Section */}
-        <Animatable.View 
-          animation="fadeInDown" 
+        <Animatable.View
+          animation="fadeInDown"
           duration={800}
           style={styles.headerSection}
         >
-          <Animated.View 
+          <Animated.View
             style={[
               styles.logoContainer,
               {
@@ -244,16 +372,15 @@ const Login = () => {
             ]}
           >
             <View style={styles.logoBackground}>
-              
-              <Image 
-                source={require('../assets/tiplogo.jpeg')} 
-                style={styles.logo} 
+              <Image
+                source={require('../assets/tiplogo.jpeg')}
+                style={styles.logo}
                 resizeMode="contain"
               />
             </View>
             <View style={styles.logoGlow} />
           </Animated.View>
-          
+
           <Text style={styles.appName}>CARGO TRACK</Text>
           <Text style={styles.tagline}>Global Logistics Solutions</Text>
           <Text style={styles.welcomeText}>Welcome Back</Text>
@@ -261,14 +388,14 @@ const Login = () => {
         </Animatable.View>
 
         {/* Form Section */}
-        <Animatable.View 
-          animation="fadeInUp" 
+        <Animatable.View
+          animation="fadeInUp"
           duration={800}
           delay={200}
           style={styles.formSection}
         >
           {/* Email Input */}
-          <Animatable.View 
+          <Animatable.View
             animation="fadeInUp"
             delay={400}
             style={styles.inputContainer}
@@ -278,7 +405,7 @@ const Login = () => {
               Email Address
             </Text>
             <View style={[
-              styles.inputWrapper, 
+              styles.inputWrapper,
               emailFocused && styles.inputWrapperFocused,
               email && styles.inputWrapperFilled
             ]}>
@@ -290,13 +417,14 @@ const Login = () => {
                 value={email}
                 autoCapitalize="none"
                 onChangeText={setEmail}
+                onFocus={() => setEmailFocused(true)}
                 onBlur={() => setEmailFocused(false)}
               />
             </View>
           </Animatable.View>
 
           {/* Password Input */}
-          <Animatable.View 
+          <Animatable.View
             animation="fadeInUp"
             delay={500}
             style={styles.inputContainer}
@@ -306,7 +434,7 @@ const Login = () => {
               Password
             </Text>
             <View style={[
-              styles.inputWrapper, 
+              styles.inputWrapper,
               passwordFocused && styles.inputWrapperFocused,
               password && styles.inputWrapperFilled
             ]}>
@@ -318,9 +446,10 @@ const Login = () => {
                 autoCapitalize="none"
                 value={password}
                 onChangeText={setPassword}
+                onFocus={() => setPasswordFocused(true)}
                 onBlur={() => setPasswordFocused(false)}
               />
-              <TouchableOpacity 
+              <TouchableOpacity
                 style={styles.eyeIcon}
                 onPress={() => setShowPassword(prev => !prev)}
                 activeOpacity={0.7}
@@ -339,12 +468,12 @@ const Login = () => {
 
           {/* Login Button */}
           <Animatable.View animation="fadeInUp" delay={600}>
-            <TouchableOpacity 
+            <TouchableOpacity
               style={[
-                styles.loginButton, 
+                styles.loginButton,
                 loading && styles.loginButtonDisabled,
                 (email && password) && styles.loginButtonActive
-              ]} 
+              ]}
               onPress={handleLogin}
               disabled={loading}
               activeOpacity={0.8}
@@ -361,8 +490,8 @@ const Login = () => {
           </Animatable.View>
 
           {/* Forgot Password Link */}
-          <Animatable.View 
-            animation="fadeInUp" 
+          <Animatable.View
+            animation="fadeInUp"
             delay={700}
             style={styles.forgotpasContainer}
           >
@@ -370,26 +499,6 @@ const Login = () => {
               <Text style={styles.forgotpassLink}>Forgot Password?</Text>
             </TouchableOpacity>
           </Animatable.View>
-
-          {/* Divider
-          <View style={styles.divider}>
-            <View style={styles.dividerLine} />
-            <Text style={styles.dividerText}>or</Text>
-            <View style={styles.dividerLine} />
-          </View>
-          */}
-
-          {/* Register Link
-          <Animatable.View 
-            animation="fadeInUp" 
-            delay={800}
-            style={styles.registerContainer}
-          >
-            <Text style={styles.registerPrompt}>Don't have an account? </Text>
-            <TouchableOpacity onPress={handleRegisterPress} activeOpacity={0.7}>
-              <Text style={styles.registerLink}>Create Account</Text>
-            </TouchableOpacity>
-          </Animatable.View> */}
         </Animatable.View>
       </ScrollView>
     </KeyboardAvoidingView>
