@@ -1,0 +1,260 @@
+{
+  "app": {
+    "name": "CARGO TRACK",
+    "tagline": "Solutions logistiques mondiales"
+  },
+  "login": {
+    "welcome": "Bon retour",
+    "subtitle": "Connectez-vous pour suivre vos expéditions",
+    "labels": {
+      "email": "Adresse e-mail",
+      "password": "Mot de passe"
+    },
+    "placeholders": {
+      "email": "Entrez votre e-mail",
+      "password": "Entrez votre mot de passe"
+    },
+    "buttons": {
+      "sign_in": "Se connecter",
+      "register": "Créer un compte"
+    },
+    "links": {
+      "forgot_password": "Mot de passe oublié ?",
+      "no_account": "Vous n'avez pas de compte ?",
+      "register_here": "Inscrivez-vous ici"
+    },
+    "errors": {
+      "required_fields": "L'e-mail et le mot de passe sont obligatoires",
+      "invalid_credentials": "E-mail ou mot de passe incorrect",
+      "network_error": "Une erreur s'est produite. Veuillez vérifier votre connexion.",
+      "server_error": "Erreur serveur. Veuillez réessayer plus tard.",
+      "account_locked": "Compte temporairement verrouillé. Veuillez réessayer plus tard."
+    },
+    "loading": "Connexion en cours...",
+    "success": "Connexion réussie"
+  },
+  "common": {
+    "cancel": "Annuler",
+    "save": "Enregistrer",
+    "submit": "Soumettre",
+    "delete": "Supprimer",
+    "edit": "Modifier",
+    "back": "Retour",
+    "next": "Suivant",
+    "continue": "Continuer",
+    "skip": "Passer",
+    "confirm": "Confirmer",
+    "yes": "Oui",
+    "no": "Non",
+    "ok": "OK",
+    "close": "Fermer",
+    "search": "Rechercher",
+    "filter": "Filtrer",
+    "sort": "Trier",
+    "refresh": "Actualiser",
+    "loading": "Chargement...",
+    "no_data": "Aucune donnée disponible",
+    "error_generic": "Une erreur s'est produite",
+    "error_network": "Aucune connexion internet",
+    "error_timeout": "Délai d'attente dépassé",
+    "success": "Succès",
+    "warning": "Avertissement",
+    "info": "Information"
+  },
+  "navigation": {
+    "home": "Accueil",
+    "dashboard": "Tableau de bord",
+    "tickets": "Tickets",
+    "devices": "Appareils",
+    "profile": "Profil",
+    "settings": "Paramètres",
+    "logout": "Déconnexion",
+    "help": "Aide",
+    "about": "À propos"
+  },
+  "dashboard": {
+    "title": "Tableau de bord",
+    "greeting": "Bonjour, {{name}}",
+    "quick_actions": "Actions rapides",
+    "active_shipments": "Expéditions actives",
+    "pending_tickets": "Tickets en attente",
+    "device_status": "État des appareils",
+    "view_all": "Voir tout"
+  },
+  "tickets": {
+    "title": "Tickets",
+    "create_new": "Créer un nouveau ticket",
+    "my_tickets": "Mes tickets",
+    "all_tickets": "Tous les tickets",
+    "filters": {
+      "open": "Ouvert",
+      "in_progress": "En cours",
+      "resolved": "Résolu",
+      "closed": "Fermé"
+    },
+    "fields": {
+      "title": "Titre du ticket",
+      "description": "Description",
+      "priority": "Priorité",
+      "category": "Catégorie",
+      "attach_evidence": "Joindre une preuve"
+    },
+    "priorities": {
+      "low": "Basse",
+      "medium": "Moyenne",
+      "high": "Élevée",
+      "urgent": "Urgente"
+    },
+    "categories": {
+      "device_issue": "Problème d'appareil",
+      "tracking_error": "Erreur de suivi",
+      "payment_issue": "Problème de paiement",
+      "general_inquiry": "Demande générale",
+      "other": "Autre"
+    },
+    "success": {
+      "created": "Ticket créé avec succès",
+      "updated": "Ticket mis à jour avec succès",
+      "deleted": "Ticket supprimé avec succès"
+    },
+    "errors": {
+      "required_fields": "Veuillez remplir tous les champs obligatoires",
+      "create_failed": "Échec de la création du ticket. Veuillez réessayer.",
+      "load_failed": "Échec du chargement des tickets. Veuillez vérifier votre connexion."
+    }
+  },
+  "devices": {
+    "title": "Appareils",
+    "scan_qr": "Scanner un code QR",
+    "add_device": "Ajouter un nouvel appareil",
+    "device_id": "ID de l'appareil",
+    "status": {
+      "online": "En ligne",
+      "offline": "Hors ligne",
+      "low_battery": "Batterie faible",
+      "error": "Erreur"
+    },
+    "actions": {
+      "track": "Suivre",
+      "history": "Historique",
+      "settings": "Paramètres de l'appareil",
+      "remove": "Supprimer l'appareil"
+    }
+  },
+  "tracking": {
+    "title": "Suivi en direct",
+    "start": "Démarrer le suivi",
+    "stop": "Arrêter le suivi",
+    "pause": "Pause",
+    "resume": "Reprendre",
+    "location_access": "Accès à la localisation requis pour le suivi",
+    "tracking_active": "Suivi actif",
+    "tracking_stopped": "Suivi arrêté",
+    "last_update": "Dernière mise à jour : {{time}}",
+    "distance": "Distance : {{value}} km",
+    "duration": "Durée : {{value}}"
+  },
+  "profile": {
+    "title": "Profil",
+    "edit_profile": "Modifier le profil",
+    "change_password": "Changer le mot de passe",
+    "notifications": "Paramètres de notification",
+    "language": "Langue",
+    "version": "Version de l'application : {{version}}",
+    "logout_confirm": "Êtes-vous sûr de vouloir vous déconnecter ?"
+  },
+  "settings": {
+    "title": "Paramètres",
+    "general": "Général",
+    "notifications": "Notifications",
+    "privacy": "Confidentialité",
+    "security": "Sécurité",
+    "about": "À propos",
+    "support": "Support",
+    "terms": "Conditions d'utilisation",
+    "privacy_policy": "Politique de confidentialité"
+  },
+  "notifications": {
+    "title": "Notifications",
+    "enable_push": "Activer les notifications push",
+    "enable_email": "Activer les alertes par e-mail",
+    "enable_sms": "Activer les alertes SMS",
+    "alert_types": {
+      "device_offline": "Appareil hors ligne",
+      "geofence_entry": "Entrée dans la zone géolocalisée",
+      "geofence_exit": "Sortie de la zone géolocalisée",
+      "low_battery": "Alerte batterie faible",
+      "ticket_update": "Mise à jour du statut du ticket",
+      "payment_received": "Paiement reçu"
+    }
+  },
+  "geofence": {
+    "title": "Zones géolocalisées",
+    "create": "Créer une zone",
+    "name": "Nom de la zone",
+    "radius": "Rayon (mètres)",
+    "center": "Position centrale",
+    "actions": {
+      "entry_alert": "Alerte à l'entrée",
+      "exit_alert": "Alerte à la sortie",
+      "log_visits": "Enregistrer les visites"
+    }
+  },
+  "payments": {
+    "title": "Paiements",
+    "balance": "Solde actuel",
+    "add_funds": "Ajouter des fonds",
+    "withdraw": "Retirer",
+    "transaction_history": "Historique des transactions",
+    "payment_methods": "Moyens de paiement",
+    "success": "Paiement traité avec succès",
+    "failed": "Échec du paiement. Veuillez réessayer."
+  },
+  "qr": {
+    "scan": "Scanner un code QR",
+    "scan_success": "Code QR scanné avec succès",
+    "scan_failed": "Échec du scan du code QR",
+    "camera_permission": "Accès à la caméra requis pour scanner les codes QR",
+    "invalid_code": "Code QR invalide ou expiré"
+  },
+  "permissions": {
+    "camera": {
+      "title": "Accès à la caméra",
+      "message": "L'accès à la caméra est requis pour scanner les codes QR et joindre des preuves. Autorisez l'accès dans Paramètres."
+    },
+    "location": {
+      "title": "Accès à la localisation",
+      "message": "L'accès à la localisation est requis pour suivre les expéditions. Autorisez l'accès dans Paramètres."
+    },
+    "notifications": {
+      "title": "Accès aux notifications",
+      "message": "L'accès aux notifications est requis pour recevoir des alertes concernant vos expéditions. Autorisez l'accès dans Paramètres."
+    },
+    "storage": {
+      "title": "Accès au stockage",
+      "message": "L'accès au stockage est requis pour enregistrer et joindre des fichiers. Autorisez l'accès dans Paramètres."
+    },
+    "go_to_settings": "Aller dans Paramètres",
+    "maybe_later": "Peut-être plus tard"
+  },
+  "onboarding": {
+    "welcome": {
+      "title": "Bienvenue sur CARGO TRACK",
+      "subtitle": "Votre solution complète de suivi logistique"
+    },
+    "track": {
+      "title": "Suivi en temps réel",
+      "subtitle": "Surveillez vos expéditions en direct sur la carte"
+    },
+    "tickets": {
+      "title": "Gestion des incidents",
+      "subtitle": "Créez et suivez des tickets de support instantanément"
+    },
+    "secure": {
+      "title": "Sécurisé et fiable",
+      "subtitle": "Sécurité de niveau entreprise pour vos données"
+    },
+    "get_started": "Commencer",
+    "skip": "Passer"
+  }
+}

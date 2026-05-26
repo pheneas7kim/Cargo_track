@@ -1,0 +1,260 @@
+{
+  "app": {
+    "name": "CARGO TRACK",
+    "tagline": "Global Logistics Solutions"
+  },
+  "login": {
+    "welcome": "Welcome Back",
+    "subtitle": "Sign in to track your shipments",
+    "labels": {
+      "email": "Email Address",
+      "password": "Password"
+    },
+    "placeholders": {
+      "email": "Enter your email",
+      "password": "Enter your password"
+    },
+    "buttons": {
+      "sign_in": "Sign In",
+      "register": "Create Account"
+    },
+    "links": {
+      "forgot_password": "Forgot Password?",
+      "no_account": "Don't have an account?",
+      "register_here": "Register here"
+    },
+    "errors": {
+      "required_fields": "Email and Password are required",
+      "invalid_credentials": "Invalid email or password",
+      "network_error": "Something went wrong. Please check your connection.",
+      "server_error": "Server error. Please try again later.",
+      "account_locked": "Account temporarily locked. Please try again later."
+    },
+    "loading": "Signing in...",
+    "success": "Login successful"
+  },
+  "common": {
+    "cancel": "Cancel",
+    "save": "Save",
+    "submit": "Submit",
+    "delete": "Delete",
+    "edit": "Edit",
+    "back": "Back",
+    "next": "Next",
+    "continue": "Continue",
+    "skip": "Skip",
+    "confirm": "Confirm",
+    "yes": "Yes",
+    "no": "No",
+    "ok": "OK",
+    "close": "Close",
+    "search": "Search",
+    "filter": "Filter",
+    "sort": "Sort",
+    "refresh": "Refresh",
+    "loading": "Loading...",
+    "no_data": "No data available",
+    "error_generic": "Something went wrong",
+    "error_network": "No internet connection",
+    "error_timeout": "Request timed out",
+    "success": "Success",
+    "warning": "Warning",
+    "info": "Information"
+  },
+  "navigation": {
+    "home": "Home",
+    "dashboard": "Dashboard",
+    "tickets": "Tickets",
+    "devices": "Devices",
+    "profile": "Profile",
+    "settings": "Settings",
+    "logout": "Logout",
+    "help": "Help",
+    "about": "About"
+  },
+  "dashboard": {
+    "title": "Dashboard",
+    "greeting": "Hello, {{name}}",
+    "quick_actions": "Quick Actions",
+    "active_shipments": "Active Shipments",
+    "pending_tickets": "Pending Tickets",
+    "device_status": "Device Status",
+    "view_all": "View All"
+  },
+  "tickets": {
+    "title": "Tickets",
+    "create_new": "Create New Ticket",
+    "my_tickets": "My Tickets",
+    "all_tickets": "All Tickets",
+    "filters": {
+      "open": "Open",
+      "in_progress": "In Progress",
+      "resolved": "Resolved",
+      "closed": "Closed"
+    },
+    "fields": {
+      "title": "Ticket Title",
+      "description": "Description",
+      "priority": "Priority",
+      "category": "Category",
+      "attach_evidence": "Attach Evidence"
+    },
+    "priorities": {
+      "low": "Low",
+      "medium": "Medium",
+      "high": "High",
+      "urgent": "Urgent"
+    },
+    "categories": {
+      "device_issue": "Device Issue",
+      "tracking_error": "Tracking Error",
+      "payment_issue": "Payment Issue",
+      "general_inquiry": "General Inquiry",
+      "other": "Other"
+    },
+    "success": {
+      "created": "Ticket created successfully",
+      "updated": "Ticket updated successfully",
+      "deleted": "Ticket deleted successfully"
+    },
+    "errors": {
+      "required_fields": "Please fill all required fields",
+      "create_failed": "Failed to create ticket. Please try again.",
+      "load_failed": "Failed to load tickets. Please check your connection."
+    }
+  },
+  "devices": {
+    "title": "Devices",
+    "scan_qr": "Scan QR Code",
+    "add_device": "Add New Device",
+    "device_id": "Device ID",
+    "status": {
+      "online": "Online",
+      "offline": "Offline",
+      "low_battery": "Low Battery",
+      "error": "Error"
+    },
+    "actions": {
+      "track": "Track",
+      "history": "History",
+      "settings": "Device Settings",
+      "remove": "Remove Device"
+    }
+  },
+  "tracking": {
+    "title": "Live Tracking",
+    "start": "Start Tracking",
+    "stop": "Stop Tracking",
+    "pause": "Pause",
+    "resume": "Resume",
+    "location_access": "Location access required for tracking",
+    "tracking_active": "Tracking active",
+    "tracking_stopped": "Tracking stopped",
+    "last_update": "Last update: {{time}}",
+    "distance": "Distance: {{value}} km",
+    "duration": "Duration: {{value}}"
+  },
+  "profile": {
+    "title": "Profile",
+    "edit_profile": "Edit Profile",
+    "change_password": "Change Password",
+    "notifications": "Notification Settings",
+    "language": "Language",
+    "version": "App Version: {{version}}",
+    "logout_confirm": "Are you sure you want to logout?"
+  },
+  "settings": {
+    "title": "Settings",
+    "general": "General",
+    "notifications": "Notifications",
+    "privacy": "Privacy",
+    "security": "Security",
+    "about": "About",
+    "support": "Support",
+    "terms": "Terms of Service",
+    "privacy_policy": "Privacy Policy"
+  },
+  "notifications": {
+    "title": "Notifications",
+    "enable_push": "Enable Push Notifications",
+    "enable_email": "Enable Email Alerts",
+    "enable_sms": "Enable SMS Alerts",
+    "alert_types": {
+      "device_offline": "Device Offline",
+      "geofence_entry": "Geofence Entry",
+      "geofence_exit": "Geofence Exit",
+      "low_battery": "Low Battery Warning",
+      "ticket_update": "Ticket Status Update",
+      "payment_received": "Payment Received"
+    }
+  },
+  "geofence": {
+    "title": "Geofences",
+    "create": "Create Geofence",
+    "name": "Geofence Name",
+    "radius": "Radius (meters)",
+    "center": "Center Location",
+    "actions": {
+      "entry_alert": "Alert on Entry",
+      "exit_alert": "Alert on Exit",
+      "log_visits": "Log Visits"
+    }
+  },
+  "payments": {
+    "title": "Payments",
+    "balance": "Current Balance",
+    "add_funds": "Add Funds",
+    "withdraw": "Withdraw",
+    "transaction_history": "Transaction History",
+    "payment_methods": "Payment Methods",
+    "success": "Payment processed successfully",
+    "failed": "Payment failed. Please try again."
+  },
+  "qr": {
+    "scan": "Scan QR Code",
+    "scan_success": "QR code scanned successfully",
+    "scan_failed": "Failed to scan QR code",
+    "camera_permission": "Camera permission required to scan QR codes",
+    "invalid_code": "Invalid or expired QR code"
+  },
+  "permissions": {
+    "camera": {
+      "title": "Camera Access",
+      "message": "Camera access is required to scan QR codes and attach evidence. Allow access in Settings."
+    },
+    "location": {
+      "title": "Location Access",
+      "message": "Location access is required for tracking shipments. Allow access in Settings."
+    },
+    "notifications": {
+      "title": "Notification Access",
+      "message": "Notification access is required to receive alerts about your shipments. Allow access in Settings."
+    },
+    "storage": {
+      "title": "Storage Access",
+      "message": "Storage access is required to save and attach files. Allow access in Settings."
+    },
+    "go_to_settings": "Go to Settings",
+    "maybe_later": "Maybe Later"
+  },
+  "onboarding": {
+    "welcome": {
+      "title": "Welcome to CARGO TRACK",
+      "subtitle": "Your complete logistics tracking solution"
+    },
+    "track": {
+      "title": "Real-Time Tracking",
+      "subtitle": "Monitor your shipments live on the map"
+    },
+    "tickets": {
+      "title": "Issue Management",
+      "subtitle": "Create and track support tickets instantly"
+    },
+    "secure": {
+      "title": "Secure & Reliable",
+      "subtitle": "Enterprise-grade security for your data"
+    },
+    "get_started": "Get Started",
+    "skip": "Skip"
+  }
+}

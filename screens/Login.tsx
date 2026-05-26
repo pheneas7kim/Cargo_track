@@ -25,6 +25,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import Snackbar from 'react-native-snackbar';
 import { setUserLoggedIn } from '../Utils/appState';
 import * as Animatable from 'react-native-animatable';
+// ✅ i18n import
+import { useTranslation } from 'react-i18next';
 
 const { width, height } = Dimensions.get('window');
 
@@ -150,6 +152,9 @@ export const setupAxiosInterceptors = (axiosInstance) => {
 
 // ========== MAIN LOGIN COMPONENT ==========
 const Login = () => {
+  // ✅ Initialize i18n
+  const { t, i18n } = useTranslation();
+
   const navigation = useNavigation<NativeStackNavigationProp<any>>();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -223,7 +228,8 @@ const Login = () => {
   const handleLogin = async () => {
     if (!email.trim() || !password.trim()) {
       Snackbar.show({
-        text: 'Email and Password are required',
+        // ✅ Translated snackbar message
+        text: t('login.errors.required_fields', { defaultValue: 'Email and Password are required' }),
         duration: 3000,
         backgroundColor: '#FF6B6B',
       });
@@ -306,7 +312,8 @@ const Login = () => {
       } else {
         console.log('DEBUG: Login failed. Server response:', responseText);
         Snackbar.show({
-          text: 'Invalid email or password',
+          // ✅ Translated error message
+          text: t('login.errors.invalid_credentials', { defaultValue: 'Invalid email or password' }),
           duration: 3000,
           backgroundColor: '#FF6B6B',
         });
@@ -315,12 +322,18 @@ const Login = () => {
     } catch (error) {
       console.log('DEBUG: Network or Request Error:', error);
       Snackbar.show({
-        text: 'Something went wrong. Please check your connection.',
+        // ✅ Translated network error message
+        text: t('login.errors.network_error', { defaultValue: 'Something went wrong. Please check your connection.' }),
         duration: 3000,
         backgroundColor: '#FF6B6B',
       });
       setLoading(false);
     }
+  };
+
+  // ✅ Language switcher handler
+  const switchLanguage = (lang: string) => {
+    i18n.changeLanguage(lang);
   };
 
   if (!isVisible) {
@@ -381,10 +394,11 @@ const Login = () => {
             <View style={styles.logoGlow} />
           </Animated.View>
 
-          <Text style={styles.appName}>CARGO TRACK</Text>
-          <Text style={styles.tagline}>Global Logistics Solutions</Text>
-          <Text style={styles.welcomeText}>Welcome Back</Text>
-          <Text style={styles.subtitle}>Sign in to track your shipments</Text>
+          {/* ✅ Translated app name with fallback */}
+          <Text style={styles.appName}>{t('login.app_name', { defaultValue: 'CARGO TRACK' })}</Text>
+          <Text style={styles.tagline}>{t('login.tagline', { defaultValue: 'Global Logistics Solutions' })}</Text>
+          <Text style={styles.welcomeText}>{t('login.welcome', { defaultValue: 'Welcome Back' })}</Text>
+          <Text style={styles.subtitle}>{t('login.subtitle', { defaultValue: 'Sign in to track your shipments' })}</Text>
         </Animatable.View>
 
         {/* Form Section */}
@@ -394,6 +408,22 @@ const Login = () => {
           delay={200}
           style={styles.formSection}
         >
+          {/* ✅ Language Switcher - Top Right of Form */}
+          <View style={styles.langSwitcher}>
+            <TouchableOpacity
+              onPress={() => switchLanguage('en')}
+              style={[styles.langBtn, i18n.language === 'en' && styles.langBtnActive]}
+            >
+              <Text style={[styles.langText, i18n.language === 'en' && styles.langTextActive]}>EN</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => switchLanguage('fr')}
+              style={[styles.langBtn, i18n.language === 'fr' && styles.langBtnActive]}
+            >
+              <Text style={[styles.langText, i18n.language === 'fr' && styles.langTextActive]}>FR</Text>
+            </TouchableOpacity>
+          </View>
+
           {/* Email Input */}
           <Animatable.View
             animation="fadeInUp"
@@ -402,7 +432,8 @@ const Login = () => {
           >
             <Text style={styles.inputLabel}>
               <Text style={styles.labelIcon}>✉️ </Text>
-              Email Address
+              {/* ✅ Translated label */}
+              {t('login.labels.email', { defaultValue: 'Email Address' })}
             </Text>
             <View style={[
               styles.inputWrapper,
@@ -411,7 +442,8 @@ const Login = () => {
             ]}>
               <TextInput
                 style={styles.input}
-                placeholder="Enter your email"
+                // ✅ Translated placeholder with fallback
+                placeholder={t('login.placeholders.email', { defaultValue: 'Enter your email' })}
                 placeholderTextColor="#9AA9B3"
                 keyboardType="email-address"
                 value={email}
@@ -431,7 +463,8 @@ const Login = () => {
           >
             <Text style={styles.inputLabel}>
               <Text style={styles.labelIcon}>🔒 </Text>
-              Password
+              {/* ✅ Translated label */}
+              {t('login.labels.password', { defaultValue: 'Password' })}
             </Text>
             <View style={[
               styles.inputWrapper,
@@ -440,7 +473,8 @@ const Login = () => {
             ]}>
               <TextInput
                 style={[styles.input, { paddingRight: 50 }]}
-                placeholder="Enter your password"
+                // ✅ Translated placeholder with fallback
+                placeholder={t('login.placeholders.password', { defaultValue: 'Enter your password' })}
                 placeholderTextColor="#9AA9B3"
                 secureTextEntry={!showPassword}
                 autoCapitalize="none"
@@ -481,10 +515,12 @@ const Login = () => {
               {loading ? (
                 <View style={styles.loadingContainer}>
                   <ActivityIndicator color="#fff" size="small" />
-                  <Text style={styles.loadingText}>Signing in...</Text>
+                  {/* ✅ Translated loading text */}
+                  <Text style={styles.loadingText}>{t('login.loading', { defaultValue: 'Signing in...' })}</Text>
                 </View>
               ) : (
-                <Text style={styles.loginButtonText}>Sign In</Text>
+                // ✅ Translated button text
+                <Text style={styles.loginButtonText}>{t('login.buttons.sign_in', { defaultValue: 'Sign In' })}</Text>
               )}
             </TouchableOpacity>
           </Animatable.View>
@@ -496,7 +532,8 @@ const Login = () => {
             style={styles.forgotpasContainer}
           >
             <TouchableOpacity onPress={handleForgotPassword} activeOpacity={0.7}>
-              <Text style={styles.forgotpassLink}>Forgot Password?</Text>
+              {/* ✅ Translated forgot password link */}
+              <Text style={styles.forgotpassLink}>{t('login.links.forgot_password', { defaultValue: 'Forgot Password?' })}</Text>
             </TouchableOpacity>
           </Animatable.View>
         </Animatable.View>
@@ -671,6 +708,34 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 8,
   },
+  // ✅ Language Switcher Styles
+  langSwitcher: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    marginBottom: 16,
+    gap: 8,
+  },
+  langBtn: {
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#ccc',
+    backgroundColor: '#fff',
+  },
+  langBtnActive: {
+    backgroundColor: '#FFA500',
+    borderColor: '#FFA500',
+  },
+  langText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#666',
+  },
+  langTextActive: {
+    color: '#fff',
+  },
+  // ✅ End Language Switcher Styles
   inputContainer: {
     marginBottom: 20,
   },
