@@ -22,6 +22,7 @@ import { BackHandler } from 'react-native';
 import Snackbar from 'react-native-snackbar';
 import * as Animatable from 'react-native-animatable';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useTranslation } from 'react-i18next';
 
 const { width } = Dimensions.get('window');
 
@@ -29,7 +30,7 @@ const { width } = Dimensions.get('window');
 const API_BASE = 'https://demo2.bsl.co.ke';
 
 // Helper: Format date to relative time (e.g., "2 hours ago")
-const formatRelativeTime = (timestamp) => {
+const formatRelativeTime = (timestamp, t) => {
   const now = new Date();
   const date = new Date(timestamp);
   const diffMs = now - date;
@@ -38,34 +39,32 @@ const formatRelativeTime = (timestamp) => {
   const diffHours = Math.floor(diffMins / 60);
   const diffDays = Math.floor(diffHours / 24);
 
-  if (diffSecs < 60) return 'Just now';
-  if (diffMins < 60) return `${diffMins} min ago`;
-  if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`;
-  if (diffDays < 7) return `${diffDays} day${diffDays > 1 ? 's' : ''} ago`;
+  if (diffSecs < 60) return t('common.time.just_now', { defaultValue: 'Just now' });
+  if (diffMins < 60) return `${diffMins} ${t('common.time.min_ago', { defaultValue: 'min ago' })}`;
+  if (diffHours < 24) return `${diffHours} ${t('common.time.hours_ago', { defaultValue: 'hours ago' })}`;
+  if (diffDays < 7) return `${diffDays} ${t('common.time.days_ago', { defaultValue: 'days ago' })}`;
   return date.toLocaleDateString();
 };
 
 // Helper: Map tracking status to color and display text
-const getTicketStatusInfo = (status) => {
+const getTicketStatusInfo = (status, t) => {
   switch (status?.toUpperCase()) {
     case 'OPEN':
-      return { text: 'Open', color: '#FF6B6B' };
+      return { text: t('common.ticket_status.open', { defaultValue: 'Open' }), color: '#FF6B6B' };
     case 'IN_PROGRESS':
-      return { text: 'In Progress', color: '#FFA500' };
+      return { text: t('common.ticket_status.in_progress', { defaultValue: 'In Progress' }), color: '#FFA500' };
     case 'ACKNOWLEDGED':
-      return { text: 'Acknowledged', color: '#2196F3' };
+      return { text: t('common.ticket_status.acknowledged', { defaultValue: 'Acknowledged' }), color: '#2196F3' };
     case 'RESOLVED':
-      return { text: 'Resolved', color: '#4CAF50' };
+      return { text: t('common.ticket_status.resolved', { defaultValue: 'Resolved' }), color: '#4CAF50' };
     case 'CLOSED':
-      return { text: 'Closed', color: '#2196F3' };
+      return { text: t('common.ticket_status.closed', { defaultValue: 'Closed' }), color: '#2196F3' };
     default:
-      return { text: status || 'Unknown', color: '#999' };
+      return { text: status || t('common.ticket_status.unknown', { defaultValue: 'Unknown' }), color: '#999' };
   }
 };
 
-
-
-const formatDate = (dateString) => {
+const formatDate = (dateString, t) => {
     if (!dateString) return 'N/A';
     const date = new Date(dateString);
     const now = new Date();
@@ -74,10 +73,10 @@ const formatDate = (dateString) => {
     const diffHours = Math.floor(diffMins / 60);
     const diffDays = Math.floor(diffHours / 24);
 
-    if (diffMins < 1) return 'Just now';
-    if (diffMins < 60) return `${diffMins}m ago`;
-    if (diffHours < 24) return `${diffHours}h ago`;
-    if (diffDays < 7) return `${diffDays}d ago`;
+    if (diffMins < 1) return t('common.time.just_now', { defaultValue: 'Just now' });
+    if (diffMins < 60) return `${diffMins}m ${t('common.time.ago', { defaultValue: 'ago' })}`;
+    if (diffHours < 24) return `${diffHours}h ${t('common.time.ago', { defaultValue: 'ago' })}`;
+    if (diffDays < 7) return `${diffDays}d ${t('common.time.ago', { defaultValue: 'ago' })}`;
     return date.toLocaleDateString();
   };
 
@@ -91,18 +90,16 @@ const getPriorityIcon = (priority) => {
     }
   };
 
-
-
-const getStatusInfo = (status) => {
+const getStatusInfo = (status, t) => {
   switch (status) {
     case 'IN_TRANSIT':
-      return { text: 'In Transit', color: '#FFA500', icon: '🚚', progress: 50 };
+      return { text: t('common.shipment_status.in_transit', { defaultValue: 'In Transit' }), color: '#FFA500', icon: '🚚', progress: 50 };
     case 'DELIVERED':
-      return { text: 'Delivered', color: '#4CAF50', icon: '✅', progress: 100 };
+      return { text: t('common.shipment_status.delivered', { defaultValue: 'Delivered' }), color: '#4CAF50', icon: '✅', progress: 100 };
     case 'PENDING':
-      return { text: 'Pending', color: '#FF6B6B', icon: '⏳', progress: 0 };
+      return { text: t('common.shipment_status.pending', { defaultValue: 'Pending' }), color: '#FF6B6B', icon: '⏳', progress: 0 };
     default:
-      return { text: status || 'Unknown', color: '#999', icon: '📦', progress: 0 };
+      return { text: status || t('common.shipment_status.unknown', { defaultValue: 'Unknown' }), color: '#999', icon: '📦', progress: 0 };
   }
 };
 
@@ -118,7 +115,6 @@ const cleanTicketDescription = (text) => {
     .replace(/\n{2,}/g, '\n')
     .trim();
 };
-
 
 const getPriorityColor = (priority) => {
   switch (priority?.toUpperCase()) {
@@ -291,9 +287,8 @@ const resolveTicket = async (ticketId) => {
   return await response.json();
 };
 
-
-
 function HomeScreen() {
+  const { t, i18n } = useTranslation();
   const navigation = useNavigation();
   const [refreshing, setRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useState('shipments');
@@ -365,13 +360,13 @@ function HomeScreen() {
     }
     return false; // any other role or missing → nothing
   };
-  // Commands list
+  // Commands list with translations
   const commands = [
-    { id: 'CMD-001', name: 'Check Status', description: 'Get real-time status of your shipment' },
-    { id: 'CMD-002', name: 'Share Location', description: 'Share current location with support' },
-    { id: 'CMD-003', name: 'Request Support', description: 'Request immediate assistance' },
-    { id: 'CMD-004', name: 'Update Delivery', description: 'Update delivery preferences' },
-    { id: 'CMD-005', name: 'Report Issue', description: 'Report a problem with your shipment' }
+    { id: 'CMD-001', name: t('common.commands.check_status', { defaultValue: 'Check Status' }), description: t('common.commands.check_status_desc', { defaultValue: 'Get real-time status of your shipment' }) },
+    { id: 'CMD-002', name: t('common.commands.share_location', { defaultValue: 'Share Location' }), description: t('common.commands.share_location_desc', { defaultValue: 'Share current location with support' }) },
+    { id: 'CMD-003', name: t('common.commands.request_support', { defaultValue: 'Request Support' }), description: t('common.commands.request_support_desc', { defaultValue: 'Request immediate assistance' }) },
+    { id: 'CMD-004', name: t('common.commands.update_delivery', { defaultValue: 'Update Delivery' }), description: t('common.commands.update_delivery_desc', { defaultValue: 'Update delivery preferences' }) },
+    { id: 'CMD-005', name: t('common.commands.report_issue', { defaultValue: 'Report Issue' }), description: t('common.commands.report_issue_desc', { defaultValue: 'Report a problem with your shipment' }) }
   ];
 
   // ---------------------- API Calls with Bearer Token ----------------------
@@ -395,7 +390,7 @@ function HomeScreen() {
       const token = await getAuthToken();
       if (!token) {
         Snackbar.show({
-          text: 'Please log in again',
+          text: t('common.errors.login_again', { defaultValue: 'Please log in again' }),
           duration: 3000,
           backgroundColor: '#FF6B6B',
         });
@@ -420,7 +415,7 @@ function HomeScreen() {
 
       if (telemetryResponse.status === 401 || t1Response.status === 401) {
         Snackbar.show({
-          text: 'Session expired. Please log in again.',
+          text: t('common.errors.session_expired', { defaultValue: 'Session expired. Please log in again.' }),
           duration: 3000,
           backgroundColor: '#FF6B6B',
         });
@@ -443,15 +438,15 @@ function HomeScreen() {
       const transformed = telemetryData.map(item => {
         const t1 = t1Map[item.t1Number] || {};
         const status = t1.trackingStatus || 'IN_TRANSIT';
-        const statusInfo = getStatusInfo(status);
+        const statusInfo = getStatusInfo(status, t);
 
         return {
           id: item.id?.toString() || `device-${item.deviceSn}`,
           trackingNumber: item.t1Number,
           deviceSn: item.deviceSn,
           deviceName: item.deviceName,
-          origin: t1.origin || 'Unknown',
-          destination: t1.destination || 'Unknown',
+          origin: t1.origin || t('common.unknown', { defaultValue: 'Unknown' }),
+          destination: t1.destination || t('common.unknown', { defaultValue: 'Unknown' }),
           status: statusInfo.text,
           statusColor: statusInfo.color,
           estimatedDelivery: t1.estimatedDelivery || 'N/A',
@@ -569,9 +564,9 @@ function HomeScreen() {
       const notificationsArray = data.content || data;
       const transformed = (Array.isArray(notificationsArray) ? notificationsArray : []).map(alert => ({
         id: alert.id.toString(),
-        title: alert.title || 'Alert',
+        title: alert.title || t('common.alert', { defaultValue: 'Alert' }),
         message: alert.message || alert.description,
-        severity: alert.severity || (alert.type === 'ALARM' ? 'Warning' : 'Info'),
+        severity: alert.severity || (alert.type === 'ALARM' ? t('common.warning', { defaultValue: 'Warning' }) : t('common.info', { defaultValue: 'Info' })),
         timestamp: alert.createdAt,
       }));
       setAlerts(transformed);
@@ -606,9 +601,9 @@ function HomeScreen() {
       const notificationsArray = data.content || data;
       const transformed = (Array.isArray(notificationsArray) ? notificationsArray : []).map(notif => ({
         id: notif.id.toString(),
-        title: notif.title || 'Notification',
+        title: notif.title || t('common.notification', { defaultValue: 'Notification' }),
         message: notif.message || notif.description,
-        time: formatRelativeTime(notif.createdAt),
+        time: formatRelativeTime(notif.createdAt, t),
         read: notif.read || false,  // ← Use the API's read status
         type: notif.type?.toLowerCase() === 'alarm' ? 'alert' : 'info',
       }));
@@ -668,14 +663,14 @@ function HomeScreen() {
   const getCurrentTime = () => {
     const date = new Date();
     const hours = date.getHours();
-    if (hours < 12) return 'Good Morning';
-    if (hours < 17) return 'Good Afternoon';
-    return 'Good Evening';
+    if (hours < 12) return t('common.greeting.morning', { defaultValue: 'Good Morning' });
+    if (hours < 17) return t('common.greeting.afternoon', { defaultValue: 'Good Afternoon' });
+    return t('common.greeting.evening', { defaultValue: 'Good Evening' });
   };
 
   const handleTrackShipment = () => {
     if (!trackingNumber.trim()) {
-      Snackbar.show({ text: 'Please enter a tracking number', duration: 3000, backgroundColor: '#FF6B6B' });
+      Snackbar.show({ text: t('common.errors.enter_tracking', { defaultValue: 'Please enter a tracking number' }), duration: 3000, backgroundColor: '#FF6B6B' });
       return;
     }
     const found = shipments.find(s => s.trackingNumber === trackingNumber);
@@ -683,7 +678,7 @@ function HomeScreen() {
       setTrackedShipment(found);
       setIsTrackingModalVisible(true);
     } else {
-      Snackbar.show({ text: 'Shipment not found', duration: 3000, backgroundColor: '#FF6B6B' });
+      Snackbar.show({ text: t('common.errors.shipment_not_found', { defaultValue: 'Shipment not found' }), duration: 3000, backgroundColor: '#FF6B6B' });
     }
     setTrackingNumber('');
   };
@@ -700,7 +695,6 @@ function HomeScreen() {
     navigation.navigate('TrackOnMap', { shipment });
   };
 
-
   const handleSendCommand = (command) => {
     setSelectedCommand(command.name);
     // Snackbar.show({ text: `Command "${command.name}" sent successfully`, duration: 3000, backgroundColor: '#4CAF50' });
@@ -712,8 +706,6 @@ function HomeScreen() {
       prev.map(notif => (notif.id === notificationId ? { ...notif, read: true } : notif))
     );
   };
-
-
 
   const handleNotificationsScreen = () => navigation.navigate('AlertsNotigicationScreen');
   const handleAlarmsNotigicationScreen = () => navigation.navigate('AlarmsNotigicationScreen');
@@ -749,9 +741,6 @@ function HomeScreen() {
     setAmount2('');
   };
 
-
-
-
   const handleAcknowledge = async (ticketId) => {
     if (acknowledgingTicketId) return; // Prevent multiple clicks
 
@@ -759,7 +748,7 @@ function HomeScreen() {
     try {
       await acknowledgeTicket(ticketId);
       Snackbar.show({
-        text: 'Ticket acknowledged successfully',
+        text: t('common.ticket_acknowledged', { defaultValue: 'Ticket acknowledged successfully' }),
         duration: 2000,
         backgroundColor: '#4CAF50',
       });
@@ -770,7 +759,7 @@ function HomeScreen() {
       await fetchTickets();
     } catch (e) {
       Snackbar.show({
-        text: 'Failed to acknowledge ticket',
+        text: t('common.ticket_acknowledge_failed', { defaultValue: 'Failed to acknowledge ticket' }),
         duration: 3000,
         backgroundColor: '#FF6B6B',
       });
@@ -787,7 +776,7 @@ function HomeScreen() {
     try {
       await resolveTicket(ticketId);
       Snackbar.show({
-        text: 'Ticket resolved successfully',
+        text: t('common.ticket_resolved', { defaultValue: 'Ticket resolved successfully' }),
         duration: 2000,
         backgroundColor: '#4CAF50',
       });
@@ -798,7 +787,7 @@ function HomeScreen() {
       await fetchTickets();
     } catch (e) {
       Snackbar.show({
-        text: 'Failed to resolve ticket',
+        text: t('common.ticket_resolve_failed', { defaultValue: 'Failed to resolve ticket' }),
         duration: 3000,
         backgroundColor: '#FF6B6B',
       });
@@ -808,17 +797,17 @@ function HomeScreen() {
   };
 
   const handleLogout = async () => {
-    Alert.alert('Logout', 'Are you sure you want to logout?', [
-      { text: 'Cancel', style: 'cancel' },
+    Alert.alert(t('common.logout', { defaultValue: 'Logout' }), t('common.logout_confirm', { defaultValue: 'Are you sure you want to logout?' }), [
+      { text: t('common.cancel', { defaultValue: 'Cancel' }), style: 'cancel' },
       {
-        text: 'Logout',
+        text: t('common.logout', { defaultValue: 'Logout' }),
         style: 'destructive',
         onPress: async () => {
           try {
             await AsyncStorage.multiRemove(['accessToken', 'roleId', 'id', 'refreshToken']);
             navigation.reset({ index: 0, routes: [{ name: 'Login' }] });
           } catch (error) {
-            Snackbar.show({ text: 'Failed to logout', duration: 3000, backgroundColor: '#FF6B6B' });
+            Snackbar.show({ text: t('common.logout_failed', { defaultValue: 'Failed to logout' }), duration: 3000, backgroundColor: '#FF6B6B' });
           }
         },
       },
@@ -827,18 +816,18 @@ function HomeScreen() {
 
   const handleSubmit = async () => {
     if (!phoneNumber.trim()) {
-      Snackbar.show({ text: 'Phone number is required', duration: 3000, backgroundColor: '#FF6B6B' });
+      Snackbar.show({ text: t('common.errors.phone_required', { defaultValue: 'Phone number is required' }), duration: 3000, backgroundColor: '#FF6B6B' });
       return;
     }
     if (!amount.trim()) {
-      Snackbar.show({ text: 'Amount is required', duration: 3000, backgroundColor: '#FF6B6B' });
+      Snackbar.show({ text: t('common.errors.amount_required', { defaultValue: 'Amount is required' }), duration: 3000, backgroundColor: '#FF6B6B' });
       return;
     }
     setIsLoading(true);
     setTimeout(() => {
       setIsLoading(false);
       setIsModalVisible(false);
-      Snackbar.show({ text: 'Top up successful!', duration: 3000, backgroundColor: '#4CAF50' });
+      Snackbar.show({ text: t('common.topup_success', { defaultValue: 'Top up successful!' }), duration: 3000, backgroundColor: '#4CAF50' });
       setPhoneNumber('');
       setAmount('');
     }, 1500);
@@ -846,18 +835,18 @@ function HomeScreen() {
 
   const handleSubmitWithdraw = async () => {
     if (!phoneNumber2.trim()) {
-      Snackbar.show({ text: 'Phone number is required', duration: 3000, backgroundColor: '#FF6B6B' });
+      Snackbar.show({ text: t('common.errors.phone_required', { defaultValue: 'Phone number is required' }), duration: 3000, backgroundColor: '#FF6B6B' });
       return;
     }
     if (!amount2.trim()) {
-      Snackbar.show({ text: 'Amount is required', duration: 3000, backgroundColor: '#FF6B6B' });
+      Snackbar.show({ text: t('common.errors.amount_required', { defaultValue: 'Amount is required' }), duration: 3000, backgroundColor: '#FF6B6B' });
       return;
     }
     setIsLoading(true);
     setTimeout(() => {
       setIsLoading(false);
       setIsModalVisibleWithdraw(false);
-      Snackbar.show({ text: 'Withdrawal initiated successfully!', duration: 3000, backgroundColor: '#4CAF50' });
+      Snackbar.show({ text: t('common.withdraw_success', { defaultValue: 'Withdrawal initiated successfully!' }), duration: 3000, backgroundColor: '#4CAF50' });
       setPhoneNumber2('');
       setAmount2('');
     }, 1500);
@@ -871,7 +860,7 @@ function HomeScreen() {
           <Text style={styles.trackingNumber}>{item.trackingNumber}</Text>
           <View style={[styles.statusBadge, { backgroundColor: item.statusColor + '20' }]}>
             <Text style={[styles.statusText, { color: item.statusColor }]}>
-              {getStatusInfo(item.status).icon} {item.status}
+              {getStatusInfo(item.status, t).icon} {item.status}
             </Text>
           </View>
         </View>
@@ -896,43 +885,43 @@ function HomeScreen() {
         <View style={styles.progressBarBackground}>
           <View style={[styles.progressBarFill, { width: `${item.progress}%` }]} />
         </View>
-        <Text style={styles.progressText}>{item.progress}% Complete</Text>
+        <Text style={styles.progressText}>{item.progress}% {t('common.complete', { defaultValue: 'Complete' })}</Text>
       </View>
 
       <View style={styles.shipmentDetails}>
         <View style={styles.detailItem}>
-          <Text style={styles.detailLabel}>📍 Location</Text>
-          <Text style={styles.detailValue}>{item.location || 'Unknown'}</Text>
+          <Text style={styles.detailLabel}>📍 {t('common.location', { defaultValue: 'Location' })}</Text>
+          <Text style={styles.detailValue}>{item.location || t('common.unknown', { defaultValue: 'Unknown' })}</Text>
         </View>
         <View style={styles.detailItem}>
-          <Text style={styles.detailLabel}>📅 Last Update</Text>
-          <Text style={styles.detailValue}>{formatRelativeTime(item.lastUpdate)}</Text>
+          <Text style={styles.detailLabel}>📅 {t('common.last_update', { defaultValue: 'Last Update' })}</Text>
+          <Text style={styles.detailValue}>{formatRelativeTime(item.lastUpdate, t)}</Text>
         </View>
       </View>
 
       <View style={styles.shipmentDetails}>
         <View style={styles.detailItem}>
-          <Text style={styles.detailLabel}>📱 Device</Text>
+          <Text style={styles.detailLabel}>📱 {t('common.device', { defaultValue: 'Device' })}</Text>
           <Text style={styles.detailValue}>{item.deviceName || item.deviceSn}</Text>
         </View>
         <View style={styles.detailItem}>
-          <Text style={styles.detailLabel}>💨 Speed</Text>
+          <Text style={styles.detailLabel}>💨 {t('common.speed', { defaultValue: 'Speed' })}</Text>
           <Text style={styles.detailValue}>{item.speedKmh} km/h</Text>
         </View>
       </View>
 
       <View style={styles.shipmentActions}>
         <TouchableOpacity style={styles.actionBtn} onPress={() => handleViewOnMap(item)}>
-          <Text style={styles.actionBtnText}>Track on Map</Text>
+          <Text style={styles.actionBtnText}>{t('common.track_on_map', { defaultValue: 'Track on Map' })}</Text>
         </TouchableOpacity>
       </View>
     </Animatable.View>
   );
 
   const renderTicket = ({ item, index }) => {
-    const statusColor = getTicketStatusInfo(item.status).color;
+    const statusColor = getTicketStatusInfo(item.status, t).color;
     const priorityColor = getPriorityColor(item.priority);
-    const statusInfo = getTicketStatusInfo(item.status);
+    const statusInfo = getTicketStatusInfo(item.status, t);
 
     return (
       <Animatable.View
@@ -978,7 +967,7 @@ function HomeScreen() {
             <View style={styles.ticketFooter}>
               <View style={styles.footerItem}>
                 <Text style={styles.footerIcon}>🕒</Text>
-                <Text style={styles.footerText}>{formatDate(item.updatedAt)}</Text>
+                <Text style={styles.footerText}>{formatDate(item.updatedAt, t)}</Text>
               </View>
 
               {item.t1Number && (
@@ -1000,7 +989,7 @@ function HomeScreen() {
             {item.comments && item.comments.length > 0 && (
               <View style={styles.commentsCount}>
                 <Text style={styles.commentsIcon}>💬</Text>
-                <Text style={styles.commentsText}>{item.comments.length} comments</Text>
+                <Text style={styles.commentsText}>{item.comments.length} {t('common.comments', { defaultValue: 'comments' })}</Text>
               </View>
             )}
           </View>
@@ -1016,7 +1005,7 @@ function HomeScreen() {
     >
       <Text style={styles.alertTitle}>{item.title}</Text>
       <Text style={styles.alertMessage}>{item.message}</Text>
-      <Text style={styles.alertTime}>{item.timestamp ? formatRelativeTime(item.timestamp) : item.timestamp}</Text>
+      <Text style={styles.alertTime}>{item.timestamp ? formatRelativeTime(item.timestamp, t) : item.timestamp}</Text>
     </Animatable.View>
   );
 
@@ -1055,28 +1044,28 @@ function HomeScreen() {
                   <View style={[styles.actionIconBg, { backgroundColor: '#9C27B020' }]}>
                     <Image source={require('../assets/trk.png')} style={styles.actionIcon} />
                   </View>
-                  <Text style={styles.actionLabel}>Scan to Unlock</Text>
+                  <Text style={styles.actionLabel}>{t('common.actions.scan_to_unlock', { defaultValue: 'Scan to Unlock' })}</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity style={styles.actionCard} onPress={handleMasterSlaveMapper}>
                   <View style={[styles.actionIconBg, { backgroundColor: '#FF980020' }]}>
                     <Image source={require('../assets/geo.png')} style={styles.actionIcon} />
                   </View>
-                  <Text style={styles.actionLabel}>Sensors Mapping</Text>
+                  <Text style={styles.actionLabel}>{t('common.actions.sensors_mapping', { defaultValue: 'Sensors Mapping' })}</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity style={styles.actionCard} onPress={handleSensorList}>
                   <View style={[styles.actionIconBg, { backgroundColor: '#E91E6320' }]}>
                     <Image source={require('../assets/location.png')} style={styles.actionIcon} />
                   </View>
-                  <Text style={styles.actionLabel}>Mapped Sensors</Text>
+                  <Text style={styles.actionLabel}>{t('common.actions.mapped_sensors', { defaultValue: 'Mapped Sensors' })}</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity style={styles.actionCard} onPress={handleTicketsScreen}>
                   <View style={[styles.actionIconBg, { backgroundColor: '#2196F320' }]}>
                     <Image source={require('../assets/phone.png')} style={styles.actionIcon} />
                   </View>
-                  <Text style={styles.actionLabel}>Tickets</Text>
+                  <Text style={styles.actionLabel}>{t('common.actions.tickets', { defaultValue: 'Tickets' })}</Text>
                 </TouchableOpacity>
               </View>
             )}
@@ -1088,7 +1077,7 @@ function HomeScreen() {
                   <View style={[styles.actionIconBg, { backgroundColor: '#2196F320' }]}>
                     <Image source={require('../assets/phone.png')} style={styles.actionIcon} />
                   </View>
-                  <Text style={styles.actionLabel}>Tickets</Text>
+                  <Text style={styles.actionLabel}>{t('common.actions.tickets', { defaultValue: 'Tickets' })}</Text>
                 </TouchableOpacity>
               </View>
             )}
@@ -1100,7 +1089,7 @@ function HomeScreen() {
                   <View style={[styles.actionIconBg, { backgroundColor: '#2196F320' }]}>
                     <Image source={require('../assets/randomstop.png')} style={styles.actionIcon} />
                   </View>
-                  <Text style={styles.actionLabel}>Random Stop</Text>
+                  <Text style={styles.actionLabel}>{t('common.actions.random_stop', { defaultValue: 'Random Stop' })}</Text>
                 </TouchableOpacity>
               )}
 
@@ -1109,7 +1098,7 @@ function HomeScreen() {
                  <View style={[styles.actionIconBg, { backgroundColor: '#FF6B6B20' }]}>
                    <Image source={require('../assets/alarm.png')} style={styles.actionIcon} />
                  </View>
-                 <Text style={styles.actionLabel}>Request Eseals</Text>
+                 <Text style={styles.actionLabel}>{t('common.actions.request_eseals', { defaultValue: 'Request Eseals' })}</Text>
                </TouchableOpacity>
              )}
               {roleId !== 102 && roleId !== 103 && roleId !== 255 && roleId !== 257 && (
@@ -1117,7 +1106,7 @@ function HomeScreen() {
                   <View style={[styles.actionIconBg, { backgroundColor: '#4CAF5020' }]}>
                     <Image source={require('../assets/bell.png')} style={styles.actionIcon} />
                   </View>
-                  <Text style={styles.actionLabel}>Eseals Replacement</Text>
+                  <Text style={styles.actionLabel}>{t('common.actions.eseals_replacement', { defaultValue: 'Eseals Replacement' })}</Text>
                 </TouchableOpacity>
               )}
 
@@ -1126,14 +1115,10 @@ function HomeScreen() {
                   <View style={[styles.actionIconBg, { backgroundColor: '#2196F320' }]}>
                     <Image source={require('../assets/phone.png')} style={styles.actionIcon} />
                   </View>
-                  <Text style={styles.actionLabel}>Assigned Eseals</Text>
+                  <Text style={styles.actionLabel}>{t('common.actions.assigned_eseals', { defaultValue: 'Assigned Eseals' })}</Text>
                 </TouchableOpacity>
               )}
             </View>
-
-
-
-
 
             {/* Row 3 – visible only for role 1 (admin features) */}
             {roleId === 1 && (
@@ -1142,36 +1127,34 @@ function HomeScreen() {
                   <View style={[styles.actionIconBg, { backgroundColor: '#FF980020' }]}>
                     <Image source={require('../assets/geo.png')} style={styles.actionIcon} />
                   </View>
-                  <Text style={styles.actionLabel}>Geofences</Text>
+                  <Text style={styles.actionLabel}>{t('common.actions.geofences', { defaultValue: 'Geofences' })}</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity style={styles.actionCard} onPress={handleHotspotsScreen}>
                   <View style={[styles.actionIconBg, { backgroundColor: '#E91E6320' }]}>
                     <Image source={require('../assets/location.png')} style={styles.actionIcon} />
                   </View>
-                  <Text style={styles.actionLabel}>Hotspots</Text>
+                  <Text style={styles.actionLabel}>{t('common.actions.hotspots', { defaultValue: 'Hotspots' })}</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity style={styles.actionCard} onPress={handleDeviceMapScreen}>
                   <View style={[styles.actionIconBg, { backgroundColor: '#FFA50020' }]}>
                     <Image source={require('../assets/monitor.png')} style={styles.actionIcon} />
                   </View>
-                  <Text style={styles.actionLabel}>Shipments</Text>
+                  <Text style={styles.actionLabel}>{t('common.actions.shipments', { defaultValue: 'Shipments' })}</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity style={styles.actionCard} onPress={handleStationsScreen}>
                   <View style={[styles.actionIconBg, { backgroundColor: '#00BCD420' }]}>
                     <Image source={require('../assets/station.png')} style={styles.actionIcon} />
                   </View>
-                  <Text style={styles.actionLabel}>Stations</Text>
+                  <Text style={styles.actionLabel}>{t('common.actions.stations', { defaultValue: 'Stations' })}</Text>
                 </TouchableOpacity>
               </View>
             )}
           </View>
         </View>
       )}
-
-
 
 {/* Fixed the conditional logic using proper parenthesis mapping */}
 {( roleId === 1 ||  roleId ===202 ) && (
@@ -1181,7 +1164,7 @@ function HomeScreen() {
       <View style={[styles.actionIconBg, { backgroundColor: '#9C27B020' }]}>
         <Image source={require('../assets/trk.png')} style={styles.actionIcon} />
       </View>
-      <Text style={styles.actionLabel}>Scan to Add Devices</Text>
+      <Text style={styles.actionLabel}>{t('common.actions.scan_to_add', { defaultValue: 'Scan to Add Devices' })}</Text>
     </TouchableOpacity> )}
 
     {/* Removed the unstyled wrapper view so both cards are direct siblings */}
@@ -1190,17 +1173,11 @@ function HomeScreen() {
         <View style={[styles.actionIconBg, { backgroundColor: '#9C27B020' }]}>
           <Image source={require('../assets/trk.png')} style={styles.actionIcon} />
         </View>
-        <Text style={styles.actionLabel}>Receive</Text>
+        <Text style={styles.actionLabel}>{t('common.actions.receive', { defaultValue: 'Receive' })}</Text>
       </TouchableOpacity>
     )}
   </View>
 )}
-
-
-
-
-
-
 
 {/*
       {roleId !== 257 && (
@@ -1230,7 +1207,7 @@ function HomeScreen() {
             onPress={() => setActiveTab('shipments')}
           >
             <Text style={[styles.tabText, activeTab === 'shipments' && styles.activeTabText]}>
-              Shipments
+              {t('common.tabs.shipments', { defaultValue: 'Shipments' })}
             </Text>
           </TouchableOpacity>
         )}
@@ -1242,11 +1219,10 @@ function HomeScreen() {
             onPress={() => setActiveTab('tickets')}
           >
             <Text style={[styles.tabText, activeTab === 'tickets' && styles.activeTabText]}>
-              Tickets
+              {t('common.tabs.tickets', { defaultValue: 'Tickets' })}
             </Text>
           </TouchableOpacity>
         )}
-
 
         {/* Only show Alerts tab if role is not 255, not 103, and not 257 */}
         {roleId !== 255 && roleId !== 103 && roleId !== 257 && (
@@ -1255,7 +1231,7 @@ function HomeScreen() {
             onPress={() => setActiveTab('alerts')}
           >
             <Text style={[styles.tabText, activeTab === 'alerts' && styles.activeTabText]}>
-              Alerts
+              {t('common.tabs.alerts', { defaultValue: 'Alerts' })}
             </Text>
           </TouchableOpacity>
         )}
@@ -1279,11 +1255,11 @@ function HomeScreen() {
             loadingTickets ? (
               <View style={styles.loaderContainer}>
                 <ActivityIndicator size="large" color="#FFA500" />
-                <Text style={styles.loaderText}>Loading tickets...</Text>
+                <Text style={styles.loaderText}>{t('common.loading_tickets', { defaultValue: 'Loading tickets...' })}</Text>
               </View>
             ) : (
               <View style={styles.emptyContainer}>
-                <Text style={styles.emptyText}>No tickets found</Text>
+                <Text style={styles.emptyText}>{t('common.no_tickets', { defaultValue: 'No tickets found' })}</Text>
               </View>
             )
           }
@@ -1315,11 +1291,11 @@ function HomeScreen() {
           isLoading ? (
             <View style={styles.loaderContainer}>
               <ActivityIndicator size="large" color="#FFA500" />
-              <Text style={styles.loaderText}>Loading {activeTab}...</Text>
+              <Text style={styles.loaderText}>{t('common.loading', { defaultValue: 'Loading...' })}</Text>
             </View>
           ) : (
             <View style={styles.emptyContainer}>
-              <Text style={styles.emptyText}>No {activeTab} found</Text>
+              <Text style={styles.emptyText}>{t('common.no_data', { defaultValue: 'No data found' })}</Text>
             </View>
           )
         }
@@ -1343,33 +1319,33 @@ function HomeScreen() {
         <View style={styles.modalOverlay}>
           <Animatable.View animation="slideInUp" style={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Shipment Details</Text>
+              <Text style={styles.modalTitle}>{t('common.shipment_details', { defaultValue: 'Shipment Details' })}</Text>
               <TouchableOpacity onPress={() => setIsTrackingModalVisible(false)}>
                 <Text style={styles.closeButtonText}>✕</Text>
               </TouchableOpacity>
             </View>
             {trackedShipment && (
               <ScrollView style={styles.modalBody}>
-                <Text style={styles.detailTitle}>Tracking Number</Text>
+                <Text style={styles.detailTitle}>{t('common.tracking_number', { defaultValue: 'Tracking Number' })}</Text>
                 <Text style={styles.detailValueLarge}>{trackedShipment.trackingNumber}</Text>
 
-                <Text style={styles.detailTitle}>Status</Text>
+                <Text style={styles.detailTitle}>{t('common.status', { defaultValue: 'Status' })}</Text>
                 <Text style={styles.detailValue}>{trackedShipment.status}</Text>
 
-                <Text style={styles.detailTitle}>Current Location</Text>
-                <Text style={styles.detailValue}>{trackedShipment.location || 'Unknown'}</Text>
+                <Text style={styles.detailTitle}>{t('common.current_location', { defaultValue: 'Current Location' })}</Text>
+                <Text style={styles.detailValue}>{trackedShipment.location || t('common.unknown', { defaultValue: 'Unknown' })}</Text>
 
-                <Text style={styles.detailTitle}>Origin</Text>
+                <Text style={styles.detailTitle}>{t('common.origin', { defaultValue: 'Origin' })}</Text>
                 <Text style={styles.detailValue}>{trackedShipment.origin}</Text>
 
-                <Text style={styles.detailTitle}>Destination</Text>
+                <Text style={styles.detailTitle}>{t('common.destination', { defaultValue: 'Destination' })}</Text>
                 <Text style={styles.detailValue}>{trackedShipment.destination}</Text>
 
-                <Text style={styles.detailTitle}>Last Update</Text>
+                <Text style={styles.detailTitle}>{t('common.last_update', { defaultValue: 'Last Update' })}</Text>
                 <Text style={styles.detailValue}>{trackedShipment.lastUpdate}</Text>
 
                 <View style={styles.progressContainer}>
-                  <Text style={styles.detailTitle}>Progress</Text>
+                  <Text style={styles.detailTitle}>{t('common.progress', { defaultValue: 'Progress' })}</Text>
                   <View style={styles.progressBarBackground}>
                     <View style={[styles.progressBarFill, { width: `${trackedShipment.progress}%` }]} />
                   </View>
@@ -1383,7 +1359,7 @@ function HomeScreen() {
                     handleViewOnMap(trackedShipment);
                   }}
                 >
-                  <Text style={styles.mapButtonText}>View on Map</Text>
+                  <Text style={styles.mapButtonText}>{t('common.view_on_map', { defaultValue: 'View on Map' })}</Text>
                 </TouchableOpacity>
               </ScrollView>
             )}
@@ -1400,7 +1376,7 @@ function HomeScreen() {
         <View style={styles.modalOverlay}>
           <Animatable.View animation="slideInUp" style={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Commands</Text>
+              <Text style={styles.modalTitle}>{t('common.commands', { defaultValue: 'Commands' })}</Text>
               <TouchableOpacity onPress={() => setCommandModalVisible(false)}>
                 <Text style={styles.closeButtonText}>✕</Text>
               </TouchableOpacity>
@@ -1441,7 +1417,7 @@ function HomeScreen() {
           <Animatable.View animation="slideInUp" duration={300} style={styles.modalContent}>
             {/* Header */}
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Ticket Details</Text>
+              <Text style={styles.modalTitle}>{t('common.ticket_details', { defaultValue: 'Ticket Details' })}</Text>
               <TouchableOpacity onPress={() => setModalVisible(false)}>
                 <Text style={styles.closeButtonText}>✕</Text>
               </TouchableOpacity>
@@ -1457,9 +1433,9 @@ function HomeScreen() {
                       {selectedTicket.ticketNumber || `#${selectedTicket.id}`}
                     </Text>
                     <View style={[styles.statusBadgeLarge,
-                      { backgroundColor: getTicketStatusInfo(selectedTicket.status).color + '20' }]}>
-                      <Text style={[styles.statusTextLarge, { color: getTicketStatusInfo(selectedTicket.status).color }]}>
-                        {getTicketStatusInfo(selectedTicket.status).text}
+                      { backgroundColor: getTicketStatusInfo(selectedTicket.status, t).color + '20' }]}>
+                      <Text style={[styles.statusTextLarge, { color: getTicketStatusInfo(selectedTicket.status, t).color }]}>
+                        {getTicketStatusInfo(selectedTicket.status, t).text}
                       </Text>
                     </View>
                   </View>
@@ -1472,7 +1448,7 @@ function HomeScreen() {
                   {/* Ticket Info Grid */}
                   <View style={styles.infoGrid}>
                     <View style={styles.infoItem}>
-                      <Text style={styles.infoLabel}>Priority</Text>
+                      <Text style={styles.infoLabel}>{t('common.priority', { defaultValue: 'Priority' })}</Text>
                       <View style={[styles.priorityBadgeLarge,
                         { backgroundColor: getPriorityColor(selectedTicket.priority) + '20' }]}>
                         <Text style={[styles.priorityTextLarge, { color: getPriorityColor(selectedTicket.priority) }]}>
@@ -1483,20 +1459,20 @@ function HomeScreen() {
 
                     {selectedTicket.t1Number && (
                       <View style={styles.infoItem}>
-                        <Text style={styles.infoLabel}>T1 Number</Text>
+                        <Text style={styles.infoLabel}>{t('common.t1_number', { defaultValue: 'T1 Number' })}</Text>
                         <Text style={styles.infoValue}>{selectedTicket.t1Number}</Text>
                       </View>
                     )}
 
                     {selectedTicket.truckReg && (
                       <View style={styles.infoItem}>
-                        <Text style={styles.infoLabel}>Device</Text>
+                        <Text style={styles.infoLabel}>{t('common.device', { defaultValue: 'Device' })}</Text>
                         <Text style={styles.infoValue}>{selectedTicket.truckReg}</Text>
                       </View>
                     )}
 
                     <View style={styles.infoItem}>
-                      <Text style={styles.infoLabel}>Created</Text>
+                      <Text style={styles.infoLabel}>{t('common.created', { defaultValue: 'Created' })}</Text>
                       <Text style={styles.infoValue}>
                         {selectedTicket.createdAt}
                       </Text>
@@ -1504,7 +1480,7 @@ function HomeScreen() {
 
                     {selectedTicket.updatedAt && (
                       <View style={styles.infoItem}>
-                        <Text style={styles.infoLabel}>Last Updated</Text>
+                        <Text style={styles.infoLabel}>{t('common.last_updated', { defaultValue: 'Last Updated' })}</Text>
                         <Text style={styles.infoValue}>
                           {new Date(selectedTicket.updatedAt).toLocaleString()}
                         </Text>
@@ -1527,7 +1503,7 @@ function HomeScreen() {
                       }}
                     >
                       <Image source={require('../assets/map.png')} style={{ width: 20, height: 20 }} />
-                      <Text style={styles.mapButtonText}>Track on Map</Text>
+                      <Text style={styles.mapButtonText}>{t('common.track_on_map', { defaultValue: 'Track on Map' })}</Text>
                     </TouchableOpacity>
                   )}
                 </ScrollView>
@@ -1539,7 +1515,7 @@ function HomeScreen() {
                                     {(selectedTicket.status === 'RESOLVED' || selectedTicket.status === 'CLOSED') ? (
                                       <View style={[styles.submitButton, { backgroundColor: '#4CAF50', flex: 1 }]}>
                                         <Text style={styles.submitButtonText}>
-                                          {selectedTicket.status === 'RESOLVED' ? '✓ Resolved' : '✓ Closed'}
+                                          {selectedTicket.status === 'RESOLVED' ? t('common.resolved', { defaultValue: '✓ Resolved' }) : t('common.closed', { defaultValue: '✓ Closed' })}
                                         </Text>
                                       </View>
                                     ) : (
@@ -1554,7 +1530,7 @@ function HomeScreen() {
                                             {resolvingTicketId === selectedTicket.id ? (
                                               <ActivityIndicator size="small" color="#FFFFFF" />
                                             ) : (
-                                              <Text style={styles.submitButtonText}>Resolve</Text>
+                                              <Text style={styles.submitButtonText}>{t('common.resolve', { defaultValue: 'Resolve' })}</Text>
                                             )}
                                           </TouchableOpacity>
                                         ) : (
@@ -1571,7 +1547,7 @@ function HomeScreen() {
                                               {acknowledgingTicketId === selectedTicket.id ? (
                                                 <ActivityIndicator size="small" color="#FFFFFF" />
                                               ) : (
-                                                <Text style={styles.submitButtonText}>Acknowledge</Text>
+                                                <Text style={styles.submitButtonText}>{t('common.acknowledge', { defaultValue: 'Acknowledge' })}</Text>
                                               )}
                                             </TouchableOpacity>
 
@@ -1586,7 +1562,7 @@ function HomeScreen() {
                                               {resolvingTicketId === selectedTicket.id ? (
                                                 <ActivityIndicator size="small" color="#FFFFFF" />
                                               ) : (
-                                                <Text style={styles.submitButtonText}>Resolve</Text>
+                                                <Text style={styles.submitButtonText}>{t('common.resolve', { defaultValue: 'Resolve' })}</Text>
                                               )}
                                             </TouchableOpacity>
                                           </>
@@ -1606,7 +1582,7 @@ function HomeScreen() {
   );
 }
 
-// Styles
+// Styles (unchanged - preserved exactly as original)
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F8F9FA' },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingTop: 60, paddingBottom: 20 },
@@ -1663,7 +1639,7 @@ const styles = StyleSheet.create({
   detailValue: { fontSize: 16, color: '#333', marginBottom: 5 },
   shipmentActions: { flexDirection: 'row', gap: 12 },
   actionBtn: { flex: 1, backgroundColor: '#F5F5F5', paddingVertical: 10, borderRadius: 10, alignItems: 'center' },
-  actionBtnText: { fontSize: 1, color: '#FFA500', fontWeight: '500' },
+  actionBtnText: { fontSize: 14, color: '#FFA500', fontWeight: '500' },
   notificationCard: { flexDirection: 'row', backgroundColor: '#FFFFFF', borderRadius: 12, padding: 12, marginBottom: 8, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 2, elevation: 1 },
   unreadNotification: { backgroundColor: '#FFF9E6' },
   notificationIcon: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#F5F5F5', justifyContent: 'center', alignItems: 'center', marginRight: 12 },

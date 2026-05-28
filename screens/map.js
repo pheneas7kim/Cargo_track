@@ -26,12 +26,14 @@ import axios from 'axios';
 import MapView, { Marker, Callout, PROVIDER_GOOGLE } from 'react-native-maps';
 import LinearGradient from 'react-native-linear-gradient';
 import serverUrl from '../config';
+import { useTranslation } from 'react-i18next';
 
 const { width, height } = Dimensions.get('window');
 const BOTTOM_SHEET_MAX_HEIGHT = height * 0.65;
 const BOTTOM_SHEET_MIN_HEIGHT = height * 0.15;
 
 const DeviceMapScreen = () => {
+  const { t } = useTranslation();
   const navigation = useNavigation();
   const [devices, setDevices] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -52,7 +54,7 @@ const DeviceMapScreen = () => {
   const [lastUpdate, setLastUpdate] = useState(null);
   const [mapReady, setMapReady] = useState(false);
   const [bottomSheetVisible, setBottomSheetVisible] = useState(false);
-  
+
   const mapRef = useRef(null);
   const intervalRef = useRef(null);
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -90,7 +92,7 @@ const DeviceMapScreen = () => {
   useFocusEffect(
     React.useCallback(() => {
       fetchDevices();
-      
+
       const backAction = () => {
         return false;
       };
@@ -102,7 +104,7 @@ const DeviceMapScreen = () => {
   const fetchDevices = async (isAutoRefresh = false) => {
     try {
       if (!isAutoRefresh) setLoading(true);
-      
+
       const token = await AsyncStorage.getItem('accessToken');
       if (!token) {
         console.error('No token found');
@@ -121,7 +123,7 @@ const DeviceMapScreen = () => {
       if (response.data && Array.isArray(response.data)) {
         setDevices(response.data);
         setLastUpdate(new Date());
-        
+
         if (!selectedDeviceMarker && response.data.length > 0 && mapRef.current && mapReady) {
           fitMapToMarkers(response.data);
         }
@@ -129,7 +131,7 @@ const DeviceMapScreen = () => {
     } catch (error) {
       console.error('Failed to fetch device locations:', error);
       Snackbar.show({
-        text: 'Failed to load device locations',
+        text: t('device_map.errors.load_failed', { defaultValue: 'Failed to load device locations' }),
         duration: 3000,
         backgroundColor: '#FF6B6B',
       });
@@ -146,25 +148,25 @@ const DeviceMapScreen = () => {
 
   const fitMapToMarkers = (devicesList) => {
     if (!devicesList || devicesList.length === 0) return;
-    
+
     const validDevices = devicesList.filter(d => d.latitude && d.longitude);
     if (validDevices.length === 0) return;
-    
+
     const latitudes = validDevices.map(d => parseFloat(d.latitude));
     const longitudes = validDevices.map(d => parseFloat(d.longitude));
-    
+
     const minLat = Math.min(...latitudes);
     const maxLat = Math.max(...latitudes);
     const minLng = Math.min(...longitudes);
     const maxLng = Math.max(...longitudes);
-    
+
     const region = {
       latitude: (minLat + maxLat) / 2,
       longitude: (minLng + maxLng) / 2,
       latitudeDelta: Math.max((maxLat - minLat) * 1.5, 0.1),
       longitudeDelta: Math.max((maxLng - minLng) * 1.5, 0.1),
     };
-    
+
     setMapRegion(region);
     if (mapRef.current && mapReady) {
       try {
@@ -177,14 +179,14 @@ const DeviceMapScreen = () => {
 
   const centerOnDevice = (device) => {
     if (!device.latitude || !device.longitude) return;
-    
+
     const region = {
       latitude: parseFloat(device.latitude),
       longitude: parseFloat(device.longitude),
       latitudeDelta: 0.01,
       longitudeDelta: 0.01,
     };
-    
+
     setMapRegion(region);
     if (mapRef.current && mapReady) {
       try {
@@ -214,22 +216,22 @@ const DeviceMapScreen = () => {
 
   const getFilteredDevices = () => {
     let filtered = [...devices];
-    
+
     if (filter === 'moving') {
       filtered = filtered.filter(d => (d.speedKmh || 0) > 5);
     } else if (filter === 'stationary') {
       filtered = filtered.filter(d => (d.speedKmh || 0) <= 5);
     }
-    
+
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
-      filtered = filtered.filter(d => 
+      filtered = filtered.filter(d =>
         d.deviceName?.toLowerCase().includes(query) ||
         d.deviceSn?.toLowerCase().includes(query) ||
         d.t1Number?.toLowerCase().includes(query)
       );
     }
-    
+
     return filtered;
   };
 
@@ -244,18 +246,18 @@ const DeviceMapScreen = () => {
   };
 
   const formatSpeed = (speed) => {
-    if (!speed && speed !== 0) return 'N/A';
+    if (!speed && speed !== 0) return t('device_map.na', { defaultValue: 'N/A' });
     return `${Math.round(speed)} km/h`;
   };
 
   const formatDate = (dateString) => {
-    if (!dateString) return 'N/A';
+    if (!dateString) return t('device_map.na', { defaultValue: 'N/A' });
     const date = new Date(dateString);
     const now = new Date();
     const diff = Math.floor((now - date) / 1000 / 60);
-    if (diff < 1) return 'Just now';
-    if (diff < 60) return `${diff} min ago`;
-    if (diff < 1440) return `${Math.floor(diff / 60)} hr ago`;
+    if (diff < 1) return t('device_map.time.just_now', { defaultValue: 'Just now' });
+    if (diff < 60) return t('device_map.time.minutes_ago', { defaultValue: '{{count}} min ago' }).replace('{{count}}', diff.toString());
+    if (diff < 1440) return t('device_map.time.hours_ago', { defaultValue: '{{count}} hr ago' }).replace('{{count}}', Math.floor(diff / 60).toString());
     return date.toLocaleTimeString();
   };
 
@@ -274,9 +276,14 @@ const DeviceMapScreen = () => {
     return '🅿️';
   };
 
+  const getMovementStatus = (speed) => {
+    if (speed > 5) return t('device_map.status.moving', { defaultValue: 'In Motion' });
+    return t('device_map.status.parked', { defaultValue: 'Parked' });
+  };
+
   const renderHeader = () => {
     const stats = getStats();
-    
+
     return (
       <Animated.View style={[styles.header, { opacity: fadeAnim }]}>
         <LinearGradient
@@ -289,7 +296,7 @@ const DeviceMapScreen = () => {
             <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
               <Text style={styles.backButtonText}>←</Text>
             </TouchableOpacity>
-            <Text style={styles.headerTitle}>Fleet Tracker</Text>
+            <Text style={styles.headerTitle}>{t('device_map.title', { defaultValue: 'Fleet Tracker' })}</Text>
             <TouchableOpacity onPress={onRefresh} style={styles.refreshButton}>
               <Text style={styles.refreshButtonText}>↻</Text>
             </TouchableOpacity>
@@ -299,7 +306,7 @@ const DeviceMapScreen = () => {
             <Text style={styles.searchIcon}>🔍</Text>
             <TextInput
               style={styles.searchInput}
-              placeholder="Search by name, serial, or ID..."
+              placeholder={t('device_map.search_placeholder', { defaultValue: 'Search by name, serial, or ID...' })}
               placeholderTextColor="#999"
               value={searchQuery}
               onChangeText={setSearchQuery}
@@ -311,49 +318,49 @@ const DeviceMapScreen = () => {
             )}
           </Animated.View>
 
-          <ScrollView 
-            horizontal 
-            showsHorizontalScrollIndicator={false} 
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.statsContainer}
           >
-            <TouchableOpacity 
+            <TouchableOpacity
               style={[styles.statCard, filter === 'all' && styles.activeStatCard]}
               onPress={() => setFilter('all')}
             >
               <Text style={styles.statNumber}>{stats.total}</Text>
-              <Text style={styles.statLabel}>Total</Text>
+              <Text style={styles.statLabel}>{t('device_map.stats.total', { defaultValue: 'Total' })}</Text>
             </TouchableOpacity>
-            
-            <TouchableOpacity 
+
+            <TouchableOpacity
               style={[styles.statCard, filter === 'moving' && styles.activeStatCard]}
               onPress={() => setFilter('moving')}
             >
               <Text style={[styles.statNumber, { color: '#4CAF50' }]}>{stats.moving}</Text>
-              <Text style={styles.statLabel}>Moving</Text>
+              <Text style={styles.statLabel}>{t('device_map.stats.moving', { defaultValue: 'Moving' })}</Text>
             </TouchableOpacity>
-            
-            <TouchableOpacity 
+
+            <TouchableOpacity
               style={[styles.statCard, filter === 'stationary' && styles.activeStatCard]}
               onPress={() => setFilter('stationary')}
             >
               <Text style={[styles.statNumber, { color: '#FFA500' }]}>{stats.stationary}</Text>
-              <Text style={styles.statLabel}>Stationary</Text>
+              <Text style={styles.statLabel}>{t('device_map.stats.stationary', { defaultValue: 'Stationary' })}</Text>
             </TouchableOpacity>
           </ScrollView>
 
           <View style={styles.controlsContainer}>
-            <TouchableOpacity 
+            <TouchableOpacity
               style={[styles.controlButton, showTraffic && styles.activeControl]}
               onPress={() => setShowTraffic(!showTraffic)}
             >
-              <Text style={styles.controlButtonText}>Traffic</Text>
+              <Text style={styles.controlButtonText}>{t('device_map.controls.traffic', { defaultValue: 'Traffic' })}</Text>
             </TouchableOpacity>
-            
-            <TouchableOpacity 
+
+            <TouchableOpacity
               style={[styles.controlButton, autoRefresh && styles.activeControl]}
               onPress={() => setAutoRefresh(!autoRefresh)}
             >
-              <Text style={styles.controlButtonText}>Live</Text>
+              <Text style={styles.controlButtonText}>{t('device_map.controls.live', { defaultValue: 'Live' })}</Text>
             </TouchableOpacity>
           </View>
         </LinearGradient>
@@ -363,21 +370,21 @@ const DeviceMapScreen = () => {
 
   const renderBottomSheet = () => {
     const filteredDevices = getFilteredDevices();
-    
+
     return (
       <Animated.View style={[styles.bottomSheet, { height: bottomSheetAnim }]}>
         <View style={styles.bottomSheetHandle}>
           <View style={styles.handleBar} />
           <View style={styles.bottomSheetHeader}>
             <Text style={styles.bottomSheetTitle}>
-              {selectedDeviceMarker ? selectedDeviceMarker.deviceName || selectedDeviceMarker.deviceSn : 'Nearby Vehicles'}
+              {selectedDeviceMarker ? selectedDeviceMarker.deviceName || selectedDeviceMarker.deviceSn : t('device_map.bottom_sheet.nearby_vehicles', { defaultValue: 'Nearby Vehicles' })}
             </Text>
             <TouchableOpacity onPress={closeBottomSheet}>
               <Text style={styles.closeSheetText}>✕</Text>
             </TouchableOpacity>
           </View>
         </View>
-        
+
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.bottomSheetContent}>
           {selectedDeviceMarker ? (
             // Detailed view for selected device
@@ -385,49 +392,49 @@ const DeviceMapScreen = () => {
               <View style={styles.selectedDeviceHeader}>
                 <View style={[styles.deviceStatusBadge, { backgroundColor: getMarkerColor(selectedDeviceMarker.speedKmh) + '20' }]}>
                   <Text style={[styles.deviceStatusText, { color: getMarkerColor(selectedDeviceMarker.speedKmh) }]}>
-                    {getStatusIcon(selectedDeviceMarker.speedKmh)} {selectedDeviceMarker.speedKmh > 5 ? 'In Motion' : 'Parked'}
+                    {getStatusIcon(selectedDeviceMarker.speedKmh)} {getMovementStatus(selectedDeviceMarker.speedKmh)}
                   </Text>
                 </View>
                 <Text style={styles.selectedDeviceSpeed}>{formatSpeed(selectedDeviceMarker.speedKmh)}</Text>
               </View>
-              
+
               <View style={styles.infoCard}>
                 <View style={styles.infoRow}>
                   <Text style={styles.infoIcon}>🚛</Text>
                   <View style={styles.infoTextContainer}>
-                    <Text style={styles.infoLabel}>Vehicle ID</Text>
+                    <Text style={styles.infoLabel}>{t('device_map.details.vehicle_id', { defaultValue: 'Vehicle ID' })}</Text>
                     <Text style={styles.infoValue}>{selectedDeviceMarker.deviceName || selectedDeviceMarker.deviceSn}</Text>
                   </View>
                 </View>
-                
+
                 <View style={styles.infoRow}>
                   <Text style={styles.infoIcon}>📍</Text>
                   <View style={styles.infoTextContainer}>
-                    <Text style={styles.infoLabel}>Location</Text>
+                    <Text style={styles.infoLabel}>{t('device_map.details.location', { defaultValue: 'Location' })}</Text>
                     <Text style={styles.infoValue}>
                       {selectedDeviceMarker.latitude?.toFixed(6)}, {selectedDeviceMarker.longitude?.toFixed(6)}
                     </Text>
                   </View>
                 </View>
-                
+
                 <View style={styles.infoRow}>
                   <Text style={styles.infoIcon}>⏱️</Text>
                   <View style={styles.infoTextContainer}>
-                    <Text style={styles.infoLabel}>Last Update</Text>
+                    <Text style={styles.infoLabel}>{t('device_map.details.last_update', { defaultValue: 'Last Update' })}</Text>
                     <Text style={styles.infoValue}>{formatDate(selectedDeviceMarker.timestamp)}</Text>
                   </View>
                 </View>
-                
+
                 <View style={styles.infoRow}>
                   <Text style={styles.infoIcon}>📊</Text>
                   <View style={styles.infoTextContainer}>
-                    <Text style={styles.infoLabel}>Mileage</Text>
+                    <Text style={styles.infoLabel}>{t('device_map.details.mileage', { defaultValue: 'Mileage' })}</Text>
                     <Text style={styles.infoValue}>{Math.round(selectedDeviceMarker.mileageKm || 0)} km</Text>
                   </View>
                 </View>
               </View>
-              
-              <TouchableOpacity 
+
+              <TouchableOpacity
                 style={styles.centerOnMapButton}
                 onPress={() => {
                   centerOnDevice(selectedDeviceMarker);
@@ -439,7 +446,7 @@ const DeviceMapScreen = () => {
                   end={{x: 1, y: 0}}
                   style={styles.gradientButton}
                 >
-                  <Text style={styles.centerOnMapText}>Center on Map</Text>
+                  <Text style={styles.centerOnMapText}>{t('device_map.buttons.center_on_map', { defaultValue: 'Center on Map' })}</Text>
                 </LinearGradient>
               </TouchableOpacity>
             </View>
@@ -470,12 +477,12 @@ const DeviceMapScreen = () => {
               </TouchableOpacity>
             ))
           )}
-          
+
           {filteredDevices.length === 0 && !selectedDeviceMarker && (
             <View style={styles.emptySheetContainer}>
               <Text style={styles.emptySheetIcon}>🚫</Text>
-              <Text style={styles.emptySheetTitle}>No vehicles found</Text>
-              <Text style={styles.emptySheetText}>Try adjusting your search</Text>
+              <Text style={styles.emptySheetTitle}>{t('device_map.empty.no_vehicles', { defaultValue: 'No vehicles found' })}</Text>
+              <Text style={styles.emptySheetText}>{t('device_map.empty.adjust_search', { defaultValue: 'Try adjusting your search' })}</Text>
             </View>
           )}
         </ScrollView>
@@ -489,7 +496,7 @@ const DeviceMapScreen = () => {
         <StatusBar barStyle="light-content" backgroundColor="#000000" />
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#FFFFFF" />
-          <Text style={styles.loadingText}>Loading fleet data...</Text>
+          <Text style={styles.loadingText}>{t('device_map.loading', { defaultValue: 'Loading fleet data...' })}</Text>
         </View>
       </SafeAreaView>
     );

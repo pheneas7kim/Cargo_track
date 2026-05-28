@@ -16,6 +16,7 @@ import Ionicons from 'react-native-vector-icons/Ionicons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Snackbar from 'react-native-snackbar';
 import serverURL from '../config';
+import { useTranslation } from 'react-i18next';
 
 const getAuthToken = async () => {
   try {
@@ -28,6 +29,7 @@ const getAuthToken = async () => {
 };
 
 const SensorList = ({ navigation }) => {
+  const { t } = useTranslation();
   const [mastersData, setMastersData] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -38,7 +40,7 @@ const SensorList = ({ navigation }) => {
     try {
       const token = await getAuthToken();
       if (!token) {
-        throw new Error('Authentication required');
+        throw new Error(t('sensor_list.errors.auth_required', { defaultValue: 'Authentication required' }));
       }
 
       const url = `${serverURL}sensors/${masterSN}`;
@@ -53,7 +55,7 @@ const SensorList = ({ navigation }) => {
       });
 
       if (response.status === 401) {
-        throw new Error('Session expired');
+        throw new Error(t('sensor_list.errors.session_expired', { defaultValue: 'Session expired' }));
       }
 
       if (!response.ok) {
@@ -104,7 +106,7 @@ const SensorList = ({ navigation }) => {
       setMastersData(results);
     } catch (error) {
       console.error('❌ Error loading masters:', error);
-      setError(error.message || 'Failed to load masters');
+      setError(error.message || t('sensor_list.errors.load_failed', { defaultValue: 'Failed to load masters' }));
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);
@@ -128,9 +130,9 @@ const SensorList = ({ navigation }) => {
   };
 
   const formatDate = (dateString) => {
-    if (!dateString) return 'Unknown';
+    if (!dateString) return t('sensor_list.unknown', { defaultValue: 'Unknown' });
     const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', {
+    return date.toLocaleDateString(t('sensor_list.locale', { defaultValue: 'en-US' }), {
       year: 'numeric',
       month: 'short',
       day: 'numeric',
@@ -159,10 +161,10 @@ const SensorList = ({ navigation }) => {
           <Ionicons name="hardware-chip-outline" size={24} color="#FFA500" />
         </View>
         <View style={styles.masterInfo}>
-          <Text style={styles.masterTitle}>Master Device</Text>
+          <Text style={styles.masterTitle}>{t('sensor_list.master_device', { defaultValue: 'Master Device' })}</Text>
           <Text style={styles.masterSerial}>{item.masterSerialNumber}</Text>
           <Text style={styles.masterDate}>
-            Mapped: {formatDate(item.createdAt)}
+            {t('sensor_list.mapped', { defaultValue: 'Mapped' })}: {formatDate(item.createdAt)}
           </Text>
         </View>
         <View style={styles.masterStats}>
@@ -184,7 +186,7 @@ const SensorList = ({ navigation }) => {
             <>
               <View style={styles.slavesHeader}>
                 <Text style={styles.slavesHeaderText}>
-                  Connected Sensors ({item.sensorCount})
+                  {t('sensor_list.connected_sensors', { defaultValue: 'Connected Sensors' })} ({item.sensorCount})
                 </Text>
               </View>
               {item.sensors.map((sensor, index) => (
@@ -195,14 +197,14 @@ const SensorList = ({ navigation }) => {
                   <View style={styles.sensorDetails}>
                     <Text style={styles.sensorId}>{sensor.sensorId}</Text>
                     <Text style={styles.sensorMeta}>
-                      ID: {sensor.id} | Added: {formatDate(sensor.createdAt)}
+                      {t('sensor_list.id_label', { defaultValue: 'ID' })}: {sensor.id} | {t('sensor_list.added', { defaultValue: 'Added' })}: {formatDate(sensor.createdAt)}
                     </Text>
                   </View>
                   <TouchableOpacity
                     style={styles.removeSensorButton}
                     onPress={() => {
                       Snackbar.show({
-                        text: `Remove ${sensor.sensorId} - API endpoint needed`,
+                        text: t('sensor_list.remove_sensor_message', { defaultValue: 'Remove {{sensorId}} - API endpoint needed', sensorId: sensor.sensorId }).replace('{{sensorId}}', sensor.sensorId),
                         duration: 2000,
                         backgroundColor: '#FF9800',
                       });
@@ -216,9 +218,9 @@ const SensorList = ({ navigation }) => {
           ) : (
             <View style={styles.noSensorsContainer}>
               <Ionicons name="sensor-outline" size={32} color="#CCC" />
-              <Text style={styles.noSensorsText}>No sensors connected</Text>
+              <Text style={styles.noSensorsText}>{t('sensor_list.no_sensors', { defaultValue: 'No sensors connected' })}</Text>
               <Text style={styles.noSensorsSubtext}>
-                Use the mapper to add sensors to this master
+                {t('sensor_list.no_sensors_subtext', { defaultValue: 'Use the mapper to add sensors to this master' })}
               </Text>
             </View>
           )}
@@ -230,16 +232,16 @@ const SensorList = ({ navigation }) => {
   const renderEmptyState = () => (
     <View style={styles.emptyContainer}>
       <Ionicons name="hardware-chip-outline" size={64} color="#CCCCCC" />
-      <Text style={styles.emptyTitle}>No Masters Found</Text>
+      <Text style={styles.emptyTitle}>{t('sensor_list.no_masters_title', { defaultValue: 'No Masters Found' })}</Text>
       <Text style={styles.emptyText}>
-        You haven't mapped any masters yet.
+        {t('sensor_list.no_masters_text', { defaultValue: 'You haven\'t mapped any masters yet.' })}
       </Text>
       <TouchableOpacity
         style={styles.goToMapperButton}
         onPress={() => navigation.navigate('MasterSlaveMapper')}
       >
         <Ionicons name="add-circle-outline" size={20} color="#FFF" />
-        <Text style={styles.goToMapperButtonText}>Go to Mapper</Text>
+        <Text style={styles.goToMapperButtonText}>{t('sensor_list.go_to_mapper', { defaultValue: 'Go to Mapper' })}</Text>
       </TouchableOpacity>
     </View>
   );
@@ -247,14 +249,14 @@ const SensorList = ({ navigation }) => {
   const renderErrorState = () => (
     <View style={styles.emptyContainer}>
       <Ionicons name="alert-circle-outline" size={64} color="#FF6B6B" />
-      <Text style={styles.emptyTitle}>Error Loading Data</Text>
+      <Text style={styles.emptyTitle}>{t('sensor_list.error_title', { defaultValue: 'Error Loading Data' })}</Text>
       <Text style={styles.emptyText}>{error}</Text>
       <TouchableOpacity
         style={styles.retryButton}
         onPress={loadMastersAndSensors}
       >
         <Ionicons name="refresh-outline" size={20} color="#FFF" />
-        <Text style={styles.retryButtonText}>Retry</Text>
+        <Text style={styles.retryButtonText}>{t('sensor_list.retry', { defaultValue: 'Retry' })}</Text>
       </TouchableOpacity>
     </View>
   );
@@ -265,7 +267,7 @@ const SensorList = ({ navigation }) => {
         <StatusBar barStyle="dark-content" backgroundColor="#F8F9FA" />
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#FFA500" />
-          <Text style={styles.loadingText}>Loading masters...</Text>
+          <Text style={styles.loadingText}>{t('sensor_list.loading', { defaultValue: 'Loading masters...' })}</Text>
         </View>
       </SafeAreaView>
     );
@@ -285,9 +287,9 @@ const SensorList = ({ navigation }) => {
           <Ionicons name="arrow-back" size={24} color="#1A1A1A" />
         </TouchableOpacity>
         <View style={styles.headerContent}>
-          <Text style={styles.headerTitle}>Master & Sensor Mapping</Text>
+          <Text style={styles.headerTitle}>{t('sensor_list.header_title', { defaultValue: 'Master & Sensor Mapping' })}</Text>
           <Text style={styles.headerSubtitle}>
-            Total Masters: {mastersData.length} | Total Sensors: {mastersData.reduce((sum, m) => sum + m.sensorCount, 0)}
+            {t('sensor_list.total_masters', { defaultValue: 'Total Masters' })}: {mastersData.length} | {t('sensor_list.total_sensors', { defaultValue: 'Total Sensors' })}: {mastersData.reduce((sum, m) => sum + m.sensorCount, 0)}
           </Text>
         </View>
         <TouchableOpacity

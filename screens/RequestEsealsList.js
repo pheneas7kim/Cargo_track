@@ -20,8 +20,10 @@ import Icon from 'react-native-vector-icons/MaterialIcons';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import Snackbar from 'react-native-snackbar';
 import serverUrl from '../config';
+import { useTranslation } from 'react-i18next';
 
 const RequestEsealsList = () => {
+  const { t } = useTranslation();
   const navigation = useNavigation();
   const [requests, setRequests] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -48,7 +50,7 @@ const RequestEsealsList = () => {
     } catch (error) {
       console.error('Fetch requests error:', error);
       Snackbar.show({
-        text: error.response?.data?.message || 'Failed to load requests',
+        text: error.response?.data?.message || t('request_eseals_list.errors.load_failed', { defaultValue: 'Failed to load requests' }),
         duration: 3000,
         backgroundColor: '#FF6B6B',
       });
@@ -72,23 +74,48 @@ const RequestEsealsList = () => {
   const getStatusStyle = (status) => {
     switch (status?.toUpperCase()) {
       case 'PENDING':
-        return { bg: '#FFF3E0', text: '#FF9800', icon: 'pending', label: 'Pending' };
+        return {
+          bg: '#FFF3E0',
+          text: '#FF9800',
+          icon: 'pending',
+          label: t('request_eseals_list.status.pending', { defaultValue: 'Pending' })
+        };
       case 'FULFILLED':
-        return { bg: '#E8F5E9', text: '#4CAF50', icon: 'check-circle', label: 'Fulfilled' };
+        return {
+          bg: '#E8F5E9',
+          text: '#4CAF50',
+          icon: 'check-circle',
+          label: t('request_eseals_list.status.fulfilled', { defaultValue: 'Fulfilled' })
+        };
       case 'REJECTED':
-        return { bg: '#FFEBEE', text: '#F44336', icon: 'cancel', label: 'Rejected' };
+        return {
+          bg: '#FFEBEE',
+          text: '#F44336',
+          icon: 'cancel',
+          label: t('request_eseals_list.status.rejected', { defaultValue: 'Rejected' })
+        };
       case 'APPROVED':
-        return { bg: '#E3F2FD', text: '#2196F3', icon: 'thumb-up', label: 'Approved' };
+        return {
+          bg: '#E3F2FD',
+          text: '#2196F3',
+          icon: 'thumb-up',
+          label: t('request_eseals_list.status.approved', { defaultValue: 'Approved' })
+        };
       default:
-        return { bg: '#F5F5F5', text: '#9E9E9E', icon: 'help', label: status || 'Unknown' };
+        return {
+          bg: '#F5F5F5',
+          text: '#9E9E9E',
+          icon: 'help',
+          label: status || t('request_eseals_list.status.unknown', { defaultValue: 'Unknown' })
+        };
     }
   };
 
   const formatDate = (dateString) => {
-    if (!dateString) return 'Not available';
+    if (!dateString) return t('request_eseals_list.not_available', { defaultValue: 'Not available' });
     try {
       const date = new Date(dateString);
-      if (isNaN(date.getTime())) return 'Invalid date';
+      if (isNaN(date.getTime())) return t('request_eseals_list.invalid_date', { defaultValue: 'Invalid date' });
       return date.toLocaleDateString('en-US', {
         month: 'short',
         day: 'numeric',
@@ -98,7 +125,7 @@ const RequestEsealsList = () => {
         hour12: true
       });
     } catch (error) {
-      return 'Invalid date';
+      return t('request_eseals_list.invalid_date', { defaultValue: 'Invalid date' });
     }
   };
 
@@ -114,10 +141,10 @@ const RequestEsealsList = () => {
       const diffHours = Math.floor(diffMins / 60);
       const diffDays = Math.floor(diffHours / 24);
 
-      if (diffMins < 1) return 'Just now';
-      if (diffMins < 60) return `${diffMins} min ago`;
-      if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`;
-      if (diffDays < 7) return `${diffDays} day${diffDays > 1 ? 's' : ''} ago`;
+      if (diffMins < 1) return t('request_eseals_list.time.just_now', { defaultValue: 'Just now' });
+      if (diffMins < 60) return t('request_eseals_list.time.minutes_ago', { defaultValue: '{{count}} min ago' }).replace('{{count}}', diffMins.toString());
+      if (diffHours < 24) return t('request_eseals_list.time.hours_ago', { defaultValue: '{{count}} hour ago' }).replace('{{count}}', diffHours.toString());
+      if (diffDays < 7) return t('request_eseals_list.time.days_ago', { defaultValue: '{{count}} day ago' }).replace('{{count}}', diffDays.toString());
       return formatDate(dateString);
     } catch (error) {
       return '';
@@ -149,34 +176,36 @@ const RequestEsealsList = () => {
           </View>
         </View>
 
-        <Text style={styles.requestId}>Request #{item.id}</Text>
+        <Text style={styles.requestId}>
+          {t('request_eseals_list.request_hash', { defaultValue: 'Request #{{id}}' }).replace('{{id}}', item.id.toString())}
+        </Text>
 
         <View style={styles.quantityContainer}>
           <Icon name="inventory" size={20} color="#FFA500" />
           <Text style={styles.quantity}>
-            {item.quantityRequested} E-Seal{item.quantityRequested !== 1 ? 's' : ''}
+            {item.quantityRequested} {t('request_eseals_list.e_seal_unit', { defaultValue: 'E-Seal' })}{item.quantityRequested !== 1 ? 's' : ''}
           </Text>
         </View>
 
         <View style={styles.reasonContainer}>
           <Icon name="description" size={16} color="#666" />
-          <Text style={styles.reasonLabel}>Reason:</Text>
+          <Text style={styles.reasonLabel}>{t('request_eseals_list.reason_label', { defaultValue: 'Reason' })}:</Text>
         </View>
         <Text style={styles.reason}>
-          {item.reason || 'No reason provided'}
+          {item.reason || t('request_eseals_list.no_reason', { defaultValue: 'No reason provided' })}
         </Text>
 
         <View style={styles.infoGrid}>
           <View style={styles.infoItem}>
             <Icon name="person" size={14} color="#888" />
-            <Text style={styles.infoLabel}>Requested by:</Text>
-            <Text style={styles.infoValue}>{item.rruName || 'Unknown'}</Text>
+            <Text style={styles.infoLabel}>{t('request_eseals_list.requested_by', { defaultValue: 'Requested by' })}:</Text>
+            <Text style={styles.infoValue}>{item.rruName || t('request_eseals_list.unknown', { defaultValue: 'Unknown' })}</Text>
           </View>
 
           {item.approvedByName && (
             <View style={styles.infoItem}>
               <Icon name="verified-user" size={14} color="#4CAF50" />
-              <Text style={styles.infoLabel}>Approved by:</Text>
+              <Text style={styles.infoLabel}>{t('request_eseals_list.approved_by', { defaultValue: 'Approved by' })}:</Text>
               <Text style={styles.infoValue}>{item.approvedByName}</Text>
             </View>
           )}
@@ -184,7 +213,7 @@ const RequestEsealsList = () => {
           {item.approvedAt && (
             <View style={styles.infoItem}>
               <Icon name="event" size={14} color="#888" />
-              <Text style={styles.infoLabel}>Approved on:</Text>
+              <Text style={styles.infoLabel}>{t('request_eseals_list.approved_on', { defaultValue: 'Approved on' })}:</Text>
               <Text style={styles.infoValue}>{formatDate(item.approvedAt)}</Text>
             </View>
           )}
@@ -193,7 +222,7 @@ const RequestEsealsList = () => {
         {item.status === 'REJECTED' && item.rejectionReason && (
           <View style={styles.rejectionRow}>
             <Icon name="error-outline" size={16} color="#F44336" />
-            <Text style={styles.rejectionLabel}>Rejection reason:</Text>
+            <Text style={styles.rejectionLabel}>{t('request_eseals_list.rejection_reason', { defaultValue: 'Rejection reason' })}:</Text>
             <Text style={styles.rejectionText}>{item.rejectionReason}</Text>
           </View>
         )}
@@ -202,7 +231,7 @@ const RequestEsealsList = () => {
 
         <View style={styles.cardFooter}>
           <Icon name="touch-app" size={14} color="#BBB" />
-          <Text style={styles.tapHint}>Tap for details</Text>
+          <Text style={styles.tapHint}>{t('request_eseals_list.tap_for_details', { defaultValue: 'Tap for details' })}</Text>
         </View>
       </TouchableOpacity>
     );
@@ -230,14 +259,14 @@ const RequestEsealsList = () => {
           <Ionicons name="arrow-back" size={24} color="#1A1A1A" />
         </TouchableOpacity>
         <View style={styles.headerContent}>
-          <Text style={styles.headerTitle}>My E-Seal Requests</Text>
+          <Text style={styles.headerTitle}>{t('request_eseals_list.title', { defaultValue: 'My E-Seal Requests' })}</Text>
           <View style={styles.headerStats}>
             <Text style={styles.headerSubtitle}>
-              Total: {requests.length} request{requests.length !== 1 ? 's' : ''}
+              {t('request_eseals_list.total', { defaultValue: 'Total' })}: {requests.length} {requests.length !== 1 ? t('request_eseals_list.requests_plural', { defaultValue: 'requests' }) : t('request_eseals_list.request_singular', { defaultValue: 'request' })}
             </Text>
             <View style={styles.pendingBadge}>
               <Text style={styles.pendingText}>
-                Pending: {requests.filter(r => r.status === 'PENDING').length}
+                {t('request_eseals_list.pending', { defaultValue: 'Pending' })}: {requests.filter(r => r.status === 'PENDING').length}
               </Text>
             </View>
           </View>
@@ -247,9 +276,9 @@ const RequestEsealsList = () => {
       {requests.length === 0 ? (
         <View style={styles.emptyContainer}>
           <Icon name="inventory" size={64} color="#CCCCCC" />
-          <Text style={styles.emptyText}>No requests found</Text>
+          <Text style={styles.emptyText}>{t('request_eseals_list.empty.title', { defaultValue: 'No requests found' })}</Text>
           <Text style={styles.emptySubtext}>
-            Tap the + button to request e-seals
+            {t('request_eseals_list.empty.subtext', { defaultValue: 'Tap the + button to request e-seals' })}
           </Text>
         </View>
       ) : (
@@ -284,7 +313,7 @@ const RequestEsealsList = () => {
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Request Details</Text>
+              <Text style={styles.modalTitle}>{t('request_eseals_list.modal.title', { defaultValue: 'Request Details' })}</Text>
               <TouchableOpacity onPress={() => setModalVisible(false)}>
                 <Icon name="close" size={24} color="#999" />
               </TouchableOpacity>
@@ -293,12 +322,12 @@ const RequestEsealsList = () => {
             {selectedRequest && (
               <ScrollView showsVerticalScrollIndicator={false}>
                 <View style={styles.detailSection}>
-                  <Text style={styles.detailLabel}>Request ID</Text>
+                  <Text style={styles.detailLabel}>{t('request_eseals_list.modal.request_id', { defaultValue: 'Request ID' })}</Text>
                   <Text style={styles.detailValue}>#{selectedRequest.id}</Text>
                 </View>
 
                 <View style={styles.detailSection}>
-                  <Text style={styles.detailLabel}>Status</Text>
+                  <Text style={styles.detailLabel}>{t('request_eseals_list.modal.status', { defaultValue: 'Status' })}</Text>
                   <View style={[styles.detailStatusBadge, { backgroundColor: getStatusStyle(selectedRequest.status).bg }]}>
                     <Icon name={getStatusStyle(selectedRequest.status).icon} size={16} color={getStatusStyle(selectedRequest.status).text} />
                     <Text style={[styles.detailStatusText, { color: getStatusStyle(selectedRequest.status).text }]}>
@@ -308,33 +337,35 @@ const RequestEsealsList = () => {
                 </View>
 
                 <View style={styles.detailSection}>
-                  <Text style={styles.detailLabel}>Quantity</Text>
-                  <Text style={styles.detailValue}>{selectedRequest.quantityRequested} E-Seal{selectedRequest.quantityRequested !== 1 ? 's' : ''}</Text>
+                  <Text style={styles.detailLabel}>{t('request_eseals_list.modal.quantity', { defaultValue: 'Quantity' })}</Text>
+                  <Text style={styles.detailValue}>
+                    {selectedRequest.quantityRequested} {t('request_eseals_list.e_seal_unit', { defaultValue: 'E-Seal' })}{selectedRequest.quantityRequested !== 1 ? 's' : ''}
+                  </Text>
                 </View>
 
                 <View style={styles.detailSection}>
-                  <Text style={styles.detailLabel}>Reason</Text>
-                  <Text style={styles.detailValue}>{selectedRequest.reason || 'No reason provided'}</Text>
+                  <Text style={styles.detailLabel}>{t('request_eseals_list.modal.reason', { defaultValue: 'Reason' })}</Text>
+                  <Text style={styles.detailValue}>{selectedRequest.reason || t('request_eseals_list.no_reason', { defaultValue: 'No reason provided' })}</Text>
                 </View>
 
                 <View style={styles.detailSection}>
-                  <Text style={styles.detailLabel}>Requested By</Text>
-                  <Text style={styles.detailValue}>{selectedRequest.rruName || 'Unknown'}</Text>
+                  <Text style={styles.detailLabel}>{t('request_eseals_list.modal.requested_by', { defaultValue: 'Requested By' })}</Text>
+                  <Text style={styles.detailValue}>{selectedRequest.rruName || t('request_eseals_list.unknown', { defaultValue: 'Unknown' })}</Text>
                 </View>
 
                 <View style={styles.detailSection}>
-                  <Text style={styles.detailLabel}>Requested On</Text>
+                  <Text style={styles.detailLabel}>{t('request_eseals_list.modal.requested_on', { defaultValue: 'Requested On' })}</Text>
                   <Text style={styles.detailValue}>{formatDate(selectedRequest.createdAt)}</Text>
                 </View>
 
                 {selectedRequest.approvedByName && (
                   <>
                     <View style={styles.detailSection}>
-                      <Text style={styles.detailLabel}>Approved By</Text>
+                      <Text style={styles.detailLabel}>{t('request_eseals_list.modal.approved_by', { defaultValue: 'Approved By' })}</Text>
                       <Text style={styles.detailValue}>{selectedRequest.approvedByName}</Text>
                     </View>
                     <View style={styles.detailSection}>
-                      <Text style={styles.detailLabel}>Approved On</Text>
+                      <Text style={styles.detailLabel}>{t('request_eseals_list.modal.approved_on', { defaultValue: 'Approved On' })}</Text>
                       <Text style={styles.detailValue}>{formatDate(selectedRequest.approvedAt)}</Text>
                     </View>
                   </>
@@ -342,7 +373,7 @@ const RequestEsealsList = () => {
 
                 {selectedRequest.rejectionReason && (
                   <View style={styles.detailSection}>
-                    <Text style={styles.detailLabel}>Rejection Reason</Text>
+                    <Text style={styles.detailLabel}>{t('request_eseals_list.modal.rejection_reason', { defaultValue: 'Rejection Reason' })}</Text>
                     <Text style={[styles.detailValue, styles.rejectionTextValue]}>
                       {selectedRequest.rejectionReason}
                     </Text>

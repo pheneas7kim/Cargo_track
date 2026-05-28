@@ -23,10 +23,12 @@ import * as Animatable from 'react-native-animatable';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
 import serverUrl from '../config';
+import { useTranslation } from 'react-i18next';
 
 const { width } = Dimensions.get('window');
 
 const RandomStopScreen = () => {
+  const { t } = useTranslation();
   const navigation = useNavigation();
   const [stops, setStops] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -103,7 +105,7 @@ const RandomStopScreen = () => {
     } catch (error) {
       console.error('❌ Error fetching incident types:', error.message);
       Snackbar.show({
-        text: 'Failed to load incident types',
+        text: t('random_stop.errors.load_incident_types', { defaultValue: 'Failed to load incident types' }),
         backgroundColor: '#FF6B6B',
         duration: 3000,
       });
@@ -190,7 +192,7 @@ const RandomStopScreen = () => {
       }
 
       Snackbar.show({
-        text: `Failed to load stops: ${error.response?.data?.message || error.message}`,
+        text: t('random_stop.errors.load_stops', { defaultValue: 'Failed to load stops: {{message}}', message: error.response?.data?.message || error.message }).replace('{{message}}', error.response?.data?.message || error.message),
         duration: 3000,
         backgroundColor: '#FF6B6B'
       });
@@ -225,12 +227,12 @@ const RandomStopScreen = () => {
       .toUpperCase();
 
     if (!normalizedPlateNumber || !newStop.reason) {
-      Snackbar.show({ text: 'Plate Number and Reason are required', duration: 2000, backgroundColor: '#FF6B6B' });
+      Snackbar.show({ text: t('random_stop.errors.plate_reason_required', { defaultValue: 'Plate Number and Reason are required' }), duration: 2000, backgroundColor: '#FF6B6B' });
       return;
     }
 
     if (!newStop.incidentTypeId) {
-      Snackbar.show({ text: 'Please select an incident type', duration: 2000, backgroundColor: '#FF6B6B' });
+      Snackbar.show({ text: t('random_stop.errors.incident_type_required', { defaultValue: 'Please select an incident type' }), duration: 2000, backgroundColor: '#FF6B6B' });
       return;
     }
 
@@ -256,12 +258,12 @@ const RandomStopScreen = () => {
 
       if (response.data.vehiclePlateNumber === null) {
         Snackbar.show({
-          text: `⚠️ Stop created but vehicle "${normalizedPlateNumber}" not found in system`,
+          text: t('random_stop.errors.vehicle_not_found', { defaultValue: '⚠️ Stop created but vehicle "{{plate}}" not found in system', plate: normalizedPlateNumber }).replace('{{plate}}', normalizedPlateNumber),
           duration: 5000,
           backgroundColor: '#FFA500'
         });
       } else {
-        Snackbar.show({ text: '✓ Request submitted successfully', duration: 2000, backgroundColor: '#4CAF50' });
+        Snackbar.show({ text: t('random_stop.success.submitted', { defaultValue: '✓ Request submitted successfully' }), duration: 2000, backgroundColor: '#4CAF50' });
       }
 
       setCreateModalVisible(false);
@@ -276,11 +278,11 @@ const RandomStopScreen = () => {
     } catch (error) {
       console.error('❌ ERROR SUBMITTING STOP:', error.message);
 
-      let errorMessage = 'Submission failed';
+      let errorMessage = t('random_stop.errors.submission_failed', { defaultValue: 'Submission failed' });
       if (error.response?.status === 404) {
-        errorMessage = 'Vehicle plate number not found in system';
+        errorMessage = t('random_stop.errors.vehicle_not_found_message', { defaultValue: 'Vehicle plate number not found in system' });
       } else if (error.response?.status === 401) {
-        errorMessage = 'Authentication failed - please login again';
+        errorMessage = t('random_stop.errors.auth_failed', { defaultValue: 'Authentication failed - please login again' });
       } else if (error.response?.data?.message) {
         errorMessage = error.response.data.message;
       }
@@ -293,6 +295,13 @@ const RandomStopScreen = () => {
 
   const getStatusColor = (status) => {
     return status === 'APPROVED' ? '#4CAF50' : '#FFA500';
+  };
+
+  const getStatusText = (status) => {
+    if (status === 'APPROVED') {
+      return t('random_stop.status.approved', { defaultValue: 'APPROVED' });
+    }
+    return t('random_stop.status.pending', { defaultValue: 'PENDING' });
   };
 
   const keyExtractor = useCallback((item) => {
@@ -311,27 +320,27 @@ const RandomStopScreen = () => {
         <View style={styles.cardHeader}>
           <View>
             <Text style={styles.plateText}>
-              {item.vehiclePlateNumber || '⚠️ Vehicle Not Found'}
+              {item.vehiclePlateNumber || t('random_stop.vehicle_not_found', { defaultValue: '⚠️ Vehicle Not Found' })}
             </Text>
             <Text style={styles.ticketText}>
-              {item.ticketNumber || 'No Ticket'}
+              {item.ticketNumber || t('random_stop.no_ticket', { defaultValue: 'No Ticket' })}
             </Text>
           </View>
           <View style={[styles.statusBadge, { backgroundColor: getStatusColor(item.status) + '20' }]}>
             <Text style={[styles.statusText, { color: getStatusColor(item.status) }]}>
-              {item.status || 'PENDING'}
+              {getStatusText(item.status)}
             </Text>
           </View>
         </View>
 
         <Text style={styles.reasonText} numberOfLines={2}>
-          Reason: {item.reason || 'No reason provided'}
+          {t('random_stop.reason_label', { defaultValue: 'Reason' })}: {item.reason || t('random_stop.no_reason', { defaultValue: 'No reason provided' })}
         </Text>
 
         <View style={styles.cardFooter}>
-          <Text style={styles.footerInfo}>By: {item.requestedByName || 'Unknown'}</Text>
+          <Text style={styles.footerInfo}>{t('random_stop.by_label', { defaultValue: 'By' })}: {item.requestedByName || t('random_stop.unknown', { defaultValue: 'Unknown' })}</Text>
           <Text style={styles.footerInfo}>
-            {item.createdAt ? new Date(item.createdAt).toLocaleDateString() : 'Unknown date'}
+            {item.createdAt ? new Date(item.createdAt).toLocaleDateString() : t('random_stop.unknown_date', { defaultValue: 'Unknown date' })}
           </Text>
         </View>
       </TouchableOpacity>
@@ -341,12 +350,12 @@ const RandomStopScreen = () => {
   const ListEmptyComponent = useCallback(() => (
     <View style={styles.emptyContainer}>
       <Icon name="info-outline" size={50} color="#999" />
-      <Text style={styles.emptyTitle}>No Stop Requests Found</Text>
+      <Text style={styles.emptyTitle}>{t('random_stop.empty.title', { defaultValue: 'No Stop Requests Found' })}</Text>
       <Text style={styles.emptySubtitle}>
-        {searchQuery ? 'Try a different search term' : 'Pull down to refresh or create a new request'}
+        {searchQuery ? t('random_stop.empty.search_suggestion', { defaultValue: 'Try a different search term' }) : t('random_stop.empty.refresh_suggestion', { defaultValue: 'Pull down to refresh or create a new request' })}
       </Text>
     </View>
-  ), [searchQuery]);
+  ), [searchQuery, t]);
 
   if (loading && stops.length === 0) {
     return (
@@ -354,7 +363,7 @@ const RandomStopScreen = () => {
         <StatusBar barStyle="dark-content" backgroundColor="#F8F9FA" />
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#FFA500" />
-          <Text style={styles.loadingText}>Loading stops...</Text>
+          <Text style={styles.loadingText}>{t('random_stop.loading', { defaultValue: 'Loading stops...' })}</Text>
         </View>
       </SafeAreaView>
     );
@@ -370,9 +379,9 @@ const RandomStopScreen = () => {
             <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
               <Icon name="arrow-back" size={24} color="#1A1A1A" />
             </TouchableOpacity>
-            <Text style={styles.headerTitle}>Random Stops</Text>
+            <Text style={styles.headerTitle}>{t('random_stop.title', { defaultValue: 'Random Stops' })}</Text>
             <TouchableOpacity style={styles.createButton} onPress={() => setCreateModalVisible(true)}>
-              <Text style={styles.createButtonText}>+ Report</Text>
+              <Text style={styles.createButtonText}>{t('random_stop.report_button', { defaultValue: '+ Report' })}</Text>
             </TouchableOpacity>
           </View>
 
@@ -380,7 +389,7 @@ const RandomStopScreen = () => {
             <Icon name="search" size={20} color="#999" style={styles.searchIcon} />
             <TextInput
               style={styles.searchInput}
-              placeholder="Search Plate or Ticket..."
+              placeholder={t('random_stop.search_placeholder', { defaultValue: 'Search Plate or Ticket...' })}
               placeholderTextColor="#999"
               value={searchQuery}
               onChangeText={setSearchQuery}
@@ -425,13 +434,13 @@ const RandomStopScreen = () => {
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Request Random Stop</Text>
+              <Text style={styles.modalTitle}>{t('random_stop.modal.create_title', { defaultValue: 'Request Random Stop' })}</Text>
               <TouchableOpacity onPress={() => setCreateModalVisible(false)}>
                 <Icon name="close" size={24} color="#666" />
               </TouchableOpacity>
             </View>
             <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
-              <Text style={styles.label}>Vehicle Plate Number *</Text>
+              <Text style={styles.label}>{t('random_stop.form.plate_number', { defaultValue: 'Vehicle Plate Number' })} *</Text>
               <TextInput
                 style={styles.input}
                 value={newStop.plateNumber}
@@ -441,30 +450,30 @@ const RandomStopScreen = () => {
                     plateNumber: formatPlateNumber(text),
                   })
                 }
-                placeholder="e.g. KCT 102 P"
+                placeholder={t('random_stop.placeholders.plate_number', { defaultValue: 'e.g. KCT 102 P' })}
                 placeholderTextColor="#999"
                 autoCapitalize="characters"
               />
 
-              <Text style={styles.label}>Incident Type *</Text>
+              <Text style={styles.label}>{t('random_stop.form.incident_type', { defaultValue: 'Incident Type' })} *</Text>
               <TouchableOpacity
                 style={styles.dropdownButton}
                 onPress={() => setShowIncidentDropdown(true)}
               >
                 <Text style={newStop.incidentTypeName ? styles.dropdownText : styles.dropdownPlaceholder}>
-                  {newStop.incidentTypeName || 'Select incident type'}
+                  {newStop.incidentTypeName || t('random_stop.form.select_incident_type', { defaultValue: 'Select incident type' })}
                 </Text>
                 <Icon name="arrow-drop-down" size={24} color="#666" />
               </TouchableOpacity>
 
-              <Text style={styles.label}>Reason *</Text>
+              <Text style={styles.label}>{t('random_stop.form.reason', { defaultValue: 'Reason' })} *</Text>
               <TextInput
                 style={[styles.input, styles.textArea]}
                 multiline
                 numberOfLines={4}
                 value={newStop.reason}
                 onChangeText={(text) => setNewStop({...newStop, reason: text})}
-                placeholder="Enter detailed reason for the stop..."
+                placeholder={t('random_stop.placeholders.reason', { defaultValue: 'Enter detailed reason for the stop...' })}
                 placeholderTextColor="#999"
                 textAlignVertical="top"
               />
@@ -477,7 +486,7 @@ const RandomStopScreen = () => {
                 {submitting ? (
                   <ActivityIndicator color="#FFF" />
                 ) : (
-                  <Text style={styles.submitButtonText}>Submit Request</Text>
+                  <Text style={styles.submitButtonText}>{t('random_stop.buttons.submit', { defaultValue: 'Submit Request' })}</Text>
                 )}
               </TouchableOpacity>
             </ScrollView>
@@ -499,7 +508,7 @@ const RandomStopScreen = () => {
         >
           <View style={styles.dropdownModalContent}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Select Incident Type</Text>
+              <Text style={styles.modalTitle}>{t('random_stop.modal.select_incident', { defaultValue: 'Select Incident Type' })}</Text>
               <TouchableOpacity onPress={() => setShowIncidentDropdown(false)}>
                 <Icon name="close" size={24} color="#666" />
               </TouchableOpacity>
@@ -509,7 +518,7 @@ const RandomStopScreen = () => {
               <ActivityIndicator size="large" color="#FFA500" />
             ) : incidentTypes.length === 0 ? (
               <View style={styles.emptyDropdownContainer}>
-                <Text style={styles.emptyDropdownText}>No incident types found</Text>
+                <Text style={styles.emptyDropdownText}>{t('random_stop.errors.no_incident_types', { defaultValue: 'No incident types found' })}</Text>
               </View>
             ) : (
               <ScrollView>
@@ -550,7 +559,7 @@ const RandomStopScreen = () => {
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Request Details</Text>
+              <Text style={styles.modalTitle}>{t('random_stop.modal.detail_title', { defaultValue: 'Request Details' })}</Text>
               <TouchableOpacity onPress={() => setDetailModalVisible(false)}>
                 <Icon name="close" size={24} color="#666" />
               </TouchableOpacity>
@@ -558,46 +567,46 @@ const RandomStopScreen = () => {
             {selectedStop && (
               <ScrollView style={styles.modalBody}>
                 <View style={styles.detailRow}>
-                  <Text style={styles.detailLabel}>Plate Number</Text>
+                  <Text style={styles.detailLabel}>{t('random_stop.details.plate_number', { defaultValue: 'Plate Number' })}</Text>
                   <Text style={styles.detailValue}>
-                    {selectedStop.vehiclePlateNumber || '⚠️ Vehicle Not Found'}
+                    {selectedStop.vehiclePlateNumber || t('random_stop.vehicle_not_found', { defaultValue: '⚠️ Vehicle Not Found' })}
                   </Text>
                 </View>
                 <View style={styles.detailRow}>
-                  <Text style={styles.detailLabel}>Ticket Number</Text>
+                  <Text style={styles.detailLabel}>{t('random_stop.details.ticket_number', { defaultValue: 'Ticket Number' })}</Text>
                   <Text style={styles.detailValue}>
-                    {selectedStop.ticketNumber || 'Not assigned yet'}
+                    {selectedStop.ticketNumber || t('random_stop.details.not_assigned', { defaultValue: 'Not assigned yet' })}
                   </Text>
                 </View>
                 <View style={styles.detailRow}>
-                  <Text style={styles.detailLabel}>Reason</Text>
+                  <Text style={styles.detailLabel}>{t('random_stop.details.reason', { defaultValue: 'Reason' })}</Text>
                   <Text style={styles.detailValue}>
-                    {selectedStop.reason || 'No reason provided'}
+                    {selectedStop.reason || t('random_stop.no_reason', { defaultValue: 'No reason provided' })}
                   </Text>
                 </View>
                 <View style={styles.detailRow}>
-                  <Text style={styles.detailLabel}>Status</Text>
+                  <Text style={styles.detailLabel}>{t('random_stop.details.status', { defaultValue: 'Status' })}</Text>
                   <Text style={[styles.detailValue, { color: getStatusColor(selectedStop.status), fontWeight: 'bold' }]}>
-                    {selectedStop.status || 'PENDING'}
+                    {getStatusText(selectedStop.status)}
                   </Text>
                 </View>
                 <View style={styles.detailRow}>
-                  <Text style={styles.detailLabel}>Requested By</Text>
-                  <Text style={styles.detailValue}>{selectedStop.requestedByName || 'Unknown'}</Text>
+                  <Text style={styles.detailLabel}>{t('random_stop.details.requested_by', { defaultValue: 'Requested By' })}</Text>
+                  <Text style={styles.detailValue}>{selectedStop.requestedByName || t('random_stop.unknown', { defaultValue: 'Unknown' })}</Text>
                 </View>
                 <View style={styles.detailRow}>
-                  <Text style={styles.detailLabel}>Approved By</Text>
-                  <Text style={styles.detailValue}>{selectedStop.approvedByName || 'Pending'}</Text>
+                  <Text style={styles.detailLabel}>{t('random_stop.details.approved_by', { defaultValue: 'Approved By' })}</Text>
+                  <Text style={styles.detailValue}>{selectedStop.approvedByName || t('random_stop.details.pending', { defaultValue: 'Pending' })}</Text>
                 </View>
                 <View style={styles.detailRow}>
-                  <Text style={styles.detailLabel}>Requested At</Text>
+                  <Text style={styles.detailLabel}>{t('random_stop.details.requested_at', { defaultValue: 'Requested At' })}</Text>
                   <Text style={styles.detailValue}>
-                    {selectedStop.requestedAt ? new Date(selectedStop.requestedAt).toLocaleString() : 'Unknown'}
+                    {selectedStop.requestedAt ? new Date(selectedStop.requestedAt).toLocaleString() : t('random_stop.unknown', { defaultValue: 'Unknown' })}
                   </Text>
                 </View>
                 {selectedStop.approvedAt && (
                   <View style={styles.detailRow}>
-                    <Text style={styles.detailLabel}>Approved At</Text>
+                    <Text style={styles.detailLabel}>{t('random_stop.details.approved_at', { defaultValue: 'Approved At' })}</Text>
                     <Text style={styles.detailValue}>
                       {new Date(selectedStop.approvedAt).toLocaleString()}
                     </Text>

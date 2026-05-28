@@ -7,8 +7,10 @@ import { launchCamera } from 'react-native-image-picker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
 import serverUrl from '../config';
+import { useTranslation } from 'react-i18next';
 
 const AttachEvidence = ({ route, navigation }) => {
+  const { t } = useTranslation();
   const { ticketId } = route.params;
   const [photos, setPhotos] = useState([]); // Changed to Array
   const [uploading, setUploading] = useState(false);
@@ -32,7 +34,10 @@ const AttachEvidence = ({ route, navigation }) => {
   const handleUpload = async () => {
       // 1. Guard clause: Ensure at least one photo exists
       if (!photos || photos.length === 0) {
-        Alert.alert('Missing Photo', 'Please take at least one photo.');
+        Alert.alert(
+          t('attach_evidence.missing_photo.title', { defaultValue: 'Missing Photo' }),
+          t('attach_evidence.missing_photo.message', { defaultValue: 'Please take at least one photo.' })
+        );
         return;
       }
 
@@ -78,19 +83,26 @@ const AttachEvidence = ({ route, navigation }) => {
 
         // 6. Handle Success
         if (response.status === 200 || response.data.success) {
-          Alert.alert('Success', 'All evidence uploaded successfully!', [
-            {
-              text: 'OK',
-              onPress: () => navigation.navigate('Dashboard')
-            }
-          ]);
+          Alert.alert(
+            t('attach_evidence.success.title', { defaultValue: 'Success' }),
+            t('attach_evidence.success.message', { defaultValue: 'All evidence uploaded successfully!' }),
+            [
+              {
+                text: 'OK',
+                onPress: () => navigation.navigate('Dashboard')
+              }
+            ]
+          );
         }
       } catch (error) {
         // 7. Enhanced Error Logging
         console.log('Upload Error Details:', error.response?.data || error.message);
 
-        const errorMsg = error.response?.data?.message || 'Check network or server logs';
-        Alert.alert('Upload Failed', `Error: ${errorMsg}`);
+        const errorMsg = error.response?.data?.message || t('attach_evidence.errors.check_network', { defaultValue: 'Check network or server logs' });
+        Alert.alert(
+          t('attach_evidence.errors.upload_failed', { defaultValue: 'Upload Failed' }),
+          t('attach_evidence.errors.error_message', { defaultValue: 'Error: {{message}}', message: errorMsg }).replace('{{message}}', errorMsg)
+        );
       } finally {
         setUploading(false);
       }
@@ -98,8 +110,8 @@ const AttachEvidence = ({ route, navigation }) => {
 
   return (
     <SafeAreaView style={styles.container}>
-      <Text style={styles.title}>Ticket #{ticketId}</Text>
-      <Text style={styles.subtitle}>Capture one or more images as evidence</Text>
+      <Text style={styles.title}>{t('attach_evidence.ticket_label', { defaultValue: 'Ticket' })} #{ticketId}</Text>
+      <Text style={styles.subtitle}>{t('attach_evidence.subtitle', { defaultValue: 'Capture one or more images as evidence' })}</Text>
 
       {/* MULTI-IMAGE PREVIEW SECTION */}
       <View style={styles.previewContainer}>
@@ -115,13 +127,13 @@ const AttachEvidence = ({ route, navigation }) => {
             ))}
           </ScrollView>
         ) : (
-          <Text style={styles.placeholderText}>No photos taken yet</Text>
+          <Text style={styles.placeholderText}>{t('attach_evidence.no_photos', { defaultValue: 'No photos taken yet' })}</Text>
         )}
       </View>
 
       <View style={styles.bottomControls}>
         <TouchableOpacity style={styles.camBtn} onPress={handleTakePhoto} disabled={uploading}>
-          <Text style={styles.btnText}>📸 ADD A PHOTO</Text>
+          <Text style={styles.btnText}>{t('attach_evidence.add_photo', { defaultValue: '📸 ADD A PHOTO' })}</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -132,12 +144,15 @@ const AttachEvidence = ({ route, navigation }) => {
           {uploading ? (
             <ActivityIndicator color="#fff" />
           ) : (
-            <Text style={styles.btnText}>UPLOAD {photos.length} {photos.length === 1 ? 'IMAGE' : 'IMAGES'}</Text>
+            <Text style={styles.btnText}>
+              {t('attach_evidence.upload_button', { defaultValue: 'UPLOAD {{count}} IMAGE', count: photos.length }).replace('{{count}}', photos.length.toString())}
+              {photos.length !== 1 ? 'S' : ''}
+            </Text>
           )}
         </TouchableOpacity>
 
         <TouchableOpacity onPress={() => navigation.navigate('Tickets')} disabled={uploading}>
-          <Text style={styles.skipText}>Cancel and go back</Text>
+          <Text style={styles.skipText}>{t('attach_evidence.cancel_back', { defaultValue: 'Cancel and go back' })}</Text>
         </TouchableOpacity>
       </View>
     </SafeAreaView>

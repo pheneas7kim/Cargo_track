@@ -25,10 +25,12 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import serverUrl from '../config';
+import { useTranslation } from 'react-i18next';
 
 const { width, height } = Dimensions.get('window');
 
 const StationsScreen = () => {
+  const { t } = useTranslation();
   const navigation = useNavigation();
   const [stations, setStations] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -38,7 +40,7 @@ const StationsScreen = () => {
   const [modalVisible, setModalVisible] = useState(false);
   const [expandedId, setExpandedId] = useState(null);
   const [filterType, setFilterType] = useState('all'); // all, checkpoint, bus_stop
-  
+
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(30)).current;
 
@@ -60,7 +62,7 @@ const StationsScreen = () => {
   useFocusEffect(
     React.useCallback(() => {
       fetchStations();
-      
+
       const backAction = () => {
         return false;
       };
@@ -72,7 +74,7 @@ const StationsScreen = () => {
   const fetchStations = async (isRefresh = false) => {
     try {
       if (!isRefresh) setLoading(true);
-      
+
       const token = await AsyncStorage.getItem('accessToken');
       if (!token) {
         console.error('No token found');
@@ -96,7 +98,7 @@ const StationsScreen = () => {
     } catch (error) {
       console.error('Failed to fetch stations:', error);
       Snackbar.show({
-        text: 'Failed to load stations',
+        text: t('stations.errors.load_failed', { defaultValue: 'Failed to load stations' }),
         duration: 3000,
         backgroundColor: '#FF6B6B',
       });
@@ -113,44 +115,44 @@ const StationsScreen = () => {
 
   const getFilteredStations = () => {
     let filtered = [...stations];
-    
+
     // Filter by station type
     if (filterType === 'checkpoint') {
       filtered = filtered.filter(s => s.stationType === 'CHECKPOINT');
     } else if (filterType === 'bus_stop') {
       filtered = filtered.filter(s => s.stationType === 'BUS_STOP');
     }
-    
+
     // Filter by search query
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
-      filtered = filtered.filter(s => 
+      filtered = filtered.filter(s =>
         s.name?.toLowerCase().includes(query) ||
         s.description?.toLowerCase().includes(query)
       );
     }
-    
+
     return filtered;
   };
 
   const formatDate = (dateString) => {
-    if (!dateString) return 'N/A';
+    if (!dateString) return t('stations.na', { defaultValue: 'N/A' });
     const date = new Date(dateString);
     const now = new Date();
     const diff = Math.floor((now - date) / 1000 / 60);
-    if (diff < 1) return 'Just now';
-    if (diff < 60) return `${diff} min ago`;
-    if (diff < 1440) return `${Math.floor(diff / 60)} hr ago`;
+    if (diff < 1) return t('stations.time.just_now', { defaultValue: 'Just now' });
+    if (diff < 60) return t('stations.time.minutes_ago', { defaultValue: '{{count}} min ago' }).replace('{{count}}', diff.toString());
+    if (diff < 1440) return t('stations.time.hours_ago', { defaultValue: '{{count}} hr ago' }).replace('{{count}}', Math.floor(diff / 60).toString());
     return date.toLocaleDateString();
   };
 
   const formatCoordinates = (lat, lng) => {
-    if (!lat || !lng) return 'N/A';
+    if (!lat || !lng) return t('stations.na', { defaultValue: 'N/A' });
     return `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
   };
 
   const formatRadius = (meters) => {
-    if (!meters) return 'N/A';
+    if (!meters) return t('stations.na', { defaultValue: 'N/A' });
     if (meters >= 1000) {
       return `${(meters / 1000).toFixed(2)} km`;
     }
@@ -179,6 +181,17 @@ const StationsScreen = () => {
     }
   };
 
+  const getStationTypeName = (type) => {
+    switch(type) {
+      case 'CHECKPOINT':
+        return t('stations.types.checkpoint', { defaultValue: 'CHECKPOINT' });
+      case 'BUS_STOP':
+        return t('stations.types.bus_stop', { defaultValue: 'BUS STOP' });
+      default:
+        return t('stations.types.station', { defaultValue: 'STATION' });
+    }
+  };
+
   const toggleExpand = (id) => {
     setExpandedId(expandedId === id ? null : id);
   };
@@ -187,10 +200,11 @@ const StationsScreen = () => {
     const isExpanded = expandedId === item.id;
     const stationTypeIcon = getStationTypeIcon(item.stationType);
     const stationTypeColor = getStationTypeColor(item.stationType);
-    
+    const stationTypeName = getStationTypeName(item.stationType);
+
     return (
-      <Animatable.View 
-        animation="fadeInUp" 
+      <Animatable.View
+        animation="fadeInUp"
         delay={index * 80}
         duration={400}
         style={styles.animationWrapper}
@@ -214,19 +228,19 @@ const StationsScreen = () => {
               </View>
               <View style={[styles.activeBadge, item.isActive ? styles.active : styles.inactive]}>
                 <Text style={styles.activeText}>
-                  {item.isActive ? 'ACTIVE' : 'INACTIVE'}
+                  {item.isActive ? t('stations.active', { defaultValue: 'ACTIVE' }) : t('stations.inactive', { defaultValue: 'INACTIVE' })}
                 </Text>
               </View>
             </View>
 
             <View style={styles.typeBadge}>
               <Text style={[styles.typeText, { color: stationTypeColor }]}>
-                {item.stationType?.replace('_', ' ') || 'STATION'}
+                {stationTypeName}
               </Text>
             </View>
 
             <Text style={styles.description} numberOfLines={isExpanded ? undefined : 2}>
-              {item.description || 'No description available'}
+              {item.description || t('stations.no_description', { defaultValue: 'No description available' })}
             </Text>
 
             <View style={styles.infoRow}>
@@ -245,58 +259,58 @@ const StationsScreen = () => {
             {isExpanded && (
               <Animatable.View animation="fadeIn" duration={300} style={styles.expandedContent}>
                 <View style={styles.divider} />
-                
+
                 <View style={styles.detailRow}>
                   <Icon name="info" size={16} color="#999" />
-                  <Text style={styles.detailLabel}>Fence Type:</Text>
+                  <Text style={styles.detailLabel}>{t('stations.fence_type_label', { defaultValue: 'Fence Type' })}:</Text>
                   <Text style={styles.detailValue}>{item.fenceType || 'CIRCLE'}</Text>
                 </View>
-                
+
                 <View style={styles.detailRow}>
                   <Icon name="flag" size={16} color="#999" />
-                  <Text style={styles.detailLabel}>Route Status:</Text>
+                  <Text style={styles.detailLabel}>{t('stations.route_status_label', { defaultValue: 'Route Status' })}:</Text>
                   <Text style={[styles.detailValue, { color: item.routeStatus === 'ACTIVE' ? '#4CAF50' : '#FF6B6B' }]}>
                     {item.routeStatus || 'ACTIVE'}
                   </Text>
                 </View>
-                
+
                 {item.assignedRouteIds && item.assignedRouteIds.length > 0 && (
                   <View style={styles.detailRow}>
                     <Icon name="route" size={16} color="#999" />
-                    <Text style={styles.detailLabel}>Assigned Routes:</Text>
-                    <Text style={styles.detailValue}>{item.assignedRouteIds.length} route(s)</Text>
+                    <Text style={styles.detailLabel}>{t('stations.assigned_routes_label', { defaultValue: 'Assigned Routes' })}:</Text>
+                    <Text style={styles.detailValue}>{item.assignedRouteIds.length} {t('stations.route_s', { defaultValue: 'route(s)' })}</Text>
                   </View>
                 )}
-                
+
                 <View style={styles.detailRow}>
                   <Icon name="access-time" size={16} color="#999" />
-                  <Text style={styles.detailLabel}>Created:</Text>
+                  <Text style={styles.detailLabel}>{t('stations.created_label', { defaultValue: 'Created' })}:</Text>
                   <Text style={styles.detailValue}>{formatDate(item.createdAt)}</Text>
                 </View>
-                
+
                 <View style={styles.detailRow}>
                   <Icon name="update" size={16} color="#999" />
-                  <Text style={styles.detailLabel}>Updated:</Text>
+                  <Text style={styles.detailLabel}>{t('stations.updated_label', { defaultValue: 'Updated' })}:</Text>
                   <Text style={styles.detailValue}>{formatDate(item.updatedAt)}</Text>
                 </View>
-                
-                <TouchableOpacity 
+
+                <TouchableOpacity
                   style={styles.viewOnMapButton}
                   onPress={() => {
-                    navigation.navigate('DeviceMapScreenView', { 
-                      station: item 
+                    navigation.navigate('DeviceMapScreenView', {
+                      station: item
                     });
                   }}
                 >
                   <Icon name="map" size={18} color="#FFA500" />
-                  <Text style={styles.viewOnMapText}>View on Map</Text>
+                  <Text style={styles.viewOnMapText}>{t('stations.view_on_map', { defaultValue: 'View on Map' })}</Text>
                 </TouchableOpacity>
               </Animatable.View>
             )}
-            
+
             <View style={styles.expandIndicator}>
               <Text style={styles.expandIcon}>
-                {isExpanded ? '▲ Less details' : '▼ More details'}
+                {isExpanded ? t('stations.less_details', { defaultValue: '▲ Less details' }) : t('stations.more_details', { defaultValue: '▼ More details' })}
               </Text>
             </View>
           </View>
@@ -309,14 +323,14 @@ const StationsScreen = () => {
     const filteredStations = getFilteredStations();
     const checkpointCount = stations.filter(s => s.stationType === 'CHECKPOINT').length;
     const busStopCount = stations.filter(s => s.stationType === 'BUS_STOP').length;
-    
+
     return (
       <Animated.View style={[styles.header, { opacity: fadeAnim }]}>
         <View style={styles.headerTop}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
             <Icon name="arrow-back" size={24} color="#1A1A1A" />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Stations</Text>
+          <Text style={styles.headerTitle}>{t('stations.title', { defaultValue: 'Stations' })}</Text>
           <View style={styles.headerRight}>
             <Text style={styles.countBadge}>{filteredStations.length}</Text>
           </View>
@@ -326,7 +340,7 @@ const StationsScreen = () => {
           <Icon name="search" size={20} color="#999" />
           <TextInput
             style={styles.searchInput}
-            placeholder="Search stations..."
+            placeholder={t('stations.search_placeholder', { defaultValue: 'Search stations...' })}
             placeholderTextColor="#999"
             value={searchQuery}
             onChangeText={setSearchQuery}
@@ -339,31 +353,33 @@ const StationsScreen = () => {
         </View>
 
         <View style={styles.filterContainer}>
-          <TouchableOpacity 
+          <TouchableOpacity
             style={[styles.filterButton, filterType === 'all' && styles.activeFilter]}
             onPress={() => setFilterType('all')}
           >
             <Icon name="view-list" size={18} color={filterType === 'all' ? '#FFA500' : '#666'} />
-            <Text style={[styles.filterText, filterType === 'all' && styles.activeFilterText]}>All</Text>
+            <Text style={[styles.filterText, filterType === 'all' && styles.activeFilterText]}>
+              {t('stations.filters.all', { defaultValue: 'All' })}
+            </Text>
           </TouchableOpacity>
-          
-          <TouchableOpacity 
+
+          <TouchableOpacity
             style={[styles.filterButton, filterType === 'checkpoint' && styles.activeFilter]}
             onPress={() => setFilterType('checkpoint')}
           >
             <Icon name="check-circle" size={18} color={filterType === 'checkpoint' ? '#4CAF50' : '#666'} />
             <Text style={[styles.filterText, filterType === 'checkpoint' && styles.activeFilterText]}>
-              Checkpoints ({checkpointCount})
+              {t('stations.filters.checkpoints', { defaultValue: 'Checkpoints' })} ({checkpointCount})
             </Text>
           </TouchableOpacity>
-          
-          <TouchableOpacity 
+
+          <TouchableOpacity
             style={[styles.filterButton, filterType === 'bus_stop' && styles.activeFilter]}
             onPress={() => setFilterType('bus_stop')}
           >
             <Icon name="directions-bus" size={18} color={filterType === 'bus_stop' ? '#2196F3' : '#666'} />
             <Text style={[styles.filterText, filterType === 'bus_stop' && styles.activeFilterText]}>
-              Bus Stops ({busStopCount})
+              {t('stations.filters.bus_stops', { defaultValue: 'Bus Stops' })} ({busStopCount})
             </Text>
           </TouchableOpacity>
         </View>
@@ -371,19 +387,19 @@ const StationsScreen = () => {
         <View style={styles.statsContainer}>
           <View style={styles.statCard}>
             <Text style={styles.statNumber}>{stations.length}</Text>
-            <Text style={styles.statLabel}>Total Stations</Text>
+            <Text style={styles.statLabel}>{t('stations.stats.total', { defaultValue: 'Total Stations' })}</Text>
           </View>
           <View style={styles.statCard}>
             <Text style={[styles.statNumber, { color: '#4CAF50' }]}>
               {stations.filter(s => s.isActive).length}
             </Text>
-            <Text style={styles.statLabel}>Active</Text>
+            <Text style={styles.statLabel}>{t('stations.stats.active', { defaultValue: 'Active' })}</Text>
           </View>
           <View style={styles.statCard}>
             <Text style={[styles.statNumber, { color: '#FF6B6B' }]}>
               {stations.filter(s => !s.isActive).length}
             </Text>
-            <Text style={styles.statLabel}>Inactive</Text>
+            <Text style={styles.statLabel}>{t('stations.stats.inactive', { defaultValue: 'Inactive' })}</Text>
           </View>
         </View>
       </Animated.View>
@@ -396,7 +412,7 @@ const StationsScreen = () => {
         <StatusBar barStyle="dark-content" backgroundColor="#F8F9FA" />
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#FFA500" />
-          <Text style={styles.loadingText}>Loading stations...</Text>
+          <Text style={styles.loadingText}>{t('stations.loading', { defaultValue: 'Loading stations...' })}</Text>
         </View>
       </SafeAreaView>
     );
@@ -407,15 +423,15 @@ const StationsScreen = () => {
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#F8F9FA" />
-      
+
       <FlatList
         data={filteredStations}
         keyExtractor={item => item.id.toString()}
         renderItem={renderStationCard}
         ListHeaderComponent={renderHeader}
         refreshControl={
-          <RefreshControl 
-            refreshing={refreshing} 
+          <RefreshControl
+            refreshing={refreshing}
             onRefresh={onRefresh}
             tintColor="#FFA500"
             colors={['#FFA500']}
@@ -426,11 +442,11 @@ const StationsScreen = () => {
         ListEmptyComponent={
           <Animatable.View animation="fadeIn" duration={500} style={styles.emptyContainer}>
             <Icon name="location-off" size={80} color="#CCC" />
-            <Text style={styles.emptyTitle}>No stations found</Text>
+            <Text style={styles.emptyTitle}>{t('stations.empty.title', { defaultValue: 'No stations found' })}</Text>
             <Text style={styles.emptyText}>
-              {searchQuery 
-                ? 'Try adjusting your search' 
-                : 'No stations have been created yet'}
+              {searchQuery
+                ? t('stations.empty.adjust_search', { defaultValue: 'Try adjusting your search' })
+                : t('stations.empty.no_stations', { defaultValue: 'No stations have been created yet' })}
             </Text>
           </Animatable.View>
         }
@@ -446,60 +462,60 @@ const StationsScreen = () => {
         <View style={styles.modalOverlay}>
           <Animatable.View animation="slideInUp" duration={300} style={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Station Details</Text>
+              <Text style={styles.modalTitle}>{t('stations.modal.title', { defaultValue: 'Station Details' })}</Text>
               <TouchableOpacity onPress={() => setModalVisible(false)} style={styles.closeButton}>
                 <Icon name="close" size={24} color="#999" />
               </TouchableOpacity>
             </View>
-            
+
             {selectedStation && (
               <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
                 {/* Status Header */}
                 <View style={styles.modalStatusHeader}>
                   <View style={[styles.modalStatusBadge, selectedStation.isActive ? styles.modalActive : styles.modalInactive]}>
                     <Text style={styles.modalStatusText}>
-                      {selectedStation.isActive ? 'ACTIVE' : 'INACTIVE'}
+                      {selectedStation.isActive ? t('stations.active', { defaultValue: 'ACTIVE' }) : t('stations.inactive', { defaultValue: 'INACTIVE' })}
                     </Text>
                   </View>
                 </View>
 
                 {/* Station Type */}
                 <View style={styles.modalTypeContainer}>
-                  <Icon 
-                    name={getStationTypeIcon(selectedStation.stationType)} 
-                    size={24} 
-                    color={getStationTypeColor(selectedStation.stationType)} 
+                  <Icon
+                    name={getStationTypeIcon(selectedStation.stationType)}
+                    size={24}
+                    color={getStationTypeColor(selectedStation.stationType)}
                   />
                   <Text style={[styles.modalTypeText, { color: getStationTypeColor(selectedStation.stationType) }]}>
-                    {selectedStation.stationType?.replace('_', ' ') || 'STATION'}
+                    {getStationTypeName(selectedStation.stationType)}
                   </Text>
                 </View>
 
                 {/* Station Name */}
                 <Text style={styles.modalStationName}>{selectedStation.name}</Text>
-                
+
                 {/* Description */}
                 {selectedStation.description && (
                   <View style={styles.modalSection}>
-                    <Text style={styles.modalSectionTitle}>Description</Text>
+                    <Text style={styles.modalSectionTitle}>{t('stations.modal.description', { defaultValue: 'Description' })}</Text>
                     <Text style={styles.modalDescription}>{selectedStation.description}</Text>
                   </View>
                 )}
 
                 {/* Location Info */}
                 <View style={styles.modalSection}>
-                  <Text style={styles.modalSectionTitle}>Location</Text>
+                  <Text style={styles.modalSectionTitle}>{t('stations.modal.location', { defaultValue: 'Location' })}</Text>
                   <View style={styles.locationCard}>
                     <View style={styles.locationRow}>
                       <Icon name="location-on" size={18} color="#FFA500" />
-                      <Text style={styles.locationLabel}>Coordinates:</Text>
+                      <Text style={styles.locationLabel}>{t('stations.modal.coordinates_label', { defaultValue: 'Coordinates' })}:</Text>
                       <Text style={styles.locationValue}>
                         {formatCoordinates(selectedStation.centerLat, selectedStation.centerLng)}
                       </Text>
                     </View>
                     <View style={styles.locationRow}>
                       <Icon name="radio-button-unchecked" size={18} color="#FFA500" />
-                      <Text style={styles.locationLabel}>Radius:</Text>
+                      <Text style={styles.locationLabel}>{t('stations.modal.radius_label', { defaultValue: 'Radius' })}:</Text>
                       <Text style={styles.locationValue}>{formatRadius(selectedStation.radiusMeters)}</Text>
                     </View>
                   </View>
@@ -507,23 +523,23 @@ const StationsScreen = () => {
 
                 {/* Details Grid */}
                 <View style={styles.modalSection}>
-                  <Text style={styles.modalSectionTitle}>Details</Text>
+                  <Text style={styles.modalSectionTitle}>{t('stations.modal.details', { defaultValue: 'Details' })}</Text>
                   <View style={styles.detailsGrid}>
                     <View style={styles.detailCard}>
                       <Icon name="info" size={20} color="#666" />
-                      <Text style={styles.detailCardLabel}>Fence Type</Text>
+                      <Text style={styles.detailCardLabel}>{t('stations.modal.fence_type_label', { defaultValue: 'Fence Type' })}</Text>
                       <Text style={styles.detailCardValue}>{selectedStation.fenceType || 'CIRCLE'}</Text>
                     </View>
                     <View style={styles.detailCard}>
                       <Icon name="flag" size={20} color="#666" />
-                      <Text style={styles.detailCardLabel}>Route Status</Text>
+                      <Text style={styles.detailCardLabel}>{t('stations.modal.route_status_label', { defaultValue: 'Route Status' })}</Text>
                       <Text style={[styles.detailCardValue, { color: selectedStation.routeStatus === 'ACTIVE' ? '#4CAF50' : '#FF6B6B' }]}>
                         {selectedStation.routeStatus || 'ACTIVE'}
                       </Text>
                     </View>
                     <View style={styles.detailCard}>
                       <Icon name="palette" size={20} color="#666" />
-                      <Text style={styles.detailCardLabel}>Color</Text>
+                      <Text style={styles.detailCardLabel}>{t('stations.modal.color_label', { defaultValue: 'Color' })}</Text>
                       <View style={styles.colorPreview}>
                         <View style={[styles.colorBox, { backgroundColor: selectedStation.colorHex || '#3b82f6' }]} />
                         <Text style={styles.detailCardValue}>{selectedStation.colorHex || '#3b82f6'}</Text>
@@ -532,8 +548,8 @@ const StationsScreen = () => {
                     {selectedStation.assignedRouteIds && selectedStation.assignedRouteIds.length > 0 && (
                       <View style={styles.detailCard}>
                         <Icon name="route" size={20} color="#666" />
-                        <Text style={styles.detailCardLabel}>Assigned Routes</Text>
-                        <Text style={styles.detailCardValue}>{selectedStation.assignedRouteIds.length} route(s)</Text>
+                        <Text style={styles.detailCardLabel}>{t('stations.modal.assigned_routes_label', { defaultValue: 'Assigned Routes' })}</Text>
+                        <Text style={styles.detailCardValue}>{selectedStation.assignedRouteIds.length} {t('stations.route_s', { defaultValue: 'route(s)' })}</Text>
                       </View>
                     )}
                   </View>
@@ -541,18 +557,18 @@ const StationsScreen = () => {
 
                 {/* Timestamps */}
                 <View style={styles.modalSection}>
-                  <Text style={styles.modalSectionTitle}>Timestamps</Text>
+                  <Text style={styles.modalSectionTitle}>{t('stations.modal.timestamps', { defaultValue: 'Timestamps' })}</Text>
                   <View style={styles.timestampCard}>
                     <View style={styles.timestampRow}>
                       <Icon name="access-time" size={16} color="#999" />
-                      <Text style={styles.timestampLabel}>Created:</Text>
+                      <Text style={styles.timestampLabel}>{t('stations.modal.created_label', { defaultValue: 'Created' })}:</Text>
                       <Text style={styles.timestampValue}>
                         {new Date(selectedStation.createdAt).toLocaleString()}
                       </Text>
                     </View>
                     <View style={styles.timestampRow}>
                       <Icon name="update" size={16} color="#999" />
-                      <Text style={styles.timestampLabel}>Updated:</Text>
+                      <Text style={styles.timestampLabel}>{t('stations.modal.updated_label', { defaultValue: 'Updated' })}:</Text>
                       <Text style={styles.timestampValue}>
                         {new Date(selectedStation.updatedAt).toLocaleString()}
                       </Text>
@@ -560,11 +576,11 @@ const StationsScreen = () => {
                   </View>
                 </View>
 
-                <TouchableOpacity 
+                <TouchableOpacity
                   style={styles.closeModalButton}
                   onPress={() => setModalVisible(false)}
                 >
-                  <Text style={styles.closeModalButtonText}>Close</Text>
+                  <Text style={styles.closeModalButtonText}>{t('stations.modal.close', { defaultValue: 'Close' })}</Text>
                 </TouchableOpacity>
               </ScrollView>
             )}

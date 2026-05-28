@@ -59,39 +59,329 @@
     "error_timeout": "Délai d'attente dépassé",
     "success": "Succès",
     "warning": "Avertissement",
-    "info": "Information"
-  },
-  "navigation": {
-    "home": "Accueil",
-    "dashboard": "Tableau de bord",
-    "tickets": "Tickets",
-    "devices": "Appareils",
-    "profile": "Profil",
-    "settings": "Paramètres",
+    "info": "Information",
+    "time": {
+      "just_now": "À l'instant",
+      "min_ago": "min",
+      "hours_ago": "heures",
+      "days_ago": "jours",
+      "ago": "il y a"
+    },
+    "ticket_status": {
+      "open": "Ouvert",
+      "in_progress": "En Cours",
+      "acknowledged": "Reconnu",
+      "resolved": "Résolu",
+      "closed": "Fermé",
+      "unknown": "Inconnu"
+    },
+    "shipment_status": {
+      "in_transit": "En Transit",
+      "delivered": "Livré",
+      "pending": "En Attente",
+      "unknown": "Inconnu"
+    },
+    "greeting": {
+      "morning": "Bonjour",
+      "afternoon": "Bon Après-midi",
+      "evening": "Bonsoir"
+    },
+    "errors": {
+      "login_again": "Veuillez vous reconnecter",
+      "session_expired": "Session expirée. Veuillez vous reconnecter.",
+      "enter_tracking": "Veuillez entrer un numéro de suivi",
+      "shipment_not_found": "Expédition non trouvée",
+      "phone_required": "Le numéro de téléphone est requis",
+      "amount_required": "Le montant est requis"
+    },
+    "actions": {
+      "scan_to_unlock": "Scanner pour Déverrouiller",
+      "sensors_mapping": "Cartographie des Capteurs",
+      "mapped_sensors": "Capteurs Cartographiés",
+      "tickets": "Tickets",
+      "random_stop": "Arrêt Aléatoire",
+      "request_eseals": "Demander des Sceaux Électroniques",
+      "eseals_replacement": "Remplacement des Sceaux",
+      "assigned_eseals": "Sceaux Assignés",
+      "geofences": "Géoclôtures",
+      "hotspots": "Points d'Accès",
+      "shipments": "Expéditions",
+      "stations": "Stations",
+      "scan_to_add": "Scanner pour Ajouter des Appareils",
+      "receive": "Recevoir"
+    },
+    "commands": {
+      "check_status": "Vérifier le Statut",
+      "check_status_desc": "Obtenir le statut en temps réel de votre expédition",
+      "share_location": "Partager la Position",
+      "share_location_desc": "Partager la position actuelle avec le support",
+      "request_support": "Demander du Support",
+      "request_support_desc": "Demander une assistance immédiate",
+      "update_delivery": "Mettre à Jour la Livraison",
+      "update_delivery_desc": "Mettre à jour les préférences de livraison",
+      "report_issue": "Signaler un Problème",
+      "report_issue_desc": "Signaler un problème avec votre expédition"
+    },
+    "tabs": {
+      "shipments": "Expéditions",
+      "tickets": "Tickets",
+      "alerts": "Alertes"
+    },
+    "unknown": "Inconnu",
+    "location": "Emplacement",
+    "last_update": "Dernière Mise à Jour",
+    "device": "Appareil",
+    "speed": "Vitesse",
+    "complete": "Complet",
+    "track_on_map": "Suivre sur la Carte",
+    "view_on_map": "Voir sur la Carte",
+    "comments": "commentaires",
+    "alert": "Alerte",
+    "notification": "Notification",
     "logout": "Déconnexion",
-    "help": "Aide",
-    "about": "À propos"
+    "logout_confirm": "Voulez-vous vraiment vous déconnecter ?",
+    "logout_failed": "Échec de la déconnexion",
+    "topup_success": "Rechargement réussi !",
+    "withdraw_success": "Retrait initié avec succès !",
+    "ticket_acknowledged": "Ticket reconnu avec succès",
+    "ticket_acknowledge_failed": "Échec de la reconnaissance du ticket",
+    "ticket_resolved": "Ticket résolu avec succès",
+    "ticket_resolve_failed": "Échec de la résolution du ticket",
+    "loading_tickets": "Chargement des tickets...",
+    "no_tickets": "Aucun ticket trouvé",
+    "shipment_details": "Détails de l'Expédition",
+    "tracking_number": "Numéro de Suivi",
+    "status": "Statut",
+    "current_location": "Emplacement Actuel",
+    "origin": "Origine",
+    "destination": "Destination",
+    "progress": "Progression",
+    "commands": "Commandes",
+    "ticket_details": "Détails du Ticket",
+    "priority": "Priorité",
+    "t1_number": "Numéro T1",
+    "created": "Créé",
+    "last_updated": "Dernière Mise à Jour",
+    "resolve": "Résoudre",
+    "acknowledge": "Reconnaître",
+    "resolved": "✓ Résolu",
+    "closed": "✓ Fermé"
   },
-  "dashboard": {
-    "title": "Tableau de bord",
-    "greeting": "Bonjour, {{name}}",
-    "quick_actions": "Actions rapides",
-    "active_shipments": "Expéditions actives",
-    "pending_tickets": "Tickets en attente",
-    "device_status": "État des appareils",
-    "view_all": "Voir tout"
+  "qr_scanner": {
+    "title": "Scanner pour Déverrouiller",
+    "subtitle": "Scanner le code QR ou code-barres de l'appareil",
+    "instructions": {
+      "align": "Alignez le code QR ou le code-barres dans le cadre",
+      "supported": "Codes QR et code-barres pris en charge"
+    },
+    "device_types": {
+      "telematics": "Télématique",
+      "joint_tech": "Joint Tech"
+    },
+    "buttons": {
+      "scan_again": "Scanner à nouveau"
+    },
+    "loading": {
+      "sending": "Envoi de la commande à l'appareil..."
+    },
+    "result": {
+      "success": "Succès !",
+      "failed": "Échec !",
+      "device_type": "Type d'appareil",
+      "device_id": "ID de l'appareil",
+      "digits": "chiffres"
+    },
+    "errors": {
+      "auth_required": "Authentification requise. Veuillez vous reconnecter.",
+      "session_expired": "Session expirée. Veuillez vous reconnecter.",
+      "command_failed": "Échec de l'envoi de la commande",
+      "command_failed_status": "Échec de l'envoi de la commande",
+      "network_error": "Erreur réseau",
+      "command_execution_failed": "Échec de l'exécution de la commande",
+      "invalid_barcode": "Code-barres invalide : {{digits}} chiffres reçus. (Attendu 8 pour Télématique ou 10 pour Joint Tech)",
+      "non_numeric": "Code-barres invalide : Le numéro de série de l'appareil doit contenir uniquement des chiffres"
+    },
+    "success": {
+      "command_sent": "Commande envoyée avec succès"
+    }
+  },
+  "master_slave": {
+    "dashboard": {
+      "title": "Mapper Maître-Esclave",
+      "subtitle": "Mapper les capteurs à l'appareil maître",
+      "current_master": "Maître actuel",
+      "scan_master": "Scanner un appareil maître",
+      "current_slaves": "Esclaves actuels : {{count}}",
+      "scanned_slaves": "Esclaves scannés",
+      "extracted_from": "Extrait de"
+    },
+    "scanner": {
+      "master_title": "Scan du Maître (QR/Code-barres)",
+      "slave_title": "Scan des Esclaves",
+      "master_subtitle": "Détection automatique Télématique (8 chiffres) ou Joint Tech (10 chiffres)",
+      "slave_subtitle": "Scanner les codes-barres des esclaves/capteurs (alphanumériques)",
+      "master_instruction": "Scanner le QR ou code-barres de l'appareil (8 chiffres pour Télématique, 10 pour Joint Tech)",
+      "slave_instruction": "Scanner le code-barres de l'esclave/capteur (alphanumérique comme E170BG789)"
+    },
+    "summary": {
+      "title": "Historique des Mappages Camion",
+      "total_trucks": "Total Camions : {{count}}",
+      "master_label": "Maître",
+      "slaves_label": "Esclaves ({{count}})",
+      "empty": "Aucun mappage effectué pour le moment."
+    },
+    "buttons": {
+      "scan_master": "Scanner Maître",
+      "scan_slaves": "Scanner Esclaves",
+      "map_all": "✓ MAPPER TOUS LES ESCLAVES AU MAÎTRE",
+      "remove_mapping": "🗑️ Supprimer le Mappage",
+      "reset_form": "Réinitialiser le Formulaire",
+      "back_to_scanner": "RETOUR AU SCANNER",
+      "clear_history": "Effacer Tout l'Historique",
+      "cancel_scan": "ANNULER LE SCAN"
+    },
+    "device_types": {
+      "telematics": "📱 Télématique",
+      "joint_tech": "📊 Joint Tech",
+      "telematics_detail": "📱 Appareil Télématique (8 chiffres)",
+      "joint_tech_detail": "📊 Appareil Joint Tech (10 chiffres)"
+    },
+    "warnings": {
+      "joint_tech_only": "Mappage uniquement disponible pour les appareils maîtres Joint Tech"
+    },
+    "errors": {
+      "auth_required": "Authentification requise. Veuillez vous reconnecter.",
+      "session_expired": "Session expirée. Veuillez vous reconnecter.",
+      "command_failed": "Échec de l'envoi de la commande",
+      "network_error": "Erreur réseau",
+      "no_master": "Aucun maître défini à supprimer",
+      "no_master_device": "Aucun appareil maître scanné",
+      "invalid_scan": {
+        "title": "Scan Invalide",
+        "message": "Impossible de trouver l'ID de l'appareil dans le code scanné. Assurez-vous de scanner le QR/code-barres de l'appareil."
+      },
+      "unknown_device": {
+        "title": "Appareil Inconnu",
+        "message": "L'ID de l'appareil \"{{id}}\" a {{digits}} chiffres.\n\nAttendu :\n• Télématique : 8 chiffres\n• Joint Tech : 10 chiffres"
+      },
+      "slave_too_short": "Code esclave invalide - trop court",
+      "slave_duplicate": "Esclave déjà scanné",
+      "missing_master_or_slaves": "Maître ou esclaves manquants",
+      "joint_tech_only_error": "Mappage uniquement disponible pour les appareils maîtres Joint Tech",
+      "mapping_failed": "Échec du mappage : {{message}}",
+      "server_error": "Le serveur a répondu avec le statut {{status}}"
+    },
+    "success": {
+      "command_sent": "Commande envoyée avec succès",
+      "command_sent_format": "Commande envoyée : {{command}}",
+      "command_sent_to_device": "Commande envoyée à l'appareil {{deviceType}}",
+      "master_set": "Maître {{deviceType}} défini : {{id}}",
+      "slave_added": "✓ Esclave ajouté : {{id}}",
+      "slave_removed": "Supprimé {{id}}",
+      "mapping_complete": "✓ {{count}} esclave(s) mappé(s) avec succès au maître {{master}}",
+      "history_cleared": "Historique effacé"
+    },
+    "remove_mapping": {
+      "title": "Supprimer le Mappage",
+      "message": "Voulez-vous vraiment supprimer le mappage pour le maître {{master}} ?",
+      "cancel": "Annuler",
+      "confirm": "Supprimer",
+      "success": "✓ Mappage effacé du formulaire"
+    }
+  },
+  "sensor_list": {
+    "locale": "fr-FR",
+    "unknown": "Inconnu",
+    "master_device": "Appareil Maître",
+    "mapped": "Mappé",
+    "connected_sensors": "Capteurs Connectés",
+    "id_label": "ID",
+    "added": "Ajouté",
+    "no_sensors": "Aucun capteur connecté",
+    "no_sensors_subtext": "Utilisez le mapper pour ajouter des capteurs à ce maître",
+    "no_masters_title": "Aucun Maître Trouvé",
+    "no_masters_text": "Vous n'avez encore mappé aucun maître.",
+    "error_title": "Erreur de Chargement",
+    "go_to_mapper": "Aller au Mapper",
+    "retry": "Réessayer",
+    "loading": "Chargement des maîtres...",
+    "header_title": "Mappage Maître & Capteurs",
+    "total_masters": "Total Maîtres",
+    "total_sensors": "Total Capteurs",
+    "remove_sensor_message": "Supprimer {{sensorId}} - Point de terminaison API nécessaire",
+    "errors": {
+      "auth_required": "Authentification requise",
+      "session_expired": "Session expirée",
+      "load_failed": "Échec du chargement des maîtres"
+    }
   },
   "tickets": {
-    "title": "Tickets",
+    "header_title": "Tickets",
+    "new_button": "+ Nouveau",
+    "search_placeholder": "Rechercher des tickets....",
+    "total": "Total",
+    "tickets_label": "tickets",
+    "loading": "Chargement des tickets...",
+    "comments": "commentaires",
+    "na": "N/A",
+    "system": "Système",
+    "priority": "Priorité",
+    "t1_number": "Numéro T1",
+    "device": "Appareil",
+    "geofence": "Géoclôture",
+    "created": "Créé",
+    "last_updated": "Dernière mise à jour",
+    "track_on_map": "Suivre sur la carte",
+    "comments_title": "Commentaires",
+    "comment_placeholder": "Ajouter un commentaire...",
+    "post_comment": "Publier le commentaire",
+    "resolve": "Résoudre",
+    "acknowledge": "Reconnaître",
+    "resolved": "✓ Résolu",
+    "closed": "✓ Fermé",
+    "modal_title": "Détails du ticket",
+    "empty_title": "Aucun ticket trouvé",
+    "empty_search": "Essayez d'ajuster votre recherche",
+    "empty_filter": "Aucun ticket {{filter}} disponible",
+    "empty_default": "Créez un nouveau ticket pour commencer",
+    "time": {
+      "just_now": "À l'instant",
+      "minutes_ago": "il y a {{count}} min",
+      "hours_ago": "il y a {{count}} h",
+      "days_ago": "il y a {{count}} j"
+    },
+    "status": {
+      "reported": "Signalé",
+      "acknowledged": "Reconnu",
+      "resolved": "Résolu",
+      "closed": "Fermé",
+      "unknown": "Inconnu"
+    },
+    "filters": {
+      "all": "Tous",
+      "reported": "Signalés",
+      "acknowledged": "Reconnus",
+      "resolved": "Résolus"
+    },
+    "errors": {
+      "comment_required": "Veuillez saisir un commentaire",
+      "comment_failed": "Échec de l'ajout du commentaire",
+      "load_failed": "Échec du chargement des tickets",
+      "acknowledge_failed": "Échec de la reconnaissance du ticket",
+      "resolve_failed": "Échec de la résolution du ticket"
+    },
+    "success": {
+      "comment_added": "Commentaire ajouté avec succès",
+      "acknowledged": "Ticket reconnu avec succès",
+      "resolved": "Ticket résolu avec succès"
+    },
+    "acknowledge_content": "Reconnu depuis l'application mobile",
+    "resolve_notes": "Résolu depuis l'application mobile",
+    "status_change": "Statut changé de {{old}} à {{new}}",
+    "no_comments": "Aucun commentaire pour le moment",
     "create_new": "Créer un nouveau ticket",
     "my_tickets": "Mes tickets",
     "all_tickets": "Tous les tickets",
-    "filters": {
-      "open": "Ouvert",
-      "in_progress": "En cours",
-      "resolved": "Résolu",
-      "closed": "Fermé"
-    },
     "fields": {
       "title": "Titre du ticket",
       "description": "Description",
@@ -122,6 +412,985 @@
       "create_failed": "Échec de la création du ticket. Veuillez réessayer.",
       "load_failed": "Échec du chargement des tickets. Veuillez vérifier votre connexion."
     }
+  },
+  "random_stop": {
+    "title": "Arrêts Aléatoires",
+    "report_button": "+ Signaler",
+    "search_placeholder": "Rechercher par plaque ou ticket...",
+    "loading": "Chargement des arrêts...",
+    "vehicle_not_found": "⚠️ Véhicule non trouvé",
+    "no_ticket": "Aucun ticket",
+    "reason_label": "Raison",
+    "no_reason": "Aucune raison fournie",
+    "by_label": "Par",
+    "unknown": "Inconnu",
+    "unknown_date": "Date inconnue",
+    "status": {
+      "approved": "APPROUVÉ",
+      "pending": "EN ATTENTE"
+    },
+    "form": {
+      "plate_number": "Plaque d'immatriculation",
+      "incident_type": "Type d'incident",
+      "reason": "Raison",
+      "select_incident_type": "Sélectionner le type d'incident"
+    },
+    "placeholders": {
+      "plate_number": "ex: AB 123 CD",
+      "reason": "Entrez la raison détaillée de l'arrêt..."
+    },
+    "buttons": {
+      "submit": "Soumettre la demande"
+    },
+    "modal": {
+      "create_title": "Demander un arrêt aléatoire",
+      "select_incident": "Sélectionner le type d'incident",
+      "detail_title": "Détails de la demande"
+    },
+    "details": {
+      "plate_number": "Plaque d'immatriculation",
+      "ticket_number": "Numéro de ticket",
+      "reason": "Raison",
+      "status": "Statut",
+      "requested_by": "Demandé par",
+      "approved_by": "Approuvé par",
+      "requested_at": "Demandé le",
+      "approved_at": "Approuvé le",
+      "not_assigned": "Non assigné",
+      "pending": "En attente"
+    },
+    "empty": {
+      "title": "Aucune demande d'arrêt trouvée",
+      "search_suggestion": "Essayez un autre terme de recherche",
+      "refresh_suggestion": "Tirez vers le bas pour actualiser ou créez une nouvelle demande"
+    },
+    "errors": {
+      "load_incident_types": "Échec du chargement des types d'incident",
+      "load_stops": "Échec du chargement des arrêts : {{message}}",
+      "plate_reason_required": "La plaque d'immatriculation et la raison sont requises",
+      "incident_type_required": "Veuillez sélectionner un type d'incident",
+      "vehicle_not_found": "⚠️ Arrêt créé mais le véhicule \"{{plate}}\" n'a pas été trouvé dans le système",
+      "vehicle_not_found_message": "Plaque d'immatriculation non trouvée dans le système",
+      "submission_failed": "Échec de la soumission",
+      "auth_failed": "Échec d'authentification - veuillez vous reconnecter",
+      "no_incident_types": "Aucun type d'incident trouvé"
+    },
+    "success": {
+      "submitted": "✓ Demande soumise avec succès"
+    }
+  },
+  "request_eseals_list": {
+    "title": "Mes demandes de sceaux électroniques",
+    "total": "Total",
+    "request_singular": "demande",
+    "requests_plural": "demandes",
+    "pending": "En attente",
+    "e_seal_unit": "Sceau électronique",
+    "reason_label": "Raison",
+    "no_reason": "Aucune raison fournie",
+    "requested_by": "Demandé par",
+    "approved_by": "Approuvé par",
+    "approved_on": "Approuvé le",
+    "rejection_reason": "Raison du rejet",
+    "tap_for_details": "Appuyez pour plus de détails",
+    "not_available": "Non disponible",
+    "invalid_date": "Date invalide",
+    "unknown": "Inconnu",
+    "request_hash": "Demande #{{id}}",
+    "status": {
+      "pending": "En attente",
+      "fulfilled": "Réalisée",
+      "rejected": "Rejetée",
+      "approved": "Approuvée",
+      "unknown": "Inconnu"
+    },
+    "time": {
+      "just_now": "À l'instant",
+      "minutes_ago": "il y a {{count}} min",
+      "hours_ago": "il y a {{count}} heure",
+      "days_ago": "il y a {{count}} jour"
+    },
+    "empty": {
+      "title": "Aucune demande trouvée",
+      "subtext": "Appuyez sur le bouton + pour demander des sceaux électroniques"
+    },
+    "modal": {
+      "title": "Détails de la demande",
+      "request_id": "ID de la demande",
+      "status": "Statut",
+      "quantity": "Quantité",
+      "reason": "Raison",
+      "requested_by": "Demandé par",
+      "requested_on": "Demandé le",
+      "approved_by": "Approuvé par",
+      "approved_on": "Approuvé le",
+      "rejection_reason": "Raison du rejet"
+    },
+    "errors": {
+      "load_failed": "Échec du chargement des demandes"
+    }
+  },
+  "eseals_replacement": {
+    "title": "Demandes de remplacement de sceau",
+    "device_label": "Appareil",
+    "truck_label": "Camion",
+    "seal_requested": "Remplacement de sceau demandé",
+    "new_seal_label": "Nouveau sceau",
+    "reason_label": "Raison",
+    "approved_label": "Approuvé",
+    "rejected_label": "Rejeté",
+    "status": {
+      "pending": "EN ATTENTE",
+      "approved": "APPROUVÉ",
+      "rejected": "REJETÉ",
+      "in_progress": "EN COURS",
+      "unknown": "INCONNU"
+    },
+    "empty": {
+      "title": "Aucune demande de remplacement",
+      "subtext": "Appuyez sur + pour demander un remplacement de sceau"
+    },
+    "modal": {
+      "title": "Nouveau remplacement de sceau"
+    },
+    "form": {
+      "ticket_id": "ID du ticket",
+      "new_seal_number": "Nouveau numéro de sceau",
+      "reason": "Raison",
+      "condition_id": "ID de condition de l'ancien appareil"
+    },
+    "placeholders": {
+      "ticket_id": "Entrez l'ID du ticket",
+      "new_seal_number": "Entrez le nouveau numéro de sceau",
+      "reason": "Expliquez la raison du remplacement",
+      "condition_id": "Entrez l'ID de condition (ex: 1 pour endommagé)"
+    },
+    "buttons": {
+      "submit": "Soumettre la demande"
+    },
+    "errors": {
+      "load_failed": "Échec du chargement des demandes",
+      "valid_ticket_id": "Un ID de ticket valide est requis",
+      "new_seal_required": "Le nouveau numéro de sceau est requis",
+      "reason_required": "Veuillez fournir une raison",
+      "condition_id_required": "Un ID de condition d'ancien appareil valide est requis",
+      "submit_failed": "Échec de la soumission de la demande"
+    },
+    "success": {
+      "submitted": "Demande de remplacement de sceau soumise !"
+    }
+  },
+  "assigned_eseals": {
+    "title": "Sceaux électroniques assignés",
+    "na": "N/D",
+    "available_count": "Quantité disponible",
+    "search_placeholder": "Rechercher par nom ou numéro de série",
+    "loading": "Chargement des sceaux électroniques assignés...",
+    "serial_label": "Numéro de série",
+    "group_label": "Groupe",
+    "warranty_label": "Garantie",
+    "status": {
+      "online": "En ligne",
+      "offline": "Hors ligne"
+    },
+    "filters": {
+      "all": "Tous",
+      "online": "En ligne",
+      "offline": "Hors ligne",
+      "warranty_active": "Garantie active",
+      "warranty_expired": "Garantie expirée",
+      "clear": "Effacer"
+    },
+    "empty": {
+      "title": "Aucun appareil trouvé",
+      "adjust_filters": "Essayez d'ajuster vos filtres",
+      "no_devices": "Aucun sceau électronique assigné disponible"
+    },
+    "modal": {
+      "title": "Détails de l'appareil",
+      "device_name": "Nom de l'appareil",
+      "serial_number": "Numéro de série",
+      "imei": "IMEI",
+      "model": "Modèle",
+      "year_of_manufacture": "Année de fabrication",
+      "group": "Groupe",
+      "firmware_version": "Version du firmware",
+      "warranty": "Garantie",
+      "status": "Statut",
+      "close": "Fermer"
+    },
+    "errors": {
+      "auth_error": "Erreur d'authentification. Veuillez vous reconnecter.",
+      "load_failed": "Échec du chargement des sceaux électroniques assignés"
+    }
+  },
+  "geofences": {
+    "title": "Géoclôtures",
+    "na": "N/D",
+    "active": "ACTIF",
+    "inactive": "INACTIF",
+    "no_description": "Aucune description disponible",
+    "devices_label": "appareils",
+    "coordinates_label": "Coordonnées",
+    "polygon_label": "Polygone (LIGNE)",
+    "radius_label": "Rayon",
+    "station_type_label": "Type de station",
+    "assigned_routes_label": "Itinéraires assignés",
+    "created_label": "Créé",
+    "updated_label": "Mis à jour",
+    "view_on_map": "Voir sur la carte",
+    "more_details": "▼ Plus de détails",
+    "less_details": "▲ Moins de détails",
+    "route_s": "itinéraire(s)",
+    "loading": "Chargement des géoclôtures...",
+    "search_placeholder": "Rechercher des géoclôtures...",
+    "types": {
+      "hotspot": "POINT D'ACCÈS",
+      "route": "ITINÉRAIRE",
+      "station": "STATION",
+      "geofence": "GÉOCLÔTURE"
+    },
+    "filters": {
+      "all": "Tous",
+      "hotspots": "Points d'accès",
+      "routes": "Itinéraires",
+      "stations": "Stations"
+    },
+    "stats": {
+      "total": "Total",
+      "active": "Actif",
+      "inactive": "Inactif"
+    },
+    "time": {
+      "just_now": "À l'instant",
+      "minutes_ago": "il y a {{count}} min",
+      "hours_ago": "il y a {{count}} h"
+    },
+    "empty": {
+      "title": "Aucune géoclôture trouvée",
+      "adjust_search": "Essayez d'ajuster votre recherche",
+      "no_geofences": "Aucune géoclôture n'a encore été créée"
+    },
+    "modal": {
+      "title": "Détails de la géoclôture",
+      "description": "Description",
+      "location": "Emplacement",
+      "type_label": "Type",
+      "coordinates_label": "Coordonnées",
+      "radius_label": "Rayon",
+      "polygon_label": "Polygone",
+      "line_route": "Itinéraire linéaire avec plusieurs points",
+      "details": "Détails",
+      "devices_label": "Appareils",
+      "route_status_label": "Statut de l'itinéraire",
+      "color_label": "Couleur",
+      "station_type_label": "Type de station",
+      "assigned_routes_label": "Itinéraires assignés",
+      "timestamps": "Horodatages",
+      "created_label": "Créé",
+      "updated_label": "Mis à jour",
+      "close": "Fermer"
+    },
+    "errors": {
+      "load_failed": "Échec du chargement des géoclôtures"
+    }
+  },
+  "hotspots": {
+    "title": "Points d'accès",
+    "na": "N/D",
+    "active": "ACTIF",
+    "inactive": "INACTIF",
+    "no_description": "Aucune description disponible",
+    "fence_type_label": "Type de clôture",
+    "status_label": "Statut",
+    "assigned_routes_label": "Itinéraires assignés",
+    "created_label": "Créé",
+    "updated_label": "Mis à jour",
+    "view_on_map": "Voir sur la carte",
+    "more_details": "▼ Plus de détails",
+    "less_details": "▲ Moins de détails",
+    "route_s": "itinéraire(s)",
+    "loading": "Chargement des points d'accès...",
+    "search_placeholder": "Rechercher des points d'accès...",
+    "stats": {
+      "total": "Total des points d'accès",
+      "active": "Actif",
+      "inactive": "Inactif"
+    },
+    "time": {
+      "just_now": "À l'instant",
+      "minutes_ago": "il y a {{count}} min",
+      "hours_ago": "il y a {{count}} h"
+    },
+    "empty": {
+      "title": "Aucun point d'accès trouvé",
+      "adjust_search": "Essayez d'ajuster votre recherche",
+      "no_hotspots": "Aucun point d'accès n'a encore été créé"
+    },
+    "modal": {
+      "title": "Détails du point d'accès",
+      "description": "Description",
+      "location": "Emplacement",
+      "coordinates_label": "Coordonnées",
+      "radius_label": "Rayon",
+      "details": "Détails",
+      "fence_type_label": "Type de clôture",
+      "route_status_label": "Statut de l'itinéraire",
+      "color_label": "Couleur",
+      "assigned_routes_label": "Itinéraires assignés",
+      "timestamps": "Horodatages",
+      "created_label": "Créé",
+      "updated_label": "Mis à jour",
+      "close": "Fermer"
+    },
+    "errors": {
+      "load_failed": "Échec du chargement des points d'accès"
+    }
+  },
+  "device_map": {
+    "title": "Surveillance des appareils",
+    "na": "N/D",
+    "search_placeholder": "Rechercher des appareils...",
+    "loading": "Chargement des positions des appareils et géoclôtures...",
+    "devices_title": "Appareils",
+    "speed_label": "Vitesse",
+    "location_label": "Position",
+    "last_update_label": "Dernière mise à jour",
+    "mileage_label": "Kilométrage",
+    "updated_label": "Mis à jour",
+    "tap_to_view": "Appuyez pour voir sur la carte →",
+    "no_devices": "Aucun appareil trouvé",
+    "hide_geofences": "Masquer les géoclôtures",
+    "show_geofences": "Afficher les géoclôtures",
+    "view_details": "Voir les détails",
+    "map_types": {
+      "standard": "🗺️ Standard",
+      "satellite": "🛰️ Satellite",
+      "hybrid": "🌍 Hybride"
+    },
+    "time": {
+      "just_now": "À l'instant",
+      "minutes_ago": "il y a {{count}} min",
+      "hours_ago": "il y a {{count}} h"
+    },
+    "modal": {
+      "title": "Détails de l'appareil",
+      "moving": "En mouvement",
+      "stationary": "À l'arrêt",
+      "serial_number": "Numéro de série",
+      "t1_number": "Numéro T1",
+      "speed": "Vitesse",
+      "mileage": "Kilométrage",
+      "location": "Position",
+      "coordinates": "Coordonnées",
+      "last_update": "Dernière mise à jour",
+      "center_on_map": "Centrer sur la carte",
+      "close": "Fermer"
+    },
+    "errors": {
+      "load_failed": "Échec du chargement des données"
+    }
+  },
+  "stations": {
+    "title": "Stations",
+    "na": "N/D",
+    "active": "ACTIF",
+    "inactive": "INACTIF",
+    "no_description": "Aucune description disponible",
+    "fence_type_label": "Type de clôture",
+    "route_status_label": "Statut de l'itinéraire",
+    "assigned_routes_label": "Itinéraires assignés",
+    "created_label": "Créé",
+    "updated_label": "Mis à jour",
+    "view_on_map": "Voir sur la carte",
+    "more_details": "▼ Plus de détails",
+    "less_details": "▲ Moins de détails",
+    "route_s": "itinéraire(s)",
+    "loading": "Chargement des stations...",
+    "search_placeholder": "Rechercher des stations...",
+    "types": {
+      "checkpoint": "POINT DE CONTRÔLE",
+      "bus_stop": "ARRÊT DE BUS",
+      "station": "STATION"
+    },
+    "filters": {
+      "all": "Tous",
+      "checkpoints": "Points de contrôle",
+      "bus_stops": "Arrêts de bus"
+    },
+    "stats": {
+      "total": "Total des stations",
+      "active": "Actif",
+      "inactive": "Inactif"
+    },
+    "time": {
+      "just_now": "À l'instant",
+      "minutes_ago": "il y a {{count}} min",
+      "hours_ago": "il y a {{count}} h"
+    },
+    "empty": {
+      "title": "Aucune station trouvée",
+      "adjust_search": "Essayez d'ajuster votre recherche",
+      "no_stations": "Aucune station n'a encore été créée"
+    },
+    "modal": {
+      "title": "Détails de la station",
+      "description": "Description",
+      "location": "Emplacement",
+      "coordinates_label": "Coordonnées",
+      "radius_label": "Rayon",
+      "details": "Détails",
+      "fence_type_label": "Type de clôture",
+      "route_status_label": "Statut de l'itinéraire",
+      "color_label": "Couleur",
+      "assigned_routes_label": "Itinéraires assignés",
+      "timestamps": "Horodatages",
+      "created_label": "Créé",
+      "updated_label": "Mis à jour",
+      "close": "Fermer"
+    },
+    "errors": {
+      "load_failed": "Échec du chargement des stations"
+    }
+  },
+  "inventory_scan": {
+    "title": "Inventaire des appareils",
+    "na": "N/D",
+    "devices_count": "appareils",
+    "local_mode": "🔓 Mode local",
+    "sn_label": "SN",
+    "model_label": "Modèle",
+    "loading": "Chargement de l'inventaire...",
+    "syncing": "Synchronisation...",
+    "added_to_list": "Ajouté à la liste",
+    "scan_another": "Scanner un autre",
+    "scan_device": "Scanner l'appareil",
+    "manufacturers": {
+      "telematics": "Télématique",
+      "joint_tech": "Joint Tech"
+    },
+    "device_types": {
+      "telematics": "Télématique (8 chiffres)",
+      "joint_tech": "Joint Tech (10 chiffres)",
+      "qr_codes": "Codes QR pris en charge"
+    },
+    "instructions": {
+      "align": "Alignez le code-barres ou le code QR dans le cadre",
+      "saved_locally": "✓ Enregistré localement même hors ligne"
+    },
+    "empty": {
+      "title": "Aucun appareil trouvé",
+      "subtext": "Appuyez sur + pour scanner un code-barres ou un code QR"
+    },
+    "status": {
+      "saved_locally_offline": "Enregistré localement (mode hors ligne)",
+      "synced_to_server": "Synchronisé avec le serveur",
+      "saved_locally_login_to_sync": "Enregistré localement (connectez-vous pour synchroniser)",
+      "already_on_server": "Déjà sur le serveur",
+      "saved_locally_server_error": "Enregistré localement (erreur serveur)",
+      "saved_locally_network_error": "Enregistré localement (erreur réseau)"
+    },
+    "errors": {
+      "cannot_read": "Impossible de lire le code. Réessayez.",
+      "already_in_inventory": "⚠️ {{serialNo}} déjà dans l'inventaire"
+    },
+    "success": {
+      "added_to_inventory": "✓ {{serialNo}} ajouté à l'inventaire"
+    }
+  },
+  "receive_devices": {
+    "title": "Recevoir des appareils",
+    "unknown": "Inconnu",
+    "scan_title": "Scanner le code QR de l'appareil",
+    "scan_subtitle": "Alignez le code QR dans le cadre",
+    "scan_note": "Codes QR et code-barres pris en charge",
+    "devices_to_receive": "Appareils à recevoir",
+    "clear_all": "Tout effacer",
+    "submit_button": "Soumettre {{count}} appareil",
+    "conditions": {
+      "good": "Bon",
+      "faulty": "Défectueux",
+      "available": "Disponible",
+      "in_use": "En cours d'utilisation",
+      "in_return_transit": "En transit de retour",
+      "awaiting_charging": "En attente de chargement",
+      "charging": "En charge",
+      "under_repair": "En réparation",
+      "decommissioned": "Décommissionné"
+    },
+    "modal": {
+      "title": "Sélectionner l'état de l'appareil",
+      "serial_label": "Numéro de série",
+      "cancel": "Annuler",
+      "add_device": "Ajouter l'appareil"
+    },
+    "remove_device": {
+      "title": "Supprimer l'appareil",
+      "message": "Voulez-vous vraiment supprimer cet appareil ?",
+      "cancel": "Annuler",
+      "confirm": "Supprimer"
+    },
+    "clear_all": {
+      "title": "Tout effacer",
+      "message": "Voulez-vous vraiment supprimer les {{count}} appareils ?",
+      "cancel": "Annuler",
+      "confirm": "Tout effacer"
+    },
+    "alert": {
+      "partial_success": "Succès partiel",
+      "partial_success_message": "Certains appareils ont échoué :\n{{errors}}"
+    },
+    "errors": {
+      "no_store": "Aucun magasin assigné. Veuillez contacter l'administrateur.",
+      "invalid_barcode": "Code-barres invalide : Le numéro de série ne doit contenir que des chiffres",
+      "duplicate_serial": "Le numéro de série {{serialNumber}} est déjà dans la liste",
+      "select_condition": "Veuillez sélectionner l'état de l'appareil",
+      "no_devices": "Veuillez ajouter au moins un appareil",
+      "no_token": "Aucun jeton d'authentification trouvé",
+      "session_expired": "Session expirée. Veuillez vous reconnecter.",
+      "submit_failed": "Échec de l'envoi des appareils. Veuillez réessayer."
+    },
+    "success": {
+      "device_added": "Appareil {{serialNumber}} ajouté avec l'état : {{condition}}",
+      "submitted": "{{count}} appareil(s) reçu(s) avec succès",
+      "with_errors": ", {{count}} erreur(s) survenue(s)"
+    }
+  },
+  "alerts": {
+    "title": "Alertes",
+    "notification": "Notification",
+    "no_message": "Aucun message",
+    "loading": "Chargement...",
+    "mark_all_read": "Tout marquer comme lu",
+    "no_unread": "Aucune notification non lue",
+    "priority": {
+      "critical": "CRITIQUE",
+      "high": "ÉLEVÉE",
+      "medium": "MOYENNE",
+      "low": "BASSE"
+    },
+    "stats": {
+      "total": "Total",
+      "unread": "Non lues",
+      "unattended": "Non traitées",
+      "critical": "Critiques"
+    },
+    "filters": {
+      "all": "Toutes",
+      "unattended": "Non traitées",
+      "critical": "Critiques"
+    },
+    "time": {
+      "just_now": "À l'instant",
+      "minutes_ago": "il y a {{count}} min",
+      "hours_ago": "il y a {{count}} h",
+      "days_ago": "il y a {{count}} j"
+    },
+    "status": {
+      "read": "Lu",
+      "unread": "Non lu",
+      "attended": "Traité",
+      "unattended": "Non traité"
+    },
+    "buttons": {
+      "read": "Lire",
+      "attend": "Traiter",
+      "assign": "Assigner",
+      "view": "Voir"
+    },
+    "empty": {
+      "title": "Aucune notification",
+      "no_unread": "Aucune notification non lue",
+      "no_unattended": "Aucune notification non traitée",
+      "no_critical": "Aucune notification critique",
+      "all_caught": "Tout est à jour !"
+    },
+    "modal": {
+      "title": "Détails de la notification",
+      "title_label": "Titre",
+      "message_label": "Message",
+      "priority_label": "Priorité",
+      "type_label": "Type",
+      "device_serial_label": "Numéro de série de l'appareil",
+      "geofence_label": "Géoclôture",
+      "date_time_label": "Date et heure",
+      "status_label": "Statut",
+      "close": "Fermer"
+    },
+    "assign_modal": {
+      "title": "Assigner la notification",
+      "select_user": "Sélectionner un utilisateur",
+      "comment": "Commentaire (optionnel)",
+      "comment_placeholder": "Ajouter un commentaire...",
+      "cancel": "Annuler",
+      "assign": "Assigner"
+    },
+    "attend_modal": {
+      "title": "Traiter la notification",
+      "comments": "Commentaires",
+      "comment_placeholder": "Entrez des commentaires...",
+      "cancel": "Annuler",
+      "submit": "Soumettre"
+    },
+    "success": {
+      "marked_read": "Marqué comme lu",
+      "all_marked_read": "Tout marqué comme lu",
+      "marked_attended": "Marqué comme traité",
+      "assigned": "Notification assignée"
+    },
+    "errors": {
+      "load_failed": "Échec du chargement des notifications",
+      "select_user": "Veuillez sélectionner un utilisateur",
+      "assign_failed": "Échec de l'assignation",
+      "comment_required": "Veuillez entrer des commentaires"
+    }
+  },
+  "alarms": {
+    "title": "Alarmes",
+    "notification": "Alarme",
+    "no_message": "Aucun message",
+    "loading": "Chargement des alarmes...",
+    "mark_all_read": "Tout marquer comme lu",
+    "no_unread": "Aucune alarme non lue",
+    "priority": {
+      "critical": "CRITIQUE",
+      "high": "ÉLEVÉE",
+      "medium": "MOYENNE",
+      "low": "BASSE"
+    },
+    "stats": {
+      "total": "Total",
+      "unread": "Non lues",
+      "unattended": "Non traitées",
+      "critical": "Critiques"
+    },
+    "filters": {
+      "all": "Toutes",
+      "unattended": "Non traitées",
+      "critical": "Critiques"
+    },
+    "time": {
+      "just_now": "À l'instant",
+      "minutes_ago": "il y a {{count}} min",
+      "hours_ago": "il y a {{count}} h",
+      "days_ago": "il y a {{count}} j"
+    },
+    "status": {
+      "read": "Lu",
+      "unread": "Non lu",
+      "attended": "Traité",
+      "unattended": "Non traité"
+    },
+    "buttons": {
+      "read": "Lire",
+      "attend": "Traiter",
+      "assign": "Assigner",
+      "view": "Voir"
+    },
+    "empty": {
+      "title": "Aucune alarme",
+      "no_unread": "Aucune alarme non lue",
+      "no_unattended": "Aucune alarme non traitée",
+      "no_critical": "Aucune alarme critique",
+      "all_caught": "Tout est à jour !"
+    },
+    "modal": {
+      "title": "Détails de l'alarme",
+      "title_label": "Titre",
+      "message_label": "Message",
+      "priority_label": "Priorité",
+      "type_label": "Type",
+      "device_serial_label": "Numéro de série de l'appareil",
+      "geofence_label": "Géoclôture",
+      "date_time_label": "Date et heure",
+      "status_label": "Statut",
+      "close": "Fermer"
+    },
+    "assign_modal": {
+      "title": "Assigner l'alarme",
+      "select_user": "Sélectionner un utilisateur",
+      "comment": "Commentaire (optionnel)",
+      "comment_placeholder": "Ajouter un commentaire...",
+      "cancel": "Annuler",
+      "assign": "Assigner"
+    },
+    "attend_modal": {
+      "title": "Traiter l'alarme",
+      "comments": "Commentaires",
+      "comment_placeholder": "Entrez des commentaires...",
+      "cancel": "Annuler",
+      "submit": "Soumettre"
+    },
+    "success": {
+      "marked_read": "Marqué comme lu",
+      "all_marked_read": "Tout marqué comme lu",
+      "marked_attended": "Marqué comme traité",
+      "assigned": "Alarme assignée"
+    },
+    "errors": {
+      "load_failed": "Échec du chargement des alarmes",
+      "select_user": "Veuillez sélectionner un utilisateur",
+      "assign_failed": "Échec de l'assignation",
+      "comment_required": "Veuillez entrer des commentaires"
+    }
+  },
+  "attach_evidence": {
+    "ticket_label": "Ticket",
+    "subtitle": "Capturez une ou plusieurs images comme preuve",
+    "no_photos": "Aucune photo prise",
+    "add_photo": "📸 AJOUTER UNE PHOTO",
+    "upload_button": "TÉLÉCHARGER {{count}} IMAGE",
+    "cancel_back": "Annuler et revenir",
+    "missing_photo": {
+      "title": "Photo manquante",
+      "message": "Veuillez prendre au moins une photo."
+    },
+    "success": {
+      "title": "Succès",
+      "message": "Toutes les preuves ont été téléchargées avec succès !"
+    },
+    "errors": {
+      "check_network": "Vérifiez le réseau ou les journaux du serveur",
+      "upload_failed": "Échec du téléchargement",
+      "error_message": "Erreur : {{message}}"
+    }
+  },
+  "commands": {
+    "title": "Commandes de l'appareil",
+    "na": "N/D",
+    "loading": "Chargement des appareils...",
+    "search_placeholder": "Rechercher par nom, numéro de série, IMEI...",
+    "status": {
+      "online": "EN LIGNE",
+      "offline": "HORS LIGNE"
+    },
+    "details": {
+      "serial": "Numéro de série",
+      "imei": "IMEI"
+    },
+    "stats": {
+      "all_devices": "Tous les appareils",
+      "online": "En ligne",
+      "offline": "Hors ligne"
+    },
+    "buttons": {
+      "send_command": "Envoyer la commande",
+      "show_commands": "▼ Afficher les commandes",
+      "hide_commands": "▲ Masquer les commandes"
+    },
+    "list": {
+      "low_power": "Mode basse consommation",
+      "set_primary_ip": "Définir l'IP principale",
+      "set_secondary_ip": "Définir l'IP secondaire",
+      "reset_historical": "Réinitialiser la position historique",
+      "disable_sleep": "Désactiver le mode veille",
+      "set_timezone": "Définir le fuseau horaire (GMT+3)",
+      "set_operation_mode": "Définir le mode de fonctionnement",
+      "exit_deep_sleep": "Sortir du sommeil profond",
+      "enter_sleep_mode": "Entrer en mode veille",
+      "set_authorized_numbers": "Définir les numéros autorisés",
+      "change_password": "Changer le mot de passe de déverrouillage",
+      "unlock_device": "Déverrouiller l'appareil",
+      "factory_reset": "Réinitialisation d'usine",
+      "restart_device": "Redémarrer l'appareil",
+      "set_serial_number": "Définir le numéro de série",
+      "query_device_info": "Interroger les infos de l'appareil",
+      "query_device_status": "Interroger le statut de l'appareil"
+    },
+    "modal": {
+      "device_label": "Appareil",
+      "battery_level": "Niveau de batterie (%)",
+      "report_duration": "Durée du rapport (heures)",
+      "ip_domain": "IP/Domaine",
+      "port": "Port",
+      "reset_serial": "Numéro de série de l'appareil à réinitialiser",
+      "lock_interval": "Intervalle de rapport lorsqu'il est verrouillé (secondes)",
+      "unlock_interval": "Intervalle de rapport lorsqu'il est déverrouillé (secondes)",
+      "wake_time": "Temps de travail au réveil (secondes)",
+      "sleep_time": "Temps de sommeil (secondes)",
+      "auth_number": "Numéro autorisé {{num}} (optionnel)",
+      "old_password": "Ancien mot de passe",
+      "new_password": "Nouveau mot de passe (6 chiffres)",
+      "confirm_password": "Confirmer le nouveau mot de passe",
+      "new_serial": "Nouveau numéro de série"
+    },
+    "placeholders": {
+      "battery_level": "ex: 10",
+      "report_duration": "ex: 0,1 (6 minutes)",
+      "ip_domain": "ex: bsl.co.ke ou 192.168.1.100",
+      "port": "ex: 8080",
+      "reset_serial": "Entrez le numéro de série à 8 chiffres",
+      "lock_interval": "ex: 5",
+      "unlock_interval": "ex: 300",
+      "wake_time": "ex: 30",
+      "sleep_time": "ex: 300",
+      "auth_number": "ex: 716826814 (sans le 0 initial)",
+      "old_password": "Entrez l'ancien mot de passe",
+      "new_password": "Entrez le nouveau mot de passe",
+      "confirm_password": "Confirmez le nouveau mot de passe",
+      "new_serial": "Entrez le numéro de série à 8 chiffres"
+    },
+    "hints": {
+      "report_duration": "0,1 heure = 6 minutes",
+      "reset_serial": "Entrez le numéro de série de l'appareil pour réinitialiser la position historique",
+      "auth_numbers": "N'incluez pas le zéro initial. Au moins un numéro est requis",
+      "new_serial": "Le numéro de série doit comporter 8 chiffres"
+    },
+    "query": {
+      "device_info_title": "Informations de l'appareil",
+      "device_info_message": "Appareil: {{sn}}\n\nRéponse: {{response}}",
+      "device_status_title": "Statut de l'appareil",
+      "device_status_message": "Appareil: {{sn}}\n\nStatut: {{status}}",
+      "query_failed": "Échec de la requête",
+      "info_failed": "Échec de l'interrogation des infos de l'appareil",
+      "status_failed": "Échec de l'interrogation du statut de l'appareil",
+      "error": "Erreur",
+      "info_error": "Échec de l'interrogation des informations de l'appareil",
+      "status_error": "Échec de l'interrogation du statut de l'appareil"
+    },
+    "bulk": {
+      "no_devices_title": "Aucun appareil sélectionné",
+      "no_devices_message": "Veuillez sélectionner au moins un appareil",
+      "title": "Commande groupée",
+      "message": "Envoyer la commande de redémarrage à {{count}} appareil(s) ?",
+      "cancel": "Annuler",
+      "send": "Envoyer",
+      "complete_title": "Commande groupée terminée",
+      "complete_message": "Succès: {{success}}\nÉchec: {{fail}}",
+      "send_to": "Envoyer à {{count}} appareil(s)"
+    },
+    "error": {
+      "title": "Erreur",
+      "ip_port_required": "Veuillez entrer l'IP et le port",
+      "serial_8_digits": "Veuillez entrer un numéro de série à 8 chiffres",
+      "auth_numbers_required": "Au moins un numéro autorisé est requis",
+      "password_6_digits": "Le nouveau mot de passe doit comporter 6 chiffres",
+      "password_mismatch": "Les mots de passe ne correspondent pas"
+    },
+    "empty": {
+      "title": "Aucun appareil trouvé",
+      "adjust_search": "Essayez d'ajuster votre recherche",
+      "filter": "Aucun appareil {{filter}} disponible",
+      "no_devices": "Aucun appareil n'a encore été ajouté"
+    },
+    "success": {
+      "command_sent": "Commande envoyée avec succès"
+    },
+    "errors": {
+      "load_failed": "Échec du chargement des appareils",
+      "command_failed": "Échec de l'envoi de la commande"
+    }
+  },
+  "device_map_view": {
+    "map_view": "Vue de la carte",
+    "loading": "Chargement de la carte...",
+    "traffic": "Trafic",
+    "active": "ACTIF",
+    "inactive": "INACTIF",
+    "active_status": "ACTIF",
+    "inactive_status": "INACTIF",
+    "radius_label": "Rayon",
+    "devices": "appareils",
+    "devices_label": "Appareils",
+    "type_label": "Type",
+    "routes_assigned": "itinéraire(s) assigné(s)",
+    "center_on_map": "Centrer sur la carte",
+    "types": {
+      "hotspot": "Point d'accès",
+      "route": "Itinéraire",
+      "station": "Station",
+      "geofence": "Géoclôture"
+    },
+    "map_types": {
+      "standard": "Carte",
+      "satellite": "Satellite",
+      "hybrid": "Hybride"
+    }
+  },
+  "forgot_password": {
+    "welcome_back": "Bon retour",
+    "subtitle": "Réinitialisez votre mot de passe pour continuer",
+    "labels": {
+      "email": "Adresse e-mail"
+    },
+    "placeholders": {
+      "email": "Entrez votre e-mail"
+    },
+    "buttons": {
+      "submit": "Soumettre"
+    },
+    "loading": "Soumission...",
+    "errors": {
+      "email_required": "L'e-mail est requis",
+      "invalid_email": "E-mail invalide.",
+      "network_error": "Une erreur s'est produite. Veuillez réessayer plus tard."
+    },
+    "success": {
+      "password_reset": "Réinitialisation du mot de passe réussie !"
+    }
+  },
+  "device_map": {
+    "title": "Suivi de flotte",
+    "na": "N/D",
+    "loading": "Chargement des données de flotte...",
+    "search_placeholder": "Rechercher par nom, numéro de série ou ID...",
+    "status": {
+      "moving": "En mouvement",
+      "parked": "Stationné"
+    },
+    "stats": {
+      "total": "Total",
+      "moving": "En mouvement",
+      "stationary": "À l'arrêt"
+    },
+    "controls": {
+      "traffic": "Trafic",
+      "live": "Direct"
+    },
+    "details": {
+      "vehicle_id": "ID du véhicule",
+      "location": "Emplacement",
+      "last_update": "Dernière mise à jour",
+      "mileage": "Kilométrage"
+    },
+    "buttons": {
+      "center_on_map": "Centrer sur la carte"
+    },
+    "bottom_sheet": {
+      "nearby_vehicles": "Véhicules à proximité"
+    },
+    "empty": {
+      "no_vehicles": "Aucun véhicule trouvé",
+      "adjust_search": "Essayez d'ajuster votre recherche"
+    },
+    "time": {
+      "just_now": "À l'instant",
+      "minutes_ago": "il y a {{count}} min",
+      "hours_ago": "il y a {{count}} h"
+    },
+    "errors": {
+      "load_failed": "Échec du chargement des positions des appareils"
+    }
+  },
+  "navigation": {
+    "home": "Accueil",
+    "dashboard": "Tableau de bord",
+    "tickets": "Tickets",
+    "devices": "Appareils",
+    "profile": "Profil",
+    "settings": "Paramètres",
+    "logout": "Déconnexion",
+    "help": "Aide",
+    "about": "À propos"
+  },
+  "dashboard": {
+    "title": "Tableau de bord",
+    "greeting": "Bonjour, {{name}}",
+    "quick_actions": "Actions rapides",
+    "active_shipments": "Expéditions actives",
+    "pending_tickets": "Tickets en attente",
+    "device_status": "État des appareils",
+    "view_all": "Voir tout"
   },
   "devices": {
     "title": "Appareils",

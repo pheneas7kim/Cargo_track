@@ -20,12 +20,14 @@ import * as Animatable from 'react-native-animatable';
 import Snackbar from 'react-native-snackbar';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import serverURL from '../config';
+import { useTranslation } from 'react-i18next';
 
 const { width } = Dimensions.get('window');
 const SCAN_SIZE = width * 0.7;
 const STORAGE_KEY = '@inventory_devices';
 
 const InventoryScan = ({ navigation }) => {
+  const { t } = useTranslation();
   const [devices, setDevices] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -189,7 +191,7 @@ const InventoryScan = ({ navigation }) => {
 
     if (!serialNo) {
       Snackbar.show({
-        text: 'Could not read code. Try again.',
+        text: t('inventory_scan.errors.cannot_read', { defaultValue: 'Could not read code. Try again.' }),
         duration: 3000,
         backgroundColor: '#FF6B6B',
       });
@@ -252,7 +254,7 @@ const InventoryScan = ({ navigation }) => {
       if (prev.some((d) => d.serialNo === serialNo)) {
         console.log('⚠️ Device already in list:', serialNo);
         Snackbar.show({
-          text: `⚠️ ${serialNo} already in inventory`,
+          text: t('inventory_scan.errors.already_in_inventory', { defaultValue: '⚠️ {{serialNo}} already in inventory', serialNo: serialNo }).replace('{{serialNo}}', serialNo),
           duration: 1500,
           backgroundColor: '#FF9800',
         });
@@ -266,7 +268,7 @@ const InventoryScan = ({ navigation }) => {
     });
 
     Snackbar.show({
-      text: `✓ ${serialNo} added to inventory`,
+      text: t('inventory_scan.success.added_to_inventory', { defaultValue: '✓ {{serialNo}} added to inventory', serialNo: serialNo }).replace('{{serialNo}}', serialNo),
       duration: 2000,
       backgroundColor: '#4CAF50',
     });
@@ -281,7 +283,7 @@ const InventoryScan = ({ navigation }) => {
     try {
       if (!authToken) {
         console.log('⚠️ No auth token - skipping API sync (local mode)');
-        setResultMessage('Saved locally (offline mode)');
+        setResultMessage(t('inventory_scan.status.saved_locally_offline', { defaultValue: 'Saved locally (offline mode)' }));
         return;
       }
 
@@ -320,24 +322,24 @@ const InventoryScan = ({ navigation }) => {
 
       if (response.ok) {
         console.log('✅ API sync successful');
-        setResultMessage('Synced to server');
+        setResultMessage(t('inventory_scan.status.synced_to_server', { defaultValue: 'Synced to server' }));
         if (authToken) {
           await fetchDevices(authToken); // Refresh list with real server data
         }
       } else if (response.status === 401) {
         console.warn('⚠️ API 401 - token expired');
-        setResultMessage('Saved locally (login to sync)');
+        setResultMessage(t('inventory_scan.status.saved_locally_login_to_sync', { defaultValue: 'Saved locally (login to sync)' }));
       } else if (response.status === 409) {
         console.log('ℹ️ Device already exists on server');
-        setResultMessage('Already on server');
+        setResultMessage(t('inventory_scan.status.already_on_server', { defaultValue: 'Already on server' }));
       } else {
         const text = await response.text();
         console.warn('⚠️ API error:', response.status, text);
-        setResultMessage('Saved locally (server error)');
+        setResultMessage(t('inventory_scan.status.saved_locally_server_error', { defaultValue: 'Saved locally (server error)' }));
       }
     } catch (error) {
       console.error('❌ API sync failed:', error.message);
-      setResultMessage('Saved locally (network error)');
+      setResultMessage(t('inventory_scan.status.saved_locally_network_error', { defaultValue: 'Saved locally (network error)' }));
     } finally {
       setIsLoading(false);
       // Close scanner after brief delay regardless of API result
@@ -374,26 +376,26 @@ const InventoryScan = ({ navigation }) => {
             ]}
           >
             <Text style={styles.warrantyBadgeText}>
-              {item.warrantyStatus || 'N/A'}
+              {item.warrantyStatus || t('inventory_scan.na', { defaultValue: 'N/A' })}
             </Text>
           </View>
         </View>
         <View style={styles.deviceDetails}>
           <View style={styles.detailRow}>
             <Ionicons name="barcode-outline" size={16} color="#666" />
-            <Text style={styles.detailText}>SN: {item.serialNo}</Text>
+            <Text style={styles.detailText}>{t('inventory_scan.sn_label', { defaultValue: 'SN' })}: {item.serialNo}</Text>
           </View>
           <View style={styles.detailRow}>
             <Ionicons name="hardware-chip-outline" size={16} color="#666" />
             <Text style={styles.detailText}>
               {item.manufacturer?.name ||
-                (isJointTech ? 'Joint Tech' : 'Telematics')}
+                (isJointTech ? t('inventory_scan.manufacturers.joint_tech', { defaultValue: 'Joint Tech' }) : t('inventory_scan.manufacturers.telematics', { defaultValue: 'Telematics' }))}
             </Text>
           </View>
           <View style={styles.detailRow}>
             <Ionicons name="phone-portrait-outline" size={16} color="#666" />
             <Text style={styles.detailText}>
-              Model: {item.model || 'N/A'}
+              {t('inventory_scan.model_label', { defaultValue: 'Model' })}: {item.model || t('inventory_scan.na', { defaultValue: 'N/A' })}
             </Text>
           </View>
         </View>
@@ -405,7 +407,7 @@ const InventoryScan = ({ navigation }) => {
     return (
       <View style={styles.centerContainer}>
         <ActivityIndicator size="large" color="#FFA500" />
-        <Text style={styles.loadingText}>Loading inventory...</Text>
+        <Text style={styles.loadingText}>{t('inventory_scan.loading', { defaultValue: 'Loading inventory...' })}</Text>
       </View>
     );
   }
@@ -415,9 +417,9 @@ const InventoryScan = ({ navigation }) => {
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
 
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Device Inventory</Text>
+        <Text style={styles.headerTitle}>{t('inventory_scan.title', { defaultValue: 'Device Inventory' })}</Text>
         <Text style={styles.headerSubtitle}>
-          {devices.length} devices {!authToken && '🔓 Local Mode'}
+          {devices.length} {t('inventory_scan.devices_count', { defaultValue: 'devices' })} {!authToken && t('inventory_scan.local_mode', { defaultValue: '🔓 Local Mode' })}
         </Text>
       </View>
 
@@ -442,8 +444,8 @@ const InventoryScan = ({ navigation }) => {
             ListEmptyComponent={
               <View style={styles.emptyContainer}>
                 <Ionicons name="qr-code-outline" size={64} color="#ccc" />
-                <Text style={styles.emptyText}>No devices found</Text>
-                <Text style={styles.emptySubtext}>Tap + to scan barcode or QR code</Text>
+                <Text style={styles.emptyText}>{t('inventory_scan.empty.title', { defaultValue: 'No devices found' })}</Text>
+                <Text style={styles.emptySubtext}>{t('inventory_scan.empty.subtext', { defaultValue: 'Tap + to scan barcode or QR code' })}</Text>
               </View>
             }
           />
@@ -464,12 +466,12 @@ const InventoryScan = ({ navigation }) => {
           {isLoading ? (
             <>
               <ActivityIndicator size="large" color="#FFA500" />
-              <Text style={styles.loadingText}>Syncing...</Text>
+              <Text style={styles.loadingText}>{t('inventory_scan.syncing', { defaultValue: 'Syncing...' })}</Text>
             </>
           ) : (
             <>
               <Text style={styles.successIcon}>✓</Text>
-              <Text style={styles.resultTitle}>Added to List</Text>
+              <Text style={styles.resultTitle}>{t('inventory_scan.added_to_list', { defaultValue: 'Added to List' })}</Text>
               <Text style={styles.successText}>
                 {scannedData} → {extractSerialNumber(scannedData)}
               </Text>
@@ -477,7 +479,7 @@ const InventoryScan = ({ navigation }) => {
                 <Text style={styles.errorDetailsText}>{resultMessage}</Text>
               )}
               <TouchableOpacity style={styles.rescanButton} onPress={resetScanner}>
-                <Text style={styles.rescanText}>Scan Another</Text>
+                <Text style={styles.rescanText}>{t('inventory_scan.scan_another', { defaultValue: 'Scan Another' })}</Text>
               </TouchableOpacity>
             </>
           )}
@@ -498,7 +500,7 @@ const InventoryScan = ({ navigation }) => {
           <StatusBar barStyle="light-content" backgroundColor="#0B0C10" />
 
           <View style={styles.cameraHeader}>
-            <Text style={styles.cameraTitle}>Scan Device</Text>
+            <Text style={styles.cameraTitle}>{t('inventory_scan.scan_device', { defaultValue: 'Scan Device' })}</Text>
             <TouchableOpacity
               style={styles.closeButton}
               onPress={() => {
@@ -531,23 +533,23 @@ const InventoryScan = ({ navigation }) => {
 
           <View style={styles.instructionsContainer}>
             <Text style={styles.instructionText}>
-              Align barcode or QR code inside the frame
+              {t('inventory_scan.instructions.align', { defaultValue: 'Align barcode or QR code inside the frame' })}
             </Text>
             <View style={styles.deviceTypesContainer}>
               <View style={styles.deviceTypeBadge}>
                 <Text style={styles.deviceTypeIcon}>📱</Text>
-                <Text style={styles.deviceTypeText}>Telematics (8 digits)</Text>
+                <Text style={styles.deviceTypeText}>{t('inventory_scan.device_types.telematics', { defaultValue: 'Telematics (8 digits)' })}</Text>
               </View>
               <View style={styles.deviceTypeBadge}>
                 <Text style={styles.deviceTypeIcon}>📊</Text>
-                <Text style={styles.deviceTypeText}>Joint Tech (10 digits)</Text>
+                <Text style={styles.deviceTypeText}>{t('inventory_scan.device_types.joint_tech', { defaultValue: 'Joint Tech (10 digits)' })}</Text>
               </View>
               <View style={styles.deviceTypeBadge}>
                 <Text style={styles.deviceTypeIcon}>🔲</Text>
-                <Text style={styles.deviceTypeText}>QR Codes supported</Text>
+                <Text style={styles.deviceTypeText}>{t('inventory_scan.device_types.qr_codes', { defaultValue: 'QR Codes supported' })}</Text>
               </View>
             </View>
-            <Text style={styles.noteText}>✓ Saved locally even if offline</Text>
+            <Text style={styles.noteText}>{t('inventory_scan.instructions.saved_locally', { defaultValue: '✓ Saved locally even if offline' })}</Text>
           </View>
         </SafeAreaView>
       </Modal>

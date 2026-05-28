@@ -13,6 +13,7 @@ import { Camera } from 'react-native-camera-kit';
 import Snackbar from 'react-native-snackbar';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import serverURL from '../config';
+import { useTranslation } from 'react-i18next';
 
 const { width } = Dimensions.get('window');
 const SCAN_SIZE = width * 0.7;
@@ -47,6 +48,7 @@ const extractTelematicsSN = (scannedValue) => {
 };
 
 const QrPaymentScanner = () => {
+  const { t } = useTranslation();
   const [scannedData, setScannedData] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [resultMessage, setResultMessage] = useState(null);
@@ -58,7 +60,7 @@ const QrPaymentScanner = () => {
     try {
       const token = await getAuthToken();
       if (!token) {
-        return { success: false, message: 'Authentication required. Please login again.' };
+        return { success: false, message: t('qr_scanner.errors.auth_required', { defaultValue: 'Authentication required. Please login again.' }) };
       }
 
       const url = `${serverURL}devices/command/set`;
@@ -92,15 +94,15 @@ const QrPaymentScanner = () => {
       console.log('==============================');
 
       if (response.status === 200 && data && data.status === 200) {
-        return { success: true, message: data.message || 'Command sent successfully' };
+        return { success: true, message: data.message || t('qr_scanner.success.command_sent', { defaultValue: 'Command sent successfully' }) };
       } else if (response.status === 401) {
-        return { success: false, message: 'Session expired. Please login again.' };
+        return { success: false, message: t('qr_scanner.errors.session_expired', { defaultValue: 'Session expired. Please login again.' }) };
       } else {
-        return { success: false, message: data?.message || 'Failed to send command' };
+        return { success: false, message: data?.message || t('qr_scanner.errors.command_failed', { defaultValue: 'Failed to send command' }) };
       }
     } catch (error) {
       console.log('❌ TELEMATICS REQUEST FAILED:', error);
-      return { success: false, message: error.message || 'Network error' };
+      return { success: false, message: error.message || t('qr_scanner.errors.network_error', { defaultValue: 'Network error' }) };
     }
   };
 
@@ -110,7 +112,7 @@ const QrPaymentScanner = () => {
     try {
       const token = await getAuthToken();
       if (!token) {
-        return { success: false, message: 'Authentication required. Please login again.' };
+        return { success: false, message: t('qr_scanner.errors.auth_required', { defaultValue: 'Authentication required. Please login again.' }) };
       }
 
       // FIXED: Don't encode the command - send as plain text
@@ -153,24 +155,24 @@ const QrPaymentScanner = () => {
       if (response.status === 401) {
         return {
           success: false,
-          message: 'Session expired. Please login again.'
+          message: t('qr_scanner.errors.session_expired', { defaultValue: 'Session expired. Please login again.' })
         };
       }
 
       if (response.status === 200 && data && (data.status === 200 || data.message)) {
         return {
           success: true,
-          message: data.message || 'Command sent successfully'
+          message: data.message || t('qr_scanner.success.command_sent', { defaultValue: 'Command sent successfully' })
         };
       } else {
         return {
           success: false,
-          message: data?.message || `Failed to send command (Status: ${response.status})`
+          message: data?.message || t('qr_scanner.errors.command_failed_status', { defaultValue: 'Failed to send command' }) + ` (Status: ${response.status})`
         };
       }
     } catch (error) {
       console.log('❌ JOINT TECH REQUEST FAILED:', error);
-      return { success: false, message: error.message || 'Network error' };
+      return { success: false, message: error.message || t('qr_scanner.errors.network_error', { defaultValue: 'Network error' }) };
     }
   };
 
@@ -198,7 +200,7 @@ const QrPaymentScanner = () => {
         }
         else {
           // Updated error message to reflect new requirements
-          const errorMsg = `Invalid barcode: Got ${deviceSn.length} digits. (Expected 8 for Telematics or 10 for Joint Tech)`;
+          const errorMsg = t('qr_scanner.errors.invalid_barcode', { defaultValue: 'Invalid barcode: Got {{digits}} digits. (Expected 8 for Telematics or 10 for Joint Tech)', digits: deviceSn.length }).replace('{{digits}}', deviceSn.length.toString());
           Snackbar.show({
             text: errorMsg,
             duration: 4000,
@@ -233,11 +235,11 @@ const QrPaymentScanner = () => {
       }
     } catch (error) {
       console.log('❌ PROCESSING FAILED:', error);
-      setResultMessage('Failed to send command');
+      setResultMessage(t('qr_scanner.errors.command_execution_failed', { defaultValue: 'Failed to send command' }));
       setIsCommandSuccess(false);
 
       Snackbar.show({
-        text: 'Failed to execute command',
+        text: t('qr_scanner.errors.command_execution_failed', { defaultValue: 'Failed to execute command' }),
         duration: 3000,
         backgroundColor: '#FF6B6B',
       });
@@ -265,7 +267,7 @@ const QrPaymentScanner = () => {
     if (!/^\d+$/.test(extractedSN)) {
       console.log('❌ Invalid: Extracted SN contains non-numeric characters');
       Snackbar.show({
-        text: 'Invalid barcode: Device SN must contain only numbers',
+        text: t('qr_scanner.errors.non_numeric', { defaultValue: 'Invalid barcode: Device SN must contain only numbers' }),
         duration: 3000,
         backgroundColor: '#FF6B6B',
       });
@@ -291,8 +293,8 @@ const QrPaymentScanner = () => {
 
       {!scannedData ? (
         <>
-          <Text style={styles.title}>Scan To Unlock</Text>
-          <Text style={styles.subtitle}>Scan Device QR Code or Barcode</Text>
+          <Text style={styles.title}>{t('qr_scanner.title', { defaultValue: 'Scan To Unlock' })}</Text>
+          <Text style={styles.subtitle}>{t('qr_scanner.subtitle', { defaultValue: 'Scan Device QR Code or Barcode' })}</Text>
 
           <View style={styles.cameraWrapper}>
             <View style={styles.cameraFrame}>
@@ -308,13 +310,13 @@ const QrPaymentScanner = () => {
 
           <View style={styles.instructionsContainer}>
             <Text style={styles.instructionText}>
-              Align QR code or barcode inside the frame
+              {t('qr_scanner.instructions.align', { defaultValue: 'Align QR code or barcode inside the frame' })}
             </Text>
             <View style={styles.deviceTypesContainer}>
 
             </View>
             <Text style={styles.noteText}>
-              Both QR codes and barcodes supported
+              {t('qr_scanner.instructions.supported', { defaultValue: 'Both QR codes and barcodes supported' })}
             </Text>
           </View>
         </>
@@ -324,7 +326,7 @@ const QrPaymentScanner = () => {
             <>
               <ActivityIndicator size="large" color="#FFD700" />
               <Text style={styles.loadingText}>
-                Sending command to Telematics device...
+                {t('qr_scanner.loading.sending', { defaultValue: 'Sending command to device...' })}
               </Text>
             </>
           ) : (
@@ -333,7 +335,7 @@ const QrPaymentScanner = () => {
                 {isCommandSuccess ? '✓' : '✗'}
               </Text>
               <Text style={styles.resultTitle}>
-                {isCommandSuccess ? 'Success!' : 'Failed!'}
+                {isCommandSuccess ? t('qr_scanner.result.success', { defaultValue: 'Success!' }) : t('qr_scanner.result.failed', { defaultValue: 'Failed!' })}
               </Text>
 
               {resultMessage && (
@@ -343,17 +345,17 @@ const QrPaymentScanner = () => {
               )}
 
               <Text style={styles.deviceInfoText}>
-                Device Type: Telematics
+                {t('qr_scanner.result.device_type', { defaultValue: 'Device Type' })}: {deviceType === 'TELEMATICS' ? t('qr_scanner.device_types.telematics', { defaultValue: 'Telematics' }) : t('qr_scanner.device_types.joint_tech', { defaultValue: 'Joint Tech' })}
               </Text>
               <Text style={styles.deviceIdText}>
-                Device ID: {extractTelematicsSN(scannedData)} ({extractTelematicsSN(scannedData).length} digits)
+                {t('qr_scanner.result.device_id', { defaultValue: 'Device ID' })}: {extractTelematicsSN(scannedData)} ({extractTelematicsSN(scannedData).length} {t('qr_scanner.result.digits', { defaultValue: 'digits' })})
               </Text>
 
               <TouchableOpacity
                 style={styles.rescanButton}
                 onPress={resetScanner}
               >
-                <Text style={styles.rescanText}>Scan Again</Text>
+                <Text style={styles.rescanText}>{t('qr_scanner.buttons.scan_again', { defaultValue: 'Scan Again' })}</Text>
               </TouchableOpacity>
             </>
           )}

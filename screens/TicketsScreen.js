@@ -25,6 +25,7 @@ import * as Animatable from 'react-native-animatable';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
 import serverUrl from '../config';
+import { useTranslation } from 'react-i18next';
 
 const { width } = Dimensions.get('window');
 
@@ -37,22 +38,23 @@ const PRIORITY_ORDER = {
 };
 
 // Helper: Get ticket status info (matching HomeScreen)
-const getTicketStatusInfo = (status) => {
+const getTicketStatusInfo = (status, t) => {
   switch (status?.toUpperCase()) {
     case 'REPORTED':
-      return { text: 'Reported', color: '#FFA500' };
+      return { text: t('tickets.status.reported', { defaultValue: 'Reported' }), color: '#FFA500' };
     case 'ACKNOWLEDGED':
-      return { text: 'Acknowledged', color: '#2196F3' };
+      return { text: t('tickets.status.acknowledged', { defaultValue: 'Acknowledged' }), color: '#2196F3' };
     case 'RESOLVED':
-      return { text: 'Resolved', color: '#4CAF50' };
+      return { text: t('tickets.status.resolved', { defaultValue: 'Resolved' }), color: '#4CAF50' };
     case 'CLOSED':
-      return { text: 'Closed', color: '#2196F3' };
+      return { text: t('tickets.status.closed', { defaultValue: 'Closed' }), color: '#2196F3' };
     default:
-      return { text: status || 'Unknown', color: '#999' };
+      return { text: status || t('tickets.status.unknown', { defaultValue: 'Unknown' }), color: '#999' };
   }
 };
 
 const TicketsScreen = () => {
+  const { t } = useTranslation();
   const navigation = useNavigation();
   const [tickets, setTickets] = useState([]);
   const [shipments, setShipments] = useState([]);
@@ -125,7 +127,7 @@ const TicketsScreen = () => {
     const token = await AsyncStorage.getItem('accessToken');
     const response = await axios.post(
       `${serverUrl}/tickets/acknowledge`,
-      { ticketId: Number(ticketId), content: 'Acknowledged from mobile app' },
+      { ticketId: Number(ticketId), content: t('tickets.acknowledge_content', { defaultValue: 'Acknowledged from mobile app' }) },
       { headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' } }
     );
     return response.data;
@@ -136,7 +138,7 @@ const TicketsScreen = () => {
     const token = await AsyncStorage.getItem('accessToken');
 
     const formData = new FormData();
-    formData.append('notes', 'Resolved from mobile app');
+    formData.append('notes', t('tickets.resolve_notes', { defaultValue: 'Resolved from mobile app' }));
 
     const response = await fetch(
       `${serverUrl}/tickets/${ticketId}/resolve`,
@@ -152,7 +154,7 @@ const TicketsScreen = () => {
     if (!response.ok) {
       const errorText = await response.text();
       console.error('Resolve error:', errorText);
-      throw new Error('Failed to resolve ticket');
+      throw new Error(t('tickets.errors.resolve_failed', { defaultValue: 'Failed to resolve ticket' }));
     }
     return await response.json();
   };
@@ -161,7 +163,7 @@ const TicketsScreen = () => {
   const addComment = async () => {
     if (!commentText.trim()) {
       Snackbar.show({
-        text: 'Please enter a comment',
+        text: t('tickets.errors.comment_required', { defaultValue: 'Please enter a comment' }),
         duration: 2000,
         backgroundColor: '#FF6B6B',
       });
@@ -193,14 +195,14 @@ const TicketsScreen = () => {
 
       setCommentText('');
       Snackbar.show({
-        text: 'Comment added successfully',
+        text: t('tickets.success.comment_added', { defaultValue: 'Comment added successfully' }),
         duration: 2000,
         backgroundColor: '#4CAF50',
       });
     } catch (error) {
       console.error('Failed to add comment:', error);
       Snackbar.show({
-        text: 'Failed to add comment',
+        text: t('tickets.errors.comment_failed', { defaultValue: 'Failed to add comment' }),
         duration: 3000,
         backgroundColor: '#FF6B6B',
       });
@@ -294,7 +296,7 @@ const TicketsScreen = () => {
     } catch (error) {
       console.error('Failed to fetch tickets:', error);
       Snackbar.show({
-        text: 'Failed to load tickets',
+        text: t('tickets.errors.load_failed', { defaultValue: 'Failed to load tickets' }),
         duration: 3000,
         backgroundColor: '#FF6B6B',
       });
@@ -330,7 +332,7 @@ const TicketsScreen = () => {
   };
 
   const formatDate = (dateString) => {
-    if (!dateString) return 'N/A';
+    if (!dateString) return t('tickets.na', { defaultValue: 'N/A' });
     const date = new Date(dateString);
     const now = new Date();
     const diffMs = now - date;
@@ -338,10 +340,10 @@ const TicketsScreen = () => {
     const diffHours = Math.floor(diffMins / 60);
     const diffDays = Math.floor(diffHours / 24);
 
-    if (diffMins < 1) return 'Just now';
-    if (diffMins < 60) return `${diffMins}m ago`;
-    if (diffHours < 24) return `${diffHours}h ago`;
-    if (diffDays < 7) return `${diffDays}d ago`;
+    if (diffMins < 1) return t('tickets.time.just_now', { defaultValue: 'Just now' });
+    if (diffMins < 60) return t('tickets.time.minutes_ago', { defaultValue: '{{count}}m ago' }).replace('{{count}}', diffMins.toString());
+    if (diffHours < 24) return t('tickets.time.hours_ago', { defaultValue: '{{count}}h ago' }).replace('{{count}}', diffHours.toString());
+    if (diffDays < 7) return t('tickets.time.days_ago', { defaultValue: '{{count}}d ago' }).replace('{{count}}', diffDays.toString());
     return date.toLocaleDateString();
   };
 
@@ -404,12 +406,12 @@ const TicketsScreen = () => {
     setAcknowledgingTicketId(ticketId);
     try {
       await acknowledgeTicket(ticketId);
-      Snackbar.show({ text: 'Ticket acknowledged successfully', duration: 2000, backgroundColor: '#4CAF50' });
+      Snackbar.show({ text: t('tickets.success.acknowledged', { defaultValue: 'Ticket acknowledged successfully' }), duration: 2000, backgroundColor: '#4CAF50' });
       setModalVisible(false);
       setSelectedTicket(null);
       await fetchTickets();
     } catch (e) {
-      Snackbar.show({ text: 'Failed to acknowledge ticket', duration: 3000, backgroundColor: '#FF6B6B' });
+      Snackbar.show({ text: t('tickets.errors.acknowledge_failed', { defaultValue: 'Failed to acknowledge ticket' }), duration: 3000, backgroundColor: '#FF6B6B' });
     } finally {
       setAcknowledgingTicketId(null);
     }
@@ -420,19 +422,19 @@ const TicketsScreen = () => {
     setResolvingTicketId(ticketId);
     try {
       await resolveTicket(ticketId);
-      Snackbar.show({ text: 'Ticket resolved successfully', duration: 2000, backgroundColor: '#4CAF50' });
+      Snackbar.show({ text: t('tickets.success.resolved', { defaultValue: 'Ticket resolved successfully' }), duration: 2000, backgroundColor: '#4CAF50' });
       setModalVisible(false);
       setSelectedTicket(null);
       await fetchTickets();
     } catch (e) {
-      Snackbar.show({ text: 'Failed to resolve ticket', duration: 3000, backgroundColor: '#FF6B6B' });
+      Snackbar.show({ text: t('tickets.errors.resolve_failed', { defaultValue: 'Failed to resolve ticket' }), duration: 3000, backgroundColor: '#FF6B6B' });
     } finally {
       setResolvingTicketId(null);
     }
   };
 
   const renderTicket = ({ item, index }) => {
-    const statusInfo = getTicketStatusInfo(item.status);
+    const statusInfo = getTicketStatusInfo(item.status, t);
     const statusColor = statusInfo.color;
     const priorityColor = getPriorityColor(item.priority);
 
@@ -500,7 +502,7 @@ const TicketsScreen = () => {
             {item.comments && item.comments.length > 0 && (
               <View style={styles.commentsCount}>
                 <Text style={styles.commentsIcon}>💬</Text>
-                <Text style={styles.commentsText}>{item.comments.length} comments</Text>
+                <Text style={styles.commentsText}>{item.comments.length} {t('tickets.comments', { defaultValue: 'comments' })}</Text>
               </View>
             )}
           </View>
@@ -520,12 +522,12 @@ const TicketsScreen = () => {
             <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
               <Icon name="arrow-back" size={24} color="#1A1A1A" />
             </TouchableOpacity>
-            <Text style={styles.headerTitle}>Tickets</Text>
+            <Text style={styles.headerTitle}>{t('tickets.header_title', { defaultValue: 'Tickets' })}</Text>
             <TouchableOpacity
               style={styles.createButton}
               onPress={() => navigation.navigate('CreateTicket')}
             >
-              <Text style={styles.createButtonText}>+ New</Text>
+              <Text style={styles.createButtonText}>{t('tickets.new_button', { defaultValue: '+ New' })}</Text>
             </TouchableOpacity>
           </View>
 
@@ -533,7 +535,7 @@ const TicketsScreen = () => {
             <Text style={styles.searchIcon}>🔍</Text>
             <TextInput
               style={styles.searchInput}
-              placeholder="Search tickets..."
+              placeholder={t('tickets.search_placeholder', { defaultValue: 'Search tickets....' })}
               placeholderTextColor="#999"
               value={searchQuery}
               onChangeText={setSearchQuery}
@@ -556,7 +558,7 @@ const TicketsScreen = () => {
               onPress={() => setFilter('all')}
             >
               <Text style={[styles.statNumber, { color: '#1A1A1A' }]}>{counts.all}</Text>
-              <Text style={styles.statLabel}>All</Text>
+              <Text style={styles.statLabel}>{t('tickets.filters.all', { defaultValue: 'All' })}</Text>
             </TouchableOpacity>
 
             {/* Reported Filter */}
@@ -565,7 +567,7 @@ const TicketsScreen = () => {
               onPress={() => setFilter('reported')}
             >
               <Text style={[styles.statNumber, { color: '#FFA500' }]}>{counts.reported}</Text>
-              <Text style={styles.statLabel}>Reported</Text>
+              <Text style={styles.statLabel}>{t('tickets.filters.reported', { defaultValue: 'Reported' })}</Text>
             </TouchableOpacity>
 
             {/* Acknowledged Filter */}
@@ -574,7 +576,7 @@ const TicketsScreen = () => {
               onPress={() => setFilter('acknowledged')}
             >
               <Text style={[styles.statNumber, { color: '#2196F3' }]}>{counts.acknowledged}</Text>
-              <Text style={styles.statLabel}>Acknowledged</Text>
+              <Text style={styles.statLabel}>{t('tickets.filters.acknowledged', { defaultValue: 'Acknowledged' })}</Text>
             </TouchableOpacity>
 
             {/* Resolved Filter */}
@@ -583,13 +585,13 @@ const TicketsScreen = () => {
               onPress={() => setFilter('resolved')}
             >
               <Text style={[styles.statNumber, { color: '#4CAF50' }]}>{counts.resolved}</Text>
-              <Text style={styles.statLabel}>Resolved</Text>
+              <Text style={styles.statLabel}>{t('tickets.filters.resolved', { defaultValue: 'Resolved' })}</Text>
             </TouchableOpacity>
           </ScrollView>
 
           {/* Show total count */}
           <View style={styles.totalContainer}>
-            <Text style={styles.totalText}>Total: {totalTickets} tickets</Text>
+            <Text style={styles.totalText}>{t('tickets.total', { defaultValue: 'Total' })}: {totalTickets} {t('tickets.tickets_label', { defaultValue: 'tickets' })}</Text>
           </View>
         </View>
       </Animated.View>
@@ -602,7 +604,7 @@ const TicketsScreen = () => {
         <StatusBar barStyle="dark-content" backgroundColor="#F8F9FA" />
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#FFA500" />
-          <Text style={styles.loadingText}>Loading tickets...</Text>
+          <Text style={styles.loadingText}>{t('tickets.loading', { defaultValue: 'Loading tickets...' })}</Text>
         </View>
       </SafeAreaView>
     );
@@ -630,13 +632,13 @@ const TicketsScreen = () => {
         ListEmptyComponent={
           <Animatable.View animation="fadeIn" duration={500} style={styles.emptyContainer}>
             <Text style={styles.emptyIcon}>🎫</Text>
-            <Text style={styles.emptyTitle}>No tickets found</Text>
+            <Text style={styles.emptyTitle}>{t('tickets.empty_title', { defaultValue: 'No tickets found' })}</Text>
             <Text style={styles.emptyText}>
               {searchQuery
-                ? 'Try adjusting your search'
+                ? t('tickets.empty_search', { defaultValue: 'Try adjusting your search' })
                 : filter !== 'all'
-                ? `No ${filter} tickets available`
-                : 'Create a new ticket to get started'}
+                ? t('tickets.empty_filter', { defaultValue: 'No {{filter}} tickets available' }).replace('{{filter}}', filter)
+                : t('tickets.empty_default', { defaultValue: 'Create a new ticket to get started' })}
             </Text>
           </Animatable.View>
         }
@@ -652,7 +654,7 @@ const TicketsScreen = () => {
         <View style={styles.modalOverlay}>
           <Animatable.View animation="slideInUp" duration={300} style={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Ticket Details</Text>
+              <Text style={styles.modalTitle}>{t('tickets.modal_title', { defaultValue: 'Ticket Details' })}</Text>
               <TouchableOpacity onPress={() => setModalVisible(false)} style={styles.closeButton}>
                 <Text style={styles.closeButtonText}>✕</Text>
               </TouchableOpacity>
@@ -667,9 +669,9 @@ const TicketsScreen = () => {
                       {selectedTicket.ticketNumber || `#${selectedTicket.id}`}
                     </Text>
                     <View style={[styles.statusBadgeLarge,
-                      { backgroundColor: getTicketStatusInfo(selectedTicket.status).color + '20' }]}>
-                      <Text style={[styles.statusTextLarge, { color: getTicketStatusInfo(selectedTicket.status).color }]}>
-                        {getTicketStatusInfo(selectedTicket.status).text}
+                      { backgroundColor: getTicketStatusInfo(selectedTicket.status, t).color + '20' }]}>
+                      <Text style={[styles.statusTextLarge, { color: getTicketStatusInfo(selectedTicket.status, t).color }]}>
+                        {getTicketStatusInfo(selectedTicket.status, t).text}
                       </Text>
                     </View>
                   </View>
@@ -682,7 +684,7 @@ const TicketsScreen = () => {
                   {/* Ticket Info Grid */}
                   <View style={styles.infoGrid}>
                     <View style={styles.infoItem}>
-                      <Text style={styles.infoLabel}>Priority</Text>
+                      <Text style={styles.infoLabel}>{t('tickets.priority', { defaultValue: 'Priority' })}</Text>
                       <View style={[styles.priorityBadgeLarge,
                         { backgroundColor: getPriorityColor(selectedTicket.priority) + '20' }]}>
                         <Text style={styles.priorityIconLarge}>
@@ -696,27 +698,27 @@ const TicketsScreen = () => {
 
                     {selectedTicket.t1Number && (
                       <View style={styles.infoItem}>
-                        <Text style={styles.infoLabel}>T1 Number</Text>
+                        <Text style={styles.infoLabel}>{t('tickets.t1_number', { defaultValue: 'T1 Number' })}</Text>
                         <Text style={styles.infoValue}>{selectedTicket.t1Number}</Text>
                       </View>
                     )}
 
                     {selectedTicket.deviceSerialNumber && (
                       <View style={styles.infoItem}>
-                        <Text style={styles.infoLabel}>Device</Text>
+                        <Text style={styles.infoLabel}>{t('tickets.device', { defaultValue: 'Device' })}</Text>
                         <Text style={styles.infoValue}>{selectedTicket.deviceSerialNumber}</Text>
                       </View>
                     )}
 
                     {selectedTicket.geofenceName && (
                       <View style={styles.infoItem}>
-                        <Text style={styles.infoLabel}>Geofence</Text>
+                        <Text style={styles.infoLabel}>{t('tickets.geofence', { defaultValue: 'Geofence' })}</Text>
                         <Text style={styles.infoValue}>{selectedTicket.geofenceName}</Text>
                       </View>
                     )}
 
                     <View style={styles.infoItem}>
-                      <Text style={styles.infoLabel}>Created</Text>
+                      <Text style={styles.infoLabel}>{t('tickets.created', { defaultValue: 'Created' })}</Text>
                       <Text style={styles.infoValue}>
                         {new Date(selectedTicket.createdAt).toLocaleString()}
                       </Text>
@@ -724,7 +726,7 @@ const TicketsScreen = () => {
 
                     {selectedTicket.updatedAt && (
                       <View style={styles.infoItem}>
-                        <Text style={styles.infoLabel}>Last Updated</Text>
+                        <Text style={styles.infoLabel}>{t('tickets.last_updated', { defaultValue: 'Last Updated' })}</Text>
                         <Text style={styles.infoValue}>
                           {new Date(selectedTicket.updatedAt).toLocaleString()}
                         </Text>
@@ -747,7 +749,7 @@ const TicketsScreen = () => {
                       }}
                     >
                       <Image source={require('../assets/map.png')} style={{ width: 20, height: 20 }} />
-                      <Text style={styles.mapButtonText}>Track on Map</Text>
+                      <Text style={styles.mapButtonText}>{t('tickets.track_on_map', { defaultValue: 'Track on Map' })}</Text>
                     </TouchableOpacity>
                   )}
 
@@ -758,7 +760,7 @@ const TicketsScreen = () => {
                       onPress={() => setShowComments(!showComments)}
                     >
                       <Text style={styles.sectionTitle}>
-                        Comments ({selectedTicket.comments?.length || 0})
+                        {t('tickets.comments_title', { defaultValue: 'Comments' })} ({selectedTicket.comments?.length || 0})
                       </Text>
                       <Text style={styles.expandIcon}>
                         {showComments ? '▲' : '▼'}
@@ -771,19 +773,19 @@ const TicketsScreen = () => {
                           selectedTicket.comments.map((comment, index) => (
                             <View key={comment.id || index} style={styles.commentItem}>
                               <View style={styles.commentHeader}>
-                                <Text style={styles.commentUser}>{comment.user?.name || 'System'}</Text>
+                                <Text style={styles.commentUser}>{comment.user?.name || t('tickets.system', { defaultValue: 'System' })}</Text>
                                 <Text style={styles.commentTime}>{formatDate(comment.createdAt)}</Text>
                               </View>
                               <Text style={styles.commentText}>{comment.text}</Text>
                               {comment.oldStatus && comment.newStatus && (
                                 <Text style={styles.statusChangeText}>
-                                  Status changed from {comment.oldStatus} to {comment.newStatus}
+                                  {t('tickets.status_change', { defaultValue: 'Status changed from {{old}} to {{new}}' }).replace('{{old}}', comment.oldStatus).replace('{{new}}', comment.newStatus)}
                                 </Text>
                               )}
                             </View>
                           ))
                         ) : (
-                          <Text style={styles.noCommentsText}>No comments yet</Text>
+                          <Text style={styles.noCommentsText}>{t('tickets.no_comments', { defaultValue: 'No comments yet' })}</Text>
                         )}
                       </View>
                     )}
@@ -791,7 +793,7 @@ const TicketsScreen = () => {
                     <View style={styles.addCommentSection}>
                       <TextInput
                         style={styles.commentInput}
-                        placeholder="Add a comment..."
+                        placeholder={t('tickets.comment_placeholder', { defaultValue: 'Add a comment...' })}
                         placeholderTextColor="#999"
                         value={commentText}
                         onChangeText={setCommentText}
@@ -807,7 +809,7 @@ const TicketsScreen = () => {
                         {submitting ? (
                           <ActivityIndicator size="small" color="#FFFFFF" />
                         ) : (
-                          <Text style={styles.submitCommentText}>Post Comment</Text>
+                          <Text style={styles.submitCommentText}>{t('tickets.post_comment', { defaultValue: 'Post Comment' })}</Text>
                         )}
                       </TouchableOpacity>
                     </View>
@@ -820,7 +822,7 @@ const TicketsScreen = () => {
                   {(selectedTicket.status === 'RESOLVED' || selectedTicket.status === 'CLOSED') ? (
                     <View style={[styles.submitButton, { backgroundColor: '#4CAF50', flex: 1 }]}>
                       <Text style={styles.submitButtonText}>
-                        {selectedTicket.status === 'RESOLVED' ? '✓ Resolved' : '✓ Closed'}
+                        {selectedTicket.status === 'RESOLVED' ? t('tickets.resolved', { defaultValue: '✓ Resolved' }) : t('tickets.closed', { defaultValue: '✓ Closed' })}
                       </Text>
                     </View>
                   ) : (
@@ -835,7 +837,7 @@ const TicketsScreen = () => {
                           {resolvingTicketId === selectedTicket.id ? (
                             <ActivityIndicator size="small" color="#FFFFFF" />
                           ) : (
-                            <Text style={styles.submitButtonText}>Resolve</Text>
+                            <Text style={styles.submitButtonText}>{t('tickets.resolve', { defaultValue: 'Resolve' })}</Text>
                           )}
                         </TouchableOpacity>
                       ) : (
@@ -852,7 +854,7 @@ const TicketsScreen = () => {
                             {acknowledgingTicketId === selectedTicket.id ? (
                               <ActivityIndicator size="small" color="#FFFFFF" />
                             ) : (
-                              <Text style={styles.submitButtonText}>Acknowledge</Text>
+                              <Text style={styles.submitButtonText}>{t('tickets.acknowledge', { defaultValue: 'Acknowledge' })}</Text>
                             )}
                           </TouchableOpacity>
 
@@ -867,7 +869,7 @@ const TicketsScreen = () => {
                             {resolvingTicketId === selectedTicket.id ? (
                               <ActivityIndicator size="small" color="#FFFFFF" />
                             ) : (
-                              <Text style={styles.submitButtonText}>Resolve</Text>
+                              <Text style={styles.submitButtonText}>{t('tickets.resolve', { defaultValue: 'Resolve' })}</Text>
                             )}
                           </TouchableOpacity>
                         </>
@@ -1364,16 +1366,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: '#FFFFFF',
-  },
-  totalContainer: {
-    paddingHorizontal: 20,
-    paddingTop: 12,
-    paddingBottom: 4,
-  },
-  totalText: {
-    fontSize: 12,
-    color: '#666',
-    fontWeight: '500',
   },
 });
 

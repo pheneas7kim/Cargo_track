@@ -26,17 +26,19 @@ import axios from 'axios';
 import MapView, { Marker, Callout, PROVIDER_GOOGLE, Polyline, Circle } from 'react-native-maps';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import serverUrl from '../config';
+import { useTranslation } from 'react-i18next';
 
 const { width, height } = Dimensions.get('window');
 
 const DeviceMapScreenView = () => {
+  const { t } = useTranslation();
   const navigation = useNavigation();
   const route = useRoute();
   const { geofence, hotspot, station, route: routeData } = route.params || {};
-  
+
   // Determine which type of geofence we're viewing
   const geofenceData = geofence || hotspot || station || routeData;
-  
+
   const [loading, setLoading] = useState(true);
   const [mapReady, setMapReady] = useState(false);
   const [mapType, setMapType] = useState('standard');
@@ -46,7 +48,7 @@ const DeviceMapScreenView = () => {
   const [centerLng, setCenterLng] = useState(null);
   const [radius, setRadius] = useState(null);
   const [polygonPoints, setPolygonPoints] = useState([]);
-  
+
   const mapRef = useRef(null);
 
   useEffect(() => {
@@ -71,7 +73,7 @@ const DeviceMapScreenView = () => {
           longitude: point.lng
         }));
         setPolygonPoints(formattedPoints);
-        
+
         // Calculate center for map view
         const lats = points.map(p => p.lat);
         const lngs = points.map(p => p.lng);
@@ -97,7 +99,7 @@ const DeviceMapScreenView = () => {
       setCenterLng(geofenceData.centerLng);
       setRadius(geofenceData.radiusMeters);
     }
-    
+
     setLoading(false);
   };
 
@@ -117,10 +119,10 @@ const DeviceMapScreenView = () => {
   };
 
   const getGeofenceType = () => {
-    if (geofenceData?.hotspot) return 'Hotspot';
-    if (geofenceData?.route) return 'Route';
-    if (geofenceData?.station) return 'Station';
-    return 'Geofence';
+    if (geofenceData?.hotspot) return t('device_map_view.types.hotspot', { defaultValue: 'Hotspot' });
+    if (geofenceData?.route) return t('device_map_view.types.route', { defaultValue: 'Route' });
+    if (geofenceData?.station) return t('device_map_view.types.station', { defaultValue: 'Station' });
+    return t('device_map_view.types.geofence', { defaultValue: 'Geofence' });
   };
 
   const getGeofenceIcon = () => {
@@ -137,20 +139,20 @@ const DeviceMapScreenView = () => {
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
             <Icon name="arrow-back" size={24} color="#1A1A1A" />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>{geofenceData?.name || 'Map View'}</Text>
+          <Text style={styles.headerTitle}>{geofenceData?.name || t('device_map_view.map_view', { defaultValue: 'Map View' })}</Text>
           <View style={styles.placeholder} />
         </View>
 
         <View style={styles.mapControls}>
-          <TouchableOpacity 
+          <TouchableOpacity
             style={[styles.controlButton, showTraffic && styles.activeControl]}
             onPress={() => setShowTraffic(!showTraffic)}
           >
             <Icon name="traffic" size={18} color={showTraffic ? '#FFA500' : '#666'} />
-            <Text style={[styles.controlText, showTraffic && styles.activeControlText]}>Traffic</Text>
+            <Text style={[styles.controlText, showTraffic && styles.activeControlText]}>{t('device_map_view.traffic', { defaultValue: 'Traffic' })}</Text>
           </TouchableOpacity>
-          
-          <TouchableOpacity 
+
+          <TouchableOpacity
             style={styles.controlButton}
             onPress={() => {
               const types = ['standard', 'satellite', 'hybrid'];
@@ -161,7 +163,9 @@ const DeviceMapScreenView = () => {
           >
             <Icon name="layers" size={18} color="#666" />
             <Text style={styles.controlText}>
-              {mapType === 'standard' ? 'Map' : mapType === 'satellite' ? 'Satellite' : 'Hybrid'}
+              {mapType === 'standard' ? t('device_map_view.map_types.standard', { defaultValue: 'Map' }) :
+               mapType === 'satellite' ? t('device_map_view.map_types.satellite', { defaultValue: 'Satellite' }) :
+               t('device_map_view.map_types.hybrid', { defaultValue: 'Hybrid' })}
             </Text>
           </TouchableOpacity>
         </View>
@@ -171,7 +175,7 @@ const DeviceMapScreenView = () => {
 
   const renderBottomInfo = () => {
     if (!geofenceData) return null;
-    
+
     return (
       <View style={styles.bottomInfo}>
         <View style={styles.infoCard}>
@@ -184,50 +188,50 @@ const DeviceMapScreenView = () => {
             </View>
             <View style={[styles.activeBadge, geofenceData.isActive ? styles.active : styles.inactive]}>
               <Text style={styles.activeText}>
-                {geofenceData.isActive ? 'ACTIVE' : 'INACTIVE'}
+                {geofenceData.isActive ? t('device_map_view.active', { defaultValue: 'ACTIVE' }) : t('device_map_view.inactive', { defaultValue: 'INACTIVE' })}
               </Text>
             </View>
           </View>
-          
+
           <Text style={styles.infoName}>{geofenceData.name}</Text>
           {geofenceData.description && (
             <Text style={styles.infoDescription}>{geofenceData.description}</Text>
           )}
-          
+
           <View style={styles.infoDetails}>
             {radius && (
               <View style={styles.infoDetail}>
                 <Icon name="radio-button-unchecked" size={16} color="#666" />
-                <Text style={styles.infoDetailText}>Radius: {Math.round(radius)}m</Text>
+                <Text style={styles.infoDetailText}>{t('device_map_view.radius_label', { defaultValue: 'Radius' })}: {Math.round(radius)}m</Text>
               </View>
             )}
             {geofenceData.deviceCount !== undefined && (
               <View style={styles.infoDetail}>
                 <Icon name="devices" size={16} color="#666" />
-                <Text style={styles.infoDetailText}>{geofenceData.deviceCount} devices</Text>
+                <Text style={styles.infoDetailText}>{geofenceData.deviceCount} {t('device_map_view.devices', { defaultValue: 'devices' })}</Text>
               </View>
             )}
             {geofenceData.routeStatus && (
               <View style={styles.infoDetail}>
                 <Icon name="flag" size={16} color="#666" />
                 <Text style={[styles.infoDetailText, { color: geofenceData.routeStatus === 'ACTIVE' ? '#4CAF50' : '#FF6B6B' }]}>
-                  {geofenceData.routeStatus}
+                  {geofenceData.routeStatus === 'ACTIVE' ? t('device_map_view.active_status', { defaultValue: 'ACTIVE' }) : t('device_map_view.inactive_status', { defaultValue: 'INACTIVE' })}
                 </Text>
               </View>
             )}
           </View>
-          
+
           {geofenceData.assignedRouteIds && geofenceData.assignedRouteIds.length > 0 && (
             <View style={styles.routesContainer}>
               <Icon name="route" size={14} color="#999" />
               <Text style={styles.routesText}>
-                {geofenceData.assignedRouteIds.length} route(s) assigned
+                {geofenceData.assignedRouteIds.length} {t('device_map_view.routes_assigned', { defaultValue: 'route(s) assigned' })}
               </Text>
             </View>
           )}
         </View>
-        
-        <TouchableOpacity 
+
+        <TouchableOpacity
           style={styles.centerButton}
           onPress={() => {
             if (mapRef.current && centerLat && centerLng) {
@@ -242,7 +246,7 @@ const DeviceMapScreenView = () => {
           }}
         >
           <Icon name="my-location" size={20} color="#FFFFFF" />
-          <Text style={styles.centerButtonText}>Center on Map</Text>
+          <Text style={styles.centerButtonText}>{t('device_map_view.center_on_map', { defaultValue: 'Center on Map' })}</Text>
         </TouchableOpacity>
       </View>
     );
@@ -254,7 +258,7 @@ const DeviceMapScreenView = () => {
         <StatusBar barStyle="dark-content" backgroundColor="#F8F9FA" />
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#FFA500" />
-          <Text style={styles.loadingText}>Loading map...</Text>
+          <Text style={styles.loadingText}>{t('device_map_view.loading', { defaultValue: 'Loading map...' })}</Text>
         </View>
       </SafeAreaView>
     );
@@ -263,9 +267,9 @@ const DeviceMapScreenView = () => {
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#F8F9FA" />
-      
+
       {renderHeader()}
-      
+
       <View style={styles.mapContainer}>
         <MapView
           ref={mapRef}
@@ -315,7 +319,7 @@ const DeviceMapScreenView = () => {
               ))}
             </>
           )}
-          
+
           {/* Draw circle for CIRCLE type */}
           {centerLat && centerLng && radius && (
             <Circle
@@ -326,7 +330,7 @@ const DeviceMapScreenView = () => {
               fillColor={getGeofenceColor() + '20'}
             />
           )}
-          
+
           {/* Center marker */}
           {centerLat && centerLng && (
             <Marker
@@ -341,12 +345,12 @@ const DeviceMapScreenView = () => {
               <Callout>
                 <View style={styles.calloutContainer}>
                   <Text style={styles.calloutTitle}>{geofenceData?.name}</Text>
-                  <Text style={styles.calloutText}>Type: {getGeofenceType()}</Text>
+                  <Text style={styles.calloutText}>{t('device_map_view.type_label', { defaultValue: 'Type' })}: {getGeofenceType()}</Text>
                   {radius && (
-                    <Text style={styles.calloutText}>Radius: {Math.round(radius)}m</Text>
+                    <Text style={styles.calloutText}>{t('device_map_view.radius_label', { defaultValue: 'Radius' })}: {Math.round(radius)}m</Text>
                   )}
                   {geofenceData?.deviceCount !== undefined && (
-                    <Text style={styles.calloutText}>Devices: {geofenceData.deviceCount}</Text>
+                    <Text style={styles.calloutText}>{t('device_map_view.devices_label', { defaultValue: 'Devices' })}: {geofenceData.deviceCount}</Text>
                   )}
                 </View>
               </Callout>

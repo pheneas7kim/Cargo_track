@@ -225,6 +225,18 @@ const Login = () => {
     }, 150);
   };
 
+  // ✅ Updated language switcher to save preference
+  const switchLanguage = async (lang: string) => {
+    i18n.changeLanguage(lang);
+    // ✅ Save language preference immediately when user switches
+    try {
+      await AsyncStorage.setItem('userLanguage', lang);
+      console.log('💾 Language changed and saved:', lang);
+    } catch (error) {
+      console.log('❌ Error saving language preference:', error);
+    }
+  };
+
   const handleLogin = async () => {
     if (!email.trim() || !password.trim()) {
       Snackbar.show({
@@ -292,6 +304,11 @@ const Login = () => {
         const tokenExpiryTime = Date.now() + (55 * 60 * 1000); // 55 minutes from now
         await AsyncStorage.setItem('tokenExpiry', tokenExpiryTime.toString());
 
+        // ✅ SAVE CURRENT LANGUAGE PREFERENCE ON LOGIN
+        const currentLanguage = i18n.language; // 'en' or 'fr'
+        await AsyncStorage.setItem('userLanguage', currentLanguage);
+        console.log('💾 Saved language preference on login:', currentLanguage);
+
         setUserLoggedIn(data);
 
         await requestPermissionAndToken(data.id, data.accessToken);
@@ -299,13 +316,17 @@ const Login = () => {
 
         setLoading(false);
 
-        // Reset navigation stack
+        // ✅ PASS LANGUAGE TO DASHBOARD ALONG WITH ROLE INFO
         navigation.reset({
           index: 0,
           routes: [
             {
               name: 'Dashboard',
-              params: { roleId, roleName },
+              params: {
+                roleId,
+                roleName,
+                userLanguage: currentLanguage,  // ✅ Pass language to Dashboard
+              },
             },
           ],
         });
@@ -329,11 +350,6 @@ const Login = () => {
       });
       setLoading(false);
     }
-  };
-
-  // ✅ Language switcher handler
-  const switchLanguage = (lang: string) => {
-    i18n.changeLanguage(lang);
   };
 
   if (!isVisible) {

@@ -19,12 +19,14 @@ import { Camera } from 'react-native-camera-kit';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Snackbar from 'react-native-snackbar';
 import * as Animatable from 'react-native-animatable';
+import { useTranslation } from 'react-i18next';
 
 const { width } = Dimensions.get('window');
 const SCAN_SIZE = width * 0.7;
 const API_BASE = 'https://demo2.bsl.co.ke';
 
 const ReceiveDevicesScreen = () => {
+  const { t } = useTranslation();
   const navigation = useNavigation();
   const route = useRoute();
 
@@ -46,15 +48,15 @@ const ReceiveDevicesScreen = () => {
 
   // Device condition options
   const conditionOptions = [
-    { id: 1, label: 'Good' },
-    { id: 2, label: 'Faulty' },
-    { id: 3, label: 'Available' },
-    { id: 4, label: 'In Use' },
-    { id: 5, label: 'In Return Transit' },
-    { id: 6, label: 'Awaiting Charging' },
-    { id: 7, label: 'Charging' },
-    { id: 8, label: 'Under Repair' },
-    { id: 9, label: 'Decommissioned' }
+    { id: 1, label: t('receive_devices.conditions.good', { defaultValue: 'Good' }) },
+    { id: 2, label: t('receive_devices.conditions.faulty', { defaultValue: 'Faulty' }) },
+    { id: 3, label: t('receive_devices.conditions.available', { defaultValue: 'Available' }) },
+    { id: 4, label: t('receive_devices.conditions.in_use', { defaultValue: 'In Use' }) },
+    { id: 5, label: t('receive_devices.conditions.in_return_transit', { defaultValue: 'In Return Transit' }) },
+    { id: 6, label: t('receive_devices.conditions.awaiting_charging', { defaultValue: 'Awaiting Charging' }) },
+    { id: 7, label: t('receive_devices.conditions.charging', { defaultValue: 'Charging' }) },
+    { id: 8, label: t('receive_devices.conditions.under_repair', { defaultValue: 'Under Repair' }) },
+    { id: 9, label: t('receive_devices.conditions.decommissioned', { defaultValue: 'Decommissioned' }) }
   ];
 
   useEffect(() => {
@@ -85,7 +87,7 @@ const ReceiveDevicesScreen = () => {
         } else {
           console.warn('No store ID found!');
           Snackbar.show({
-            text: 'No store assigned. Please contact admin.',
+            text: t('receive_devices.errors.no_store', { defaultValue: 'No store assigned. Please contact admin.' }),
             duration: 3000,
             backgroundColor: '#FF6B6B',
           });
@@ -124,7 +126,7 @@ const ReceiveDevicesScreen = () => {
     if (!/^\d+$/.test(serialNumber)) {
       console.log('❌ Invalid: Serial number contains non-numeric characters');
       Snackbar.show({
-        text: 'Invalid barcode: Serial number must contain only numbers',
+        text: t('receive_devices.errors.invalid_barcode', { defaultValue: 'Invalid barcode: Serial number must contain only numbers' }),
         duration: 3000,
         backgroundColor: '#FF6B6B',
       });
@@ -134,7 +136,7 @@ const ReceiveDevicesScreen = () => {
     // Check for duplicate serial numbers
     if (devicesList.some(device => device.serialNumber === serialNumber)) {
       Snackbar.show({
-        text: `Serial number ${serialNumber} is already in the list`,
+        text: t('receive_devices.errors.duplicate_serial', { defaultValue: 'Serial number {{serialNumber}} is already in the list', serialNumber: serialNumber }).replace('{{serialNumber}}', serialNumber),
         duration: 3000,
         backgroundColor: '#FF6B6B',
       });
@@ -154,7 +156,7 @@ const ReceiveDevicesScreen = () => {
   const confirmAddDevice = () => {
     if (!selectedCondition) {
       Snackbar.show({
-        text: 'Please select a device condition',
+        text: t('receive_devices.errors.select_condition', { defaultValue: 'Please select a device condition' }),
         duration: 3000,
         backgroundColor: '#FF6B6B',
       });
@@ -169,7 +171,7 @@ const ReceiveDevicesScreen = () => {
     setDevicesList([...devicesList, newDevice]);
 
     Snackbar.show({
-      text: `Device ${pendingSerialNumber} added with condition: ${selectedCondition.label}`,
+      text: t('receive_devices.success.device_added', { defaultValue: 'Device {{serialNumber}} added with condition: {{condition}}', serialNumber: pendingSerialNumber, condition: selectedCondition.label }).replace('{{serialNumber}}', pendingSerialNumber).replace('{{condition}}', selectedCondition.label),
       duration: 2000,
       backgroundColor: '#4CAF50',
     });
@@ -191,12 +193,12 @@ const ReceiveDevicesScreen = () => {
 
   const removeDevice = (index) => {
     Alert.alert(
-      'Remove Device',
-      'Are you sure you want to remove this device?',
+      t('receive_devices.remove_device.title', { defaultValue: 'Remove Device' }),
+      t('receive_devices.remove_device.message', { defaultValue: 'Are you sure you want to remove this device?' }),
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: t('receive_devices.remove_device.cancel', { defaultValue: 'Cancel' }), style: 'cancel' },
         {
-          text: 'Remove',
+          text: t('receive_devices.remove_device.confirm', { defaultValue: 'Remove' }),
           style: 'destructive',
           onPress: () => {
             const newList = [...devicesList];
@@ -212,12 +214,12 @@ const ReceiveDevicesScreen = () => {
     if (devicesList.length === 0) return;
 
     Alert.alert(
-      'Clear All',
-      `Are you sure you want to remove all ${devicesList.length} devices?`,
+      t('receive_devices.clear_all.title', { defaultValue: 'Clear All' }),
+      t('receive_devices.clear_all.message', { defaultValue: 'Are you sure you want to remove all {{count}} devices?', count: devicesList.length }).replace('{{count}}', devicesList.length.toString()),
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: t('receive_devices.clear_all.cancel', { defaultValue: 'Cancel' }), style: 'cancel' },
         {
-          text: 'Clear All',
+          text: t('receive_devices.clear_all.confirm', { defaultValue: 'Clear All' }),
           style: 'destructive',
           onPress: () => setDevicesList([])
         }
@@ -228,7 +230,7 @@ const ReceiveDevicesScreen = () => {
   const submitDevices = async () => {
     if (!storeId) {
       Snackbar.show({
-        text: 'No store assigned. Please contact admin.',
+        text: t('receive_devices.errors.no_store', { defaultValue: 'No store assigned. Please contact admin.' }),
         duration: 3000,
         backgroundColor: '#FF6B6B',
       });
@@ -237,7 +239,7 @@ const ReceiveDevicesScreen = () => {
 
     if (devicesList.length === 0) {
       Snackbar.show({
-        text: 'Please add at least one device',
+        text: t('receive_devices.errors.no_devices', { defaultValue: 'Please add at least one device' }),
         duration: 3000,
         backgroundColor: '#FF6B6B',
       });
@@ -249,7 +251,7 @@ const ReceiveDevicesScreen = () => {
     try {
       const authToken = await AsyncStorage.getItem('accessToken');
       if (!authToken) {
-        throw new Error('No authentication token found');
+        throw new Error(t('receive_devices.errors.no_token', { defaultValue: 'No authentication token found' }));
       }
 
       const requestBody = {
@@ -270,7 +272,7 @@ const ReceiveDevicesScreen = () => {
 
       if (response.status === 401) {
         Snackbar.show({
-          text: 'Session expired. Please log in again.',
+          text: t('receive_devices.errors.session_expired', { defaultValue: 'Session expired. Please log in again.' }),
           duration: 3000,
           backgroundColor: '#FF6B6B',
         });
@@ -281,16 +283,16 @@ const ReceiveDevicesScreen = () => {
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.message || 'Failed to submit devices');
+        throw new Error(data.message || t('receive_devices.errors.submit_failed', { defaultValue: 'Failed to submit devices' }));
       }
 
       // Show success message with details
       const successCount = data.successfulDeviceIds?.length || 0;
       const errorCount = data.errors?.length || 0;
 
-      let message = `Successfully received ${successCount} device(s)`;
+      let message = t('receive_devices.success.submitted', { defaultValue: 'Successfully received {{count}} device(s)', count: successCount }).replace('{{count}}', successCount.toString());
       if (errorCount > 0) {
-        message += `, ${errorCount} error(s) occurred`;
+        message += t('receive_devices.success.with_errors', { defaultValue: ', {{count}} error(s) occurred', count: errorCount }).replace('{{count}}', errorCount.toString());
       }
 
       Snackbar.show({
@@ -302,7 +304,10 @@ const ReceiveDevicesScreen = () => {
       // Log errors if any
       if (data.errors && data.errors.length > 0) {
         console.error('Submission errors:', data.errors);
-        Alert.alert('Partial Success', `Some devices failed:\n${data.errors.join('\n')}`);
+        Alert.alert(
+          t('receive_devices.alert.partial_success', { defaultValue: 'Partial Success' }),
+          t('receive_devices.alert.partial_success_message', { defaultValue: 'Some devices failed:\n{{errors}}', errors: data.errors.join('\n') }).replace('{{errors}}', data.errors.join('\n'))
+        );
       }
 
       // Reset form on success
@@ -313,7 +318,7 @@ const ReceiveDevicesScreen = () => {
     } catch (error) {
       console.error('Error submitting devices:', error);
       Snackbar.show({
-        text: error.message || 'Failed to submit devices. Please try again.',
+        text: error.message || t('receive_devices.errors.submit_failed', { defaultValue: 'Failed to submit devices. Please try again.' }),
         duration: 3000,
         backgroundColor: '#FF6B6B',
       });
@@ -328,7 +333,7 @@ const ReceiveDevicesScreen = () => {
         <Text style={styles.deviceSerial}>{item.serialNumber}</Text>
         <View style={styles.conditionBadge}>
           <Text style={styles.conditionText}>
-            {conditionOptions.find(opt => opt.id === item.deviceConditionId)?.label || 'Unknown'}
+            {conditionOptions.find(opt => opt.id === item.deviceConditionId)?.label || t('receive_devices.unknown', { defaultValue: 'Unknown' })}
           </Text>
         </View>
       </View>
@@ -348,7 +353,7 @@ const ReceiveDevicesScreen = () => {
           <Text style={styles.backButtonText}>←</Text>
         </TouchableOpacity>
         <View style={styles.headerCenter}>
-          <Text style={styles.headerTitle}>Receive Devices</Text>
+          <Text style={styles.headerTitle}>{t('receive_devices.title', { defaultValue: 'Receive Devices' })}</Text>
           {storeName && (
             <Text style={styles.storeNameText}>{storeName}</Text>
           )}
@@ -358,8 +363,8 @@ const ReceiveDevicesScreen = () => {
 
       {/* Scanner View - Greeted immediately */}
       <View style={styles.scannerContainer}>
-        <Text style={styles.scannerTitle}>Scan Device QR Code</Text>
-        <Text style={styles.scannerSubtitle}>Align QR code inside the frame</Text>
+        <Text style={styles.scannerTitle}>{t('receive_devices.scan_title', { defaultValue: 'Scan Device QR Code' })}</Text>
+        <Text style={styles.scannerSubtitle}>{t('receive_devices.scan_subtitle', { defaultValue: 'Align QR code inside the frame' })}</Text>
 
         <View style={styles.cameraWrapper}>
           <View style={styles.cameraFrame}>
@@ -374,7 +379,7 @@ const ReceiveDevicesScreen = () => {
         </View>
 
         <Text style={styles.scannerNote}>
-          Both QR codes and barcodes supported
+          {t('receive_devices.scan_note', { defaultValue: 'Both QR codes and barcodes supported' })}
         </Text>
       </View>
 
@@ -383,10 +388,10 @@ const ReceiveDevicesScreen = () => {
         <View style={styles.devicesSection}>
           <View style={styles.devicesHeader}>
             <Text style={styles.devicesTitle}>
-              Devices to Receive ({devicesList.length})
+              {t('receive_devices.devices_to_receive', { defaultValue: 'Devices to Receive' })} ({devicesList.length})
             </Text>
             <TouchableOpacity onPress={clearAllDevices} disabled={submitting}>
-              <Text style={styles.clearAllText}>Clear All</Text>
+              <Text style={styles.clearAllText}>{t('receive_devices.clear_all', { defaultValue: 'Clear All' })}</Text>
             </TouchableOpacity>
           </View>
 
@@ -414,7 +419,7 @@ const ReceiveDevicesScreen = () => {
             <ActivityIndicator size="small" color="#000" />
           ) : (
             <Text style={styles.submitButtonText}>
-              Submit {devicesList.length} Device{devicesList.length !== 1 ? 's' : ''}
+              {t('receive_devices.submit_button', { defaultValue: 'Submit {{count}} Device', count: devicesList.length }).replace('{{count}}', devicesList.length.toString())}{devicesList.length !== 1 ? 's' : ''}
             </Text>
           )}
         </TouchableOpacity>
@@ -429,9 +434,9 @@ const ReceiveDevicesScreen = () => {
       >
         <View style={styles.modalOverlay}>
           <Animatable.View animation="slideInUp" style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Select Device Condition</Text>
+            <Text style={styles.modalTitle}>{t('receive_devices.modal.title', { defaultValue: 'Select Device Condition' })}</Text>
             <Text style={styles.modalSubtitle}>
-              Serial: {pendingSerialNumber}
+              {t('receive_devices.modal.serial_label', { defaultValue: 'Serial' })}: {pendingSerialNumber}
             </Text>
 
             <ScrollView style={styles.optionsContainer} showsVerticalScrollIndicator={false}>
@@ -459,7 +464,7 @@ const ReceiveDevicesScreen = () => {
 
             <View style={styles.modalButtons}>
               <TouchableOpacity style={styles.cancelModalButton} onPress={cancelAddDevice}>
-                <Text style={styles.cancelModalButtonText}>Cancel</Text>
+                <Text style={styles.cancelModalButtonText}>{t('receive_devices.modal.cancel', { defaultValue: 'Cancel' })}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[
@@ -469,7 +474,7 @@ const ReceiveDevicesScreen = () => {
                 onPress={confirmAddDevice}
                 disabled={!selectedCondition}
               >
-                <Text style={styles.confirmModalButtonText}>Add Device</Text>
+                <Text style={styles.confirmModalButtonText}>{t('receive_devices.modal.add_device', { defaultValue: 'Add Device' })}</Text>
               </TouchableOpacity>
             </View>
           </Animatable.View>

@@ -17,6 +17,7 @@ import Snackbar from 'react-native-snackbar';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import serverURL from '../config';
+import { useTranslation } from 'react-i18next';
 
 const { width, height } = Dimensions.get('window');
 const SCAN_SIZE = width * 0.7;
@@ -38,6 +39,7 @@ const getAuthToken = async () => {
 };
 
 const MasterSlaveMapper = ({ navigation }) => {
+  const { t } = useTranslation();
   // Current session state
   const [master, setMaster] = useState(null);
   const [masterType, setMasterType] = useState(null); // 'JOINT_TECH' or 'TELEMATICS'
@@ -134,7 +136,7 @@ const MasterSlaveMapper = ({ navigation }) => {
     try {
       const token = await getAuthToken();
       if (!token) {
-        return { success: false, message: 'Authentication required. Please login again.' };
+        return { success: false, message: t('master_slave.errors.auth_required', { defaultValue: 'Authentication required. Please login again.' }) };
       }
 
       const url = `${serverURL}devices/command/set`;
@@ -164,15 +166,15 @@ const MasterSlaveMapper = ({ navigation }) => {
       console.log('📦 Response Data:', data);
 
       if (response.status === 200 && data && data.status === 200) {
-        return { success: true, message: data.message || 'Command sent successfully' };
+        return { success: true, message: data.message || t('master_slave.success.command_sent', { defaultValue: 'Command sent successfully' }) };
       } else if (response.status === 401) {
-        return { success: false, message: 'Session expired. Please login again.' };
+        return { success: false, message: t('master_slave.errors.session_expired', { defaultValue: 'Session expired. Please login again.' }) };
       } else {
-        return { success: false, message: data?.message || 'Failed to send command' };
+        return { success: false, message: data?.message || t('master_slave.errors.command_failed', { defaultValue: 'Failed to send command' }) };
       }
     } catch (error) {
       console.error('❌ TELEMATICS REQUEST FAILED:', error);
-      return { success: false, message: error.message || 'Network error' };
+      return { success: false, message: error.message || t('master_slave.errors.network_error', { defaultValue: 'Network error' }) };
     }
   };
 
@@ -181,7 +183,7 @@ const MasterSlaveMapper = ({ navigation }) => {
     try {
       const token = await getAuthToken();
       if (!token) {
-        return { success: false, message: 'Authentication required. Please login again.' };
+        return { success: false, message: t('master_slave.errors.auth_required', { defaultValue: 'Authentication required. Please login again.' }) };
       }
 
       const url = `${serverURL}joint-tech/command/${deviceSn}?command=${encodeURIComponent(
@@ -208,17 +210,17 @@ const MasterSlaveMapper = ({ navigation }) => {
       console.log('📦 Raw Response Body:', data);
 
       if (response.status === 401) {
-        return { success: false, message: 'Session expired. Please login again.' };
+        return { success: false, message: t('master_slave.errors.session_expired', { defaultValue: 'Session expired. Please login again.' }) };
       }
 
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}`);
       }
 
-      return { success: true, message: `Command sent: ${JOINT_TECH_FIXED_COMMAND}` };
+      return { success: true, message: t('master_slave.success.command_sent_format', { defaultValue: 'Command sent: {{command}}', command: JOINT_TECH_FIXED_COMMAND }).replace('{{command}}', JOINT_TECH_FIXED_COMMAND) };
     } catch (error) {
       console.error('❌ JOINT TECH REQUEST FAILED:', error);
-      return { success: false, message: error.message || 'Failed to send command' };
+      return { success: false, message: error.message || t('master_slave.errors.command_failed', { defaultValue: 'Failed to send command' }) };
     }
   };
 
@@ -277,7 +279,7 @@ const MasterSlaveMapper = ({ navigation }) => {
     try {
       const token = await getAuthToken();
       if (!token) {
-        throw new Error('Authentication required. Please login again.');
+        throw new Error(t('master_slave.errors.auth_required', { defaultValue: 'Authentication required. Please login again.' }));
       }
 
       // Clean slave IDs (remove leading zeros)
@@ -322,11 +324,11 @@ const MasterSlaveMapper = ({ navigation }) => {
       console.log('📦 Mapping Response Body:', responseText);
 
       if (response.status === 401) {
-        throw new Error('Session expired. Please login again.');
+        throw new Error(t('master_slave.errors.session_expired', { defaultValue: 'Session expired. Please login again.' }));
       }
 
       if (!response.ok) {
-        throw new Error(`Server responded with status ${response.status}: ${responseText}`);
+        throw new Error(t('master_slave.errors.server_error', { defaultValue: 'Server responded with status {{status}}', status: response.status }).replace('{{status}}', response.status.toString()));
       }
 
       return responseText;
@@ -340,7 +342,7 @@ const MasterSlaveMapper = ({ navigation }) => {
   const handleRemoveMapping = async () => {
     if (!master) {
       Snackbar.show({
-        text: 'No master set to remove',
+        text: t('master_slave.errors.no_master', { defaultValue: 'No master set to remove' }),
         duration: 3000,
         backgroundColor: '#FF6B6B',
       });
@@ -348,18 +350,18 @@ const MasterSlaveMapper = ({ navigation }) => {
     }
 
     Alert.alert(
-      'Remove Mapping',
-      `Are you sure you want to remove the mapping for master ${master}?`,
+      t('master_slave.remove_mapping.title', { defaultValue: 'Remove Mapping' }),
+      t('master_slave.remove_mapping.message', { defaultValue: 'Are you sure you want to remove the mapping for master {{master}}?', master: master }).replace('{{master}}', master),
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: t('master_slave.remove_mapping.cancel', { defaultValue: 'Cancel' }), style: 'cancel' },
         {
-          text: 'Remove',
+          text: t('master_slave.remove_mapping.confirm', { defaultValue: 'Remove' }),
           style: 'destructive',
           onPress: () => {
             // Just reset the current session without making API call
             resetCurrentSession();
             Snackbar.show({
-              text: '✓ Mapping cleared from form',
+              text: t('master_slave.remove_mapping.success', { defaultValue: '✓ Mapping cleared from form' }),
               duration: 3000,
               backgroundColor: '#4CAF50',
             });
@@ -372,7 +374,7 @@ const MasterSlaveMapper = ({ navigation }) => {
   // Send device-specific command (for testing/validation)
   const sendDeviceCommand = async () => {
     if (!master || !masterType) {
-      Snackbar.show({ text: 'No master device scanned', backgroundColor: '#FF6B6B' });
+      Snackbar.show({ text: t('master_slave.errors.no_master_device', { defaultValue: 'No master device scanned' }), backgroundColor: '#FF6B6B' });
       return;
     }
 
@@ -387,7 +389,7 @@ const MasterSlaveMapper = ({ navigation }) => {
 
       if (response.success) {
         Snackbar.show({
-          text: `Command sent to ${masterType === 'TELEMATICS' ? 'Telematics' : 'Joint Tech'} device`,
+          text: t('master_slave.success.command_sent_to_device', { defaultValue: 'Command sent to {{deviceType}} device', deviceType: masterType === 'TELEMATICS' ? 'Telematics' : 'Joint Tech' }).replace('{{deviceType}}', masterType === 'TELEMATICS' ? 'Telematics' : 'Joint Tech'),
           duration: 3000,
           backgroundColor: '#4CAF50',
         });
@@ -399,7 +401,7 @@ const MasterSlaveMapper = ({ navigation }) => {
         });
       }
     } catch (error) {
-      Snackbar.show({ text: 'Failed to send command', backgroundColor: '#FF6B6B' });
+      Snackbar.show({ text: t('master_slave.errors.command_failed', { defaultValue: 'Failed to send command' }), backgroundColor: '#FF6B6B' });
     } finally {
       setIsLoading(false);
     }
@@ -421,8 +423,8 @@ const MasterSlaveMapper = ({ navigation }) => {
 
       if (!masterValue) {
         Alert.alert(
-          'Invalid Scan',
-          'Could not find device ID in the scanned code. Please ensure you scan the device QR/barcode.',
+          t('master_slave.errors.invalid_scan.title', { defaultValue: 'Invalid Scan' }),
+          t('master_slave.errors.invalid_scan.message', { defaultValue: 'Could not find device ID in the scanned code. Please ensure you scan the device QR/barcode.' }),
           [{ text: 'OK', onPress: () => setViewMode('DASHBOARD') }]
         );
         setViewMode('DASHBOARD');
@@ -434,8 +436,8 @@ const MasterSlaveMapper = ({ navigation }) => {
 
       if (!detectedType) {
         Alert.alert(
-          'Unknown Device',
-          `Device ID "${masterValue}" has ${masterValue.length} digits.\n\nExpected:\n• Telematics: 8 digits\n• Joint Tech: 10 digits`,
+          t('master_slave.errors.unknown_device.title', { defaultValue: 'Unknown Device' }),
+          t('master_slave.errors.unknown_device.message', { defaultValue: 'Device ID "{{id}}" has {{digits}} digits.\n\nExpected:\n• Telematics: 8 digits\n• Joint Tech: 10 digits', id: masterValue, digits: masterValue.length }).replace('{{id}}', masterValue).replace('{{digits}}', masterValue.length.toString()),
           [{ text: 'OK', onPress: () => setViewMode('DASHBOARD') }]
         );
         setViewMode('DASHBOARD');
@@ -448,7 +450,7 @@ const MasterSlaveMapper = ({ navigation }) => {
       setViewMode('DASHBOARD');
 
       Snackbar.show({
-        text: `${detectedType === 'TELEMATICS' ? '📱 Telematics' : '📊 Joint Tech'} Master set: ${masterValue}`,
+        text: t('master_slave.success.master_set', { defaultValue: '{{deviceType}} Master set: {{id}}', deviceType: detectedType === 'TELEMATICS' ? '📱 Telematics' : '📊 Joint Tech', id: masterValue }).replace('{{deviceType}}', detectedType === 'TELEMATICS' ? '📱 Telematics' : '📊 Joint Tech').replace('{{id}}', masterValue),
         backgroundColor: '#4CAF50',
         duration: 4000,
       });
@@ -469,7 +471,7 @@ const MasterSlaveMapper = ({ navigation }) => {
 
       if (!slaveId || slaveId.length < 3) {
         Snackbar.show({
-          text: 'Invalid slave code - too short',
+          text: t('master_slave.errors.slave_too_short', { defaultValue: 'Invalid slave code - too short' }),
           backgroundColor: '#FF6B6B'
         });
         setViewMode('DASHBOARD');
@@ -478,7 +480,7 @@ const MasterSlaveMapper = ({ navigation }) => {
 
       if (slaves.includes(slaveId)) {
         Snackbar.show({
-          text: 'Slave already scanned',
+          text: t('master_slave.errors.slave_duplicate', { defaultValue: 'Slave already scanned' }),
           backgroundColor: '#FF9800'
         });
         setViewMode('DASHBOARD');
@@ -487,20 +489,20 @@ const MasterSlaveMapper = ({ navigation }) => {
 
       setSlaves([...slaves, slaveId]);
       setViewMode('DASHBOARD');
-      Snackbar.show({ text: `✓ Slave added: ${slaveId}`, backgroundColor: '#4CAF50' });
+      Snackbar.show({ text: t('master_slave.success.slave_added', { defaultValue: '✓ Slave added: {{id}}', id: slaveId }).replace('{{id}}', slaveId), backgroundColor: '#4CAF50' });
       console.log('Added slave:', slaveId);
     }
   };
 
   const handleMapAll = async () => {
     if (!master || slaves.length === 0) {
-      Snackbar.show({ text: 'Master or slaves missing', backgroundColor: '#FF6B6B' });
+      Snackbar.show({ text: t('master_slave.errors.missing_master_or_slaves', { defaultValue: 'Master or slaves missing' }), backgroundColor: '#FF6B6B' });
       return;
     }
 
     if (masterType !== 'JOINT_TECH') {
       Snackbar.show({
-        text: 'Mapping only available for Joint Tech master devices',
+        text: t('master_slave.errors.joint_tech_only', { defaultValue: 'Mapping only available for Joint Tech master devices' }),
         backgroundColor: '#FF9800',
         duration: 4000,
       });
@@ -525,13 +527,13 @@ const MasterSlaveMapper = ({ navigation }) => {
       };
       setAllMappings(prev => [newMapping, ...prev]);
 
-      Snackbar.show({ text: `✓ Successfully mapped ${slaves.length} slave(s) to master ${master}`, backgroundColor: '#4CAF50', duration: 4000 });
+      Snackbar.show({ text: t('master_slave.success.mapping_complete', { defaultValue: '✓ Successfully mapped {{count}} slave(s) to master {{master}}', count: slaves.length, master: master }).replace('{{count}}', slaves.length.toString()).replace('{{master}}', master), backgroundColor: '#4CAF50', duration: 4000 });
 
       // Reset current fields for next truck
       resetCurrentSession();
     } catch (error) {
       console.error('Mapping failed:', error);
-      Snackbar.show({ text: `Mapping failed: ${error.message}`, backgroundColor: '#FF6B6B', duration: 4000 });
+      Snackbar.show({ text: t('master_slave.errors.mapping_failed', { defaultValue: 'Mapping failed: {{message}}', message: error.message }).replace('{{message}}', error.message), backgroundColor: '#FF6B6B', duration: 4000 });
     } finally {
       setIsLoading(false);
     }
@@ -547,7 +549,7 @@ const MasterSlaveMapper = ({ navigation }) => {
 
   const clearHistory = () => {
     setAllMappings([]);
-    Snackbar.show({ text: 'History cleared', backgroundColor: '#7F8C8D' });
+    Snackbar.show({ text: t('master_slave.success.history_cleared', { defaultValue: 'History cleared' }), backgroundColor: '#7F8C8D' });
   };
 
   // --- RENDERING LOGIC ---
@@ -566,8 +568,8 @@ const MasterSlaveMapper = ({ navigation }) => {
             <Ionicons name="arrow-back" size={24} color="#1A1A1A" />
           </TouchableOpacity>
           <View style={styles.headerContent}>
-            <Text style={styles.headerTitle}>Truck Mapping History</Text>
-            <Text style={styles.headerSubtitle}>Total Trucks: {allMappings.length}</Text>
+            <Text style={styles.headerTitle}>{t('master_slave.summary.title', { defaultValue: 'Truck Mapping History' })}</Text>
+            <Text style={styles.headerSubtitle}>{t('master_slave.summary.total_trucks', { defaultValue: 'Total Trucks: {{count}}', count: allMappings.length }).replace('{{count}}', allMappings.length.toString())}</Text>
           </View>
         </View>
 
@@ -580,21 +582,21 @@ const MasterSlaveMapper = ({ navigation }) => {
               <View style={styles.cardHeader}>
                 <View style={styles.deviceTypeHeader}>
                   <Text style={item.masterType === 'TELEMATICS' ? styles.telematicsBadge : styles.jointTechBadge}>
-                    {item.masterType === 'TELEMATICS' ? '📱 Telematics' : '📊 Joint Tech'}
+                    {item.masterType === 'TELEMATICS' ? t('master_slave.device_types.telematics', { defaultValue: '📱 Telematics' }) : t('master_slave.device_types.joint_tech', { defaultValue: '📊 Joint Tech' })}
                   </Text>
-                  <Text style={styles.summaryMaster}>Master: {item.master}</Text>
+                  <Text style={styles.summaryMaster}>{t('master_slave.summary.master_label', { defaultValue: 'Master' })}: {item.master}</Text>
                 </View>
                 <Text style={styles.timestamp}>{item.timestamp}</Text>
               </View>
               <Text style={styles.summarySlaves}>
-                Slaves ({item.slaves.length}): {item.slaves.join(', ')}
+                {t('master_slave.summary.slaves_label', { defaultValue: 'Slaves ({{count}})' }).replace('{{count}}', item.slaves.length.toString())}: {item.slaves.join(', ')}
               </Text>
             </View>
           )}
           ListEmptyComponent={
             <View style={styles.emptyContainer}>
               <Ionicons name="cube-outline" size={64} color="#CCCCCC" />
-              <Text style={styles.emptyText}>No mappings performed yet.</Text>
+              <Text style={styles.emptyText}>{t('master_slave.summary.empty', { defaultValue: 'No mappings performed yet.' })}</Text>
             </View>
           }
         />
@@ -603,11 +605,11 @@ const MasterSlaveMapper = ({ navigation }) => {
           style={styles.backToScannerButton}
           onPress={() => setViewMode('DASHBOARD')}
         >
-          <Text style={styles.backToScannerButtonText}>BACK TO SCANNER</Text>
+          <Text style={styles.backToScannerButtonText}>{t('master_slave.buttons.back_to_scanner', { defaultValue: 'BACK TO SCANNER' })}</Text>
         </TouchableOpacity>
 
         <TouchableOpacity style={styles.dangerButton} onPress={clearHistory}>
-          <Text style={styles.dangerButtonText}>Clear All History</Text>
+          <Text style={styles.dangerButtonText}>{t('master_slave.buttons.clear_history', { defaultValue: 'Clear All History' })}</Text>
         </TouchableOpacity>
       </SafeAreaView>
     );
@@ -628,16 +630,18 @@ const MasterSlaveMapper = ({ navigation }) => {
           </TouchableOpacity>
           <View style={styles.headerContent}>
             <Text style={styles.headerTitle}>
-              Scanning {scanType} {scanType === 'MASTER' ? '(QR/Barcode)' : ''}
+              {scanType === 'MASTER'
+                ? t('master_slave.scanner.master_title', { defaultValue: 'Scanning Master (QR/Barcode)' })
+                : t('master_slave.scanner.slave_title', { defaultValue: 'Scanning Slaves' })}
             </Text>
             {scanType === 'MASTER' && (
               <Text style={styles.headerSubtitle}>
-                Auto-detects Telematics (8 digits) or Joint Tech (10 digits)
+                {t('master_slave.scanner.master_subtitle', { defaultValue: 'Auto-detects Telematics (8 digits) or Joint Tech (10 digits)' })}
               </Text>
             )}
             {scanType === 'SLAVE' && (
               <Text style={styles.headerSubtitle}>
-                Scan slave/sensor barcodes (alphanumeric)
+                {t('master_slave.scanner.slave_subtitle', { defaultValue: 'Scan slave/sensor barcodes (alphanumeric)' })}
               </Text>
             )}
           </View>
@@ -659,7 +663,7 @@ const MasterSlaveMapper = ({ navigation }) => {
           <View style={styles.instructionContainer}>
             <Ionicons name="information-circle-outline" size={20} color="#FFA500" />
             <Text style={styles.instructionText}>
-              Scan device QR or barcode (8 digits for Telematics, 10 for Joint Tech)
+              {t('master_slave.scanner.master_instruction', { defaultValue: 'Scan device QR or barcode (8 digits for Telematics, 10 for Joint Tech)' })}
             </Text>
           </View>
         )}
@@ -668,7 +672,7 @@ const MasterSlaveMapper = ({ navigation }) => {
           <View style={styles.instructionContainer}>
             <Ionicons name="information-circle-outline" size={20} color="#4CAF50" />
             <Text style={styles.instructionText}>
-              Scan slave/sensor barcode (alphanumeric like E170BG789)
+              {t('master_slave.scanner.slave_instruction', { defaultValue: 'Scan slave/sensor barcode (alphanumeric like E170BG789)' })}
             </Text>
           </View>
         )}
@@ -677,7 +681,7 @@ const MasterSlaveMapper = ({ navigation }) => {
           style={styles.cancelButton}
           onPress={() => setViewMode('DASHBOARD')}
         >
-          <Text style={styles.cancelButtonText}>CANCEL SCAN</Text>
+          <Text style={styles.cancelButtonText}>{t('master_slave.buttons.cancel_scan', { defaultValue: 'CANCEL SCAN' })}</Text>
         </TouchableOpacity>
       </SafeAreaView>
     );
@@ -697,8 +701,8 @@ const MasterSlaveMapper = ({ navigation }) => {
           <Ionicons name="arrow-back" size={24} color="#1A1A1A" />
         </TouchableOpacity>
         <View style={styles.headerContent}>
-          <Text style={styles.headerTitle}>Master-Slave Mapper</Text>
-          <Text style={styles.headerSubtitle}>Map sensors to master device</Text>
+          <Text style={styles.headerTitle}>{t('master_slave.dashboard.title', { defaultValue: 'Master-Slave Mapper' })}</Text>
+          <Text style={styles.headerSubtitle}>{t('master_slave.dashboard.subtitle', { defaultValue: 'Map sensors to master device' })}</Text>
         </View>
       </View>
 
@@ -715,20 +719,22 @@ const MasterSlaveMapper = ({ navigation }) => {
           />
         </View>
         <View style={styles.cardContent}>
-          <Text style={styles.cardLabel}>Current Master</Text>
+          <Text style={styles.cardLabel}>{t('master_slave.dashboard.current_master', { defaultValue: 'Current Master' })}</Text>
           <Text style={styles.cardValue}>
-            {master ? master : 'Scan a Master Device'}
+            {master ? master : t('master_slave.dashboard.scan_master', { defaultValue: 'Scan a Master Device' })}
           </Text>
           {masterType && (
             <View style={styles.deviceTypeContainer}>
               <Text style={masterType === 'TELEMATICS' ? styles.telematicsTypeText : styles.jointTechTypeText}>
-                {masterType === 'TELEMATICS' ? '📱 Telematics Device (8 digits)' : '📊 Joint Tech Device (10 digits)'}
+                {masterType === 'TELEMATICS'
+                  ? t('master_slave.device_types.telematics_detail', { defaultValue: '📱 Telematics Device (8 digits)' })
+                  : t('master_slave.device_types.joint_tech_detail', { defaultValue: '📊 Joint Tech Device (10 digits)' })}
               </Text>
             </View>
           )}
           {masterRaw && masterRaw.includes('\n') && (
             <Text style={styles.rawText} numberOfLines={1}>
-              Extracted from: {masterRaw.substring(0, 30)}...
+              {t('master_slave.dashboard.extracted_from', { defaultValue: 'Extracted from' })}: {masterRaw.substring(0, 30)}...
             </Text>
           )}
         </View>
@@ -737,7 +743,7 @@ const MasterSlaveMapper = ({ navigation }) => {
       {/* Slaves Counter */}
       <View style={styles.statsContainer}>
         <Ionicons name="link-outline" size={20} color="#FFA500" />
-        <Text style={styles.statsText}>Current Slaves: {slaves.length}</Text>
+        <Text style={styles.statsText}>{t('master_slave.dashboard.current_slaves', { defaultValue: 'Current Slaves: {{count}}', count: slaves.length }).replace('{{count}}', slaves.length.toString())}</Text>
       </View>
 
       {/* Action Buttons - Fixed width */}
@@ -750,7 +756,7 @@ const MasterSlaveMapper = ({ navigation }) => {
           }}
         >
           <Ionicons name="qr-code-outline" size={20} color="#000" />
-          <Text style={styles.actionButtonText}>Scan Master</Text>
+          <Text style={styles.actionButtonText}>{t('master_slave.buttons.scan_master', { defaultValue: 'Scan Master' })}</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -761,14 +767,14 @@ const MasterSlaveMapper = ({ navigation }) => {
           }}
         >
           <Ionicons name="scan-outline" size={20} color="#000" />
-          <Text style={styles.actionButtonText}>Scan Slaves</Text>
+          <Text style={styles.actionButtonText}>{t('master_slave.buttons.scan_slaves', { defaultValue: 'Scan Slaves' })}</Text>
         </TouchableOpacity>
       </View>
 
       {/* Slaves List */}
       {slaves.length > 0 && (
         <>
-          <Text style={styles.listTitle}>Scanned Slaves</Text>
+          <Text style={styles.listTitle}>{t('master_slave.dashboard.scanned_slaves', { defaultValue: 'Scanned Slaves' })}</Text>
           <FlatList
             style={{ width: '100%', flex: 1 }}
             data={slaves}
@@ -783,7 +789,7 @@ const MasterSlaveMapper = ({ navigation }) => {
                   onPress={() => {
                     const newSlaves = slaves.filter((_, i) => i !== index);
                     setSlaves(newSlaves);
-                    Snackbar.show({ text: `Removed ${item}`, backgroundColor: '#FF9800' });
+                    Snackbar.show({ text: t('master_slave.success.slave_removed', { defaultValue: 'Removed {{id}}', id: item }).replace('{{id}}', item), backgroundColor: '#FF9800' });
                   }}
                 >
                   <Ionicons name="close-circle" size={20} color="#FF6B6B" />
@@ -805,7 +811,7 @@ const MasterSlaveMapper = ({ navigation }) => {
             {isLoading ? (
               <ActivityIndicator size="small" color="#000" />
             ) : (
-              <Text style={styles.mapButtonText}>✓ MAP ALL SLAVES TO MASTER</Text>
+              <Text style={styles.mapButtonText}>{t('master_slave.buttons.map_all', { defaultValue: '✓ MAP ALL SLAVES TO MASTER' })}</Text>
             )}
           </TouchableOpacity>
         )}
@@ -814,7 +820,7 @@ const MasterSlaveMapper = ({ navigation }) => {
           <View style={styles.warningContainer}>
             <Ionicons name="warning-outline" size={16} color="#FF9800" />
             <Text style={styles.warningText}>
-              Mapping only available for Joint Tech master devices
+              {t('master_slave.warnings.joint_tech_only', { defaultValue: 'Mapping only available for Joint Tech master devices' })}
             </Text>
           </View>
         )}
@@ -826,11 +832,11 @@ const MasterSlaveMapper = ({ navigation }) => {
               onPress={handleRemoveMapping}
               disabled={isLoading}
             >
-              <Text style={styles.dangerButtonSmallText}>🗑️ Remove Mapping</Text>
+              <Text style={styles.dangerButtonSmallText}>{t('master_slave.buttons.remove_mapping', { defaultValue: '🗑️ Remove Mapping' })}</Text>
             </TouchableOpacity>
           )}
           <TouchableOpacity style={styles.resetButtonSmall} onPress={resetCurrentSession}>
-            <Text style={styles.resetButtonSmallText}>Reset Form</Text>
+            <Text style={styles.resetButtonSmallText}>{t('master_slave.buttons.reset_form', { defaultValue: 'Reset Form' })}</Text>
           </TouchableOpacity>
         </View>
       </View>

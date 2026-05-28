@@ -25,10 +25,12 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import serverUrl from '../config';
+import { useTranslation } from 'react-i18next';
 
 const { width } = Dimensions.get('window');
 
 const CommandsScreen = () => {
+  const { t } = useTranslation();
   const navigation = useNavigation();
   const [devices, setDevices] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -43,29 +45,29 @@ const CommandsScreen = () => {
   const [bulkMode, setBulkMode] = useState(false);
   const [selectedDevices, setSelectedDevices] = useState([]);
   const [commandValues, setCommandValues] = useState({});
-  
+
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(30)).current;
 
-  // Command definitions
+  // Command definitions with translations
   const commands = [
-    { id: 'lowPower', name: 'Low Power Mode', icon: 'battery-charging-full', color: '#f59e0b', needsInput: true },
-    { id: 'setIPPrimary', name: 'Set Primary IP', icon: 'router', color: '#3b82f6', needsInput: true },
-    { id: 'setIPSecondary', name: 'Set Secondary IP', icon: 'router', color: '#8b5cf6', needsInput: true },
-    { id: 'resetHistorical', name: 'Reset Historical Position', icon: 'history', color: '#ef4444', needsInput: true },
-    { id: 'disableSleep', name: 'Disable Sleep Mode', icon: 'nightlight', color: '#f59e0b', needsInput: false },
-    { id: 'setTimezone', name: 'Set Timezone (GMT+3)', icon: 'access-time', color: '#14b8a6', needsInput: false },
-    { id: 'setOperationMode', name: 'Set Operation Mode', icon: 'settings', color: '#ec4899', needsInput: true },
-    { id: 'exitDeepSleep', name: 'Exit Deep Sleep', icon: 'wb-sunny', color: '#10b981', needsInput: false },
-    { id: 'enterSleepMode', name: 'Enter Sleep Mode', icon: 'bedtime', color: '#6366f1', needsInput: true },
-    { id: 'setAuthorizedNumbers', name: 'Set Authorized Numbers', icon: 'contacts', color: '#8b5cf6', needsInput: true },
-    { id: 'changePassword', name: 'Change Unlock Password', icon: 'lock', color: '#f97316', needsInput: true },
-    { id: 'unlockDevice', name: 'Unlock Device', icon: 'lock-open', color: '#10b981', needsInput: false },
-    { id: 'factoryReset', name: 'Factory Reset', icon: 'settings-backup-restore', color: '#dc2626', needsInput: false },
-    { id: 'restartDevice', name: 'Restart Device', icon: 'restart-alt', color: '#000000', needsInput: false },
-    { id: 'setSerialNumber', name: 'Set Serial Number', icon: 'numbers', color: '#000000', needsInput: true },
-    { id: 'queryDeviceInfo', name: 'Query Device Info', icon: 'info', color: '#3b82f6', needsInput: false },
-    { id: 'queryDeviceStatus', name: 'Query Device Status', icon: 'dashboard', color: '#3b82f6', needsInput: false },
+    { id: 'lowPower', name: t('commands.list.low_power', { defaultValue: 'Low Power Mode' }), icon: 'battery-charging-full', color: '#f59e0b', needsInput: true },
+    { id: 'setIPPrimary', name: t('commands.list.set_primary_ip', { defaultValue: 'Set Primary IP' }), icon: 'router', color: '#3b82f6', needsInput: true },
+    { id: 'setIPSecondary', name: t('commands.list.set_secondary_ip', { defaultValue: 'Set Secondary IP' }), icon: 'router', color: '#8b5cf6', needsInput: true },
+    { id: 'resetHistorical', name: t('commands.list.reset_historical', { defaultValue: 'Reset Historical Position' }), icon: 'history', color: '#ef4444', needsInput: true },
+    { id: 'disableSleep', name: t('commands.list.disable_sleep', { defaultValue: 'Disable Sleep Mode' }), icon: 'nightlight', color: '#f59e0b', needsInput: false },
+    { id: 'setTimezone', name: t('commands.list.set_timezone', { defaultValue: 'Set Timezone (GMT+3)' }), icon: 'access-time', color: '#14b8a6', needsInput: false },
+    { id: 'setOperationMode', name: t('commands.list.set_operation_mode', { defaultValue: 'Set Operation Mode' }), icon: 'settings', color: '#ec4899', needsInput: true },
+    { id: 'exitDeepSleep', name: t('commands.list.exit_deep_sleep', { defaultValue: 'Exit Deep Sleep' }), icon: 'wb-sunny', color: '#10b981', needsInput: false },
+    { id: 'enterSleepMode', name: t('commands.list.enter_sleep_mode', { defaultValue: 'Enter Sleep Mode' }), icon: 'bedtime', color: '#6366f1', needsInput: true },
+    { id: 'setAuthorizedNumbers', name: t('commands.list.set_authorized_numbers', { defaultValue: 'Set Authorized Numbers' }), icon: 'contacts', color: '#8b5cf6', needsInput: true },
+    { id: 'changePassword', name: t('commands.list.change_password', { defaultValue: 'Change Unlock Password' }), icon: 'lock', color: '#f97316', needsInput: true },
+    { id: 'unlockDevice', name: t('commands.list.unlock_device', { defaultValue: 'Unlock Device' }), icon: 'lock-open', color: '#10b981', needsInput: false },
+    { id: 'factoryReset', name: t('commands.list.factory_reset', { defaultValue: 'Factory Reset' }), icon: 'settings-backup-restore', color: '#dc2626', needsInput: false },
+    { id: 'restartDevice', name: t('commands.list.restart_device', { defaultValue: 'Restart Device' }), icon: 'restart-alt', color: '#000000', needsInput: false },
+    { id: 'setSerialNumber', name: t('commands.list.set_serial_number', { defaultValue: 'Set Serial Number' }), icon: 'numbers', color: '#000000', needsInput: true },
+    { id: 'queryDeviceInfo', name: t('commands.list.query_device_info', { defaultValue: 'Query Device Info' }), icon: 'info', color: '#3b82f6', needsInput: false },
+    { id: 'queryDeviceStatus', name: t('commands.list.query_device_status', { defaultValue: 'Query Device Status' }), icon: 'dashboard', color: '#3b82f6', needsInput: false },
   ];
 
   useEffect(() => {
@@ -86,7 +88,7 @@ const CommandsScreen = () => {
   useFocusEffect(
     React.useCallback(() => {
       fetchDevices();
-      
+
       const backAction = () => {
         return false;
       };
@@ -98,7 +100,7 @@ const CommandsScreen = () => {
   const fetchDevices = async (isRefresh = false) => {
     try {
       if (!isRefresh) setLoading(true);
-      
+
       const token = await AsyncStorage.getItem('accessToken');
       if (!token) {
         console.error('No token found');
@@ -120,7 +122,7 @@ const CommandsScreen = () => {
     } catch (error) {
       console.error('Failed to fetch devices:', error);
       Snackbar.show({
-        text: 'Failed to load devices',
+        text: t('commands.errors.load_failed', { defaultValue: 'Failed to load devices' }),
         duration: 3000,
         backgroundColor: '#FF6B6B',
       });
@@ -137,22 +139,22 @@ const CommandsScreen = () => {
 
   const getFilteredDevices = () => {
     let filtered = [...devices];
-    
+
     if (filter === 'online') {
       filtered = filtered.filter(d => d.isOnline === true);
     } else if (filter === 'offline') {
       filtered = filtered.filter(d => d.isOnline === false);
     }
-    
+
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
-      filtered = filtered.filter(d => 
+      filtered = filtered.filter(d =>
         d.name?.toLowerCase().includes(query) ||
         d.serialNo?.toLowerCase().includes(query) ||
         d.imei?.toLowerCase().includes(query)
       );
     }
-    
+
     return filtered;
   };
 
@@ -205,14 +207,14 @@ const CommandsScreen = () => {
 
       if (response.data && response.data.resultCode === 0) {
         Snackbar.show({
-          text: 'Command sent successfully',
+          text: t('commands.success.command_sent', { defaultValue: 'Command sent successfully' }),
           duration: 3000,
           backgroundColor: '#4CAF50',
         });
         return true;
       } else {
         Snackbar.show({
-          text: response.data.message || 'Failed to send command',
+          text: response.data.message || t('commands.errors.command_failed', { defaultValue: 'Failed to send command' }),
           duration: 3000,
           backgroundColor: '#FF6B6B',
         });
@@ -221,7 +223,7 @@ const CommandsScreen = () => {
     } catch (error) {
       // console.error('Failed to send command:', error);
       Snackbar.show({
-        text: 'Failed to send command',
+        text: t('commands.errors.command_failed', { defaultValue: 'Failed to send command' }),
         duration: 3000,
         backgroundColor: '#FF6B6B',
       });
@@ -248,16 +250,22 @@ const CommandsScreen = () => {
 
       if (response.data && response.data.resultCode === 0) {
         Alert.alert(
-          'Device Information',
-          `Device: ${deviceSn}\n\nResponse: ${response.data.response || 'No response data'}`,
+          t('commands.query.device_info_title', { defaultValue: 'Device Information' }),
+          t('commands.query.device_info_message', { defaultValue: 'Device: {{sn}}\n\nResponse: {{response}}', sn: deviceSn, response: response.data.response || 'No response data' }).replace('{{sn}}', deviceSn).replace('{{response}}', response.data.response || 'No response data'),
           [{ text: 'OK' }]
         );
       } else {
-        Alert.alert('Query Failed', response.data.message || 'Failed to query device info');
+        Alert.alert(
+          t('commands.query.query_failed', { defaultValue: 'Query Failed' }),
+          response.data.message || t('commands.query.info_failed', { defaultValue: 'Failed to query device info' })
+        );
       }
     } catch (error) {
       console.error('Failed to query device info:', error);
-      Alert.alert('Error', 'Failed to query device information');
+      Alert.alert(
+        t('commands.query.error', { defaultValue: 'Error' }),
+        t('commands.query.info_error', { defaultValue: 'Failed to query device information' })
+      );
     }
   };
 
@@ -280,28 +288,34 @@ const CommandsScreen = () => {
 
       if (response.data && response.data.resultCode === 0) {
         Alert.alert(
-          'Device Status',
-          `Device: ${deviceSn}\n\nStatus: ${response.data.response || 'No status data'}`,
+          t('commands.query.device_status_title', { defaultValue: 'Device Status' }),
+          t('commands.query.device_status_message', { defaultValue: 'Device: {{sn}}\n\nStatus: {{status}}', sn: deviceSn, status: response.data.response || 'No status data' }).replace('{{sn}}', deviceSn).replace('{{status}}', response.data.response || 'No status data'),
           [{ text: 'OK' }]
         );
       } else {
-        Alert.alert('Query Failed', response.data.message || 'Failed to query device status');
+        Alert.alert(
+          t('commands.query.query_failed', { defaultValue: 'Query Failed' }),
+          response.data.message || t('commands.query.status_failed', { defaultValue: 'Failed to query device status' })
+        );
       }
     } catch (error) {
       console.error('Failed to query device status:', error);
-      Alert.alert('Error', 'Failed to query device status');
+      Alert.alert(
+        t('commands.query.error', { defaultValue: 'Error' }),
+        t('commands.query.status_error', { defaultValue: 'Failed to query device status' })
+      );
     }
   };
 
   const handleCommand = async (command, device) => {
     setSelectedDevice(device);
     setSelectedCommand(command);
-    
+
     if (command.needsInput) {
       setCommandModalVisible(true);
     } else {
       let success = false;
-      
+
       switch(command.id) {
         case 'disableSleep':
           success = await sendCommand(device.serialNo, "*269#9,M0");
@@ -336,7 +350,7 @@ const CommandsScreen = () => {
   const handleCommandWithInput = async () => {
     let command = '';
     const deviceSn = selectedDevice.serialNo;
-    
+
     switch(selectedCommand.id) {
       case 'lowPower':
         const batteryLevel = commandValues.batteryLevel || '10';
@@ -347,7 +361,7 @@ const CommandsScreen = () => {
         const ip = commandValues.ipPrimary;
         const port = commandValues.portPrimary;
         if (!ip || !port) {
-          Alert.alert('Error', 'Please enter IP and Port');
+          Alert.alert(t('commands.error.title', { defaultValue: 'Error' }), t('commands.error.ip_port_required', { defaultValue: 'Please enter IP and Port' }));
           return;
         }
         command = `*269#1,${ip},${port},1`;
@@ -356,7 +370,7 @@ const CommandsScreen = () => {
         const ip2 = commandValues.ipSecondary;
         const port2 = commandValues.portSecondary;
         if (!ip2 || !port2) {
-          Alert.alert('Error', 'Please enter IP and Port');
+          Alert.alert(t('commands.error.title', { defaultValue: 'Error' }), t('commands.error.ip_port_required', { defaultValue: 'Please enter IP and Port' }));
           return;
         }
         command = `*269#I2,${ip2},${port2},1`;
@@ -364,7 +378,7 @@ const CommandsScreen = () => {
       case 'resetHistorical':
         const resetSerial = commandValues.resetSerial;
         if (!resetSerial || resetSerial.length !== 8) {
-          Alert.alert('Error', 'Please enter 8-digit serial number');
+          Alert.alert(t('commands.error.title', { defaultValue: 'Error' }), t('commands.error.serial_8_digits', { defaultValue: 'Please enter 8-digit serial number' }));
           return;
         }
         command = `*269#2,${resetSerial}`;
@@ -387,7 +401,7 @@ const CommandsScreen = () => {
           }
         }
         if (numbers.length === 0) {
-          Alert.alert('Error', 'At least one authorized number is required');
+          Alert.alert(t('commands.error.title', { defaultValue: 'Error' }), t('commands.error.auth_numbers_required', { defaultValue: 'At least one authorized number is required' }));
           return;
         }
         command = `*269#5,${numbers.join(',')},`;
@@ -396,7 +410,7 @@ const CommandsScreen = () => {
         const oldPassword = commandValues.oldPassword || '888888';
         const newPassword = commandValues.newPassword;
         if (!newPassword || newPassword.length !== 6) {
-          Alert.alert('Error', 'New password must be 6 digits');
+          Alert.alert(t('commands.error.title', { defaultValue: 'Error' }), t('commands.error.password_6_digits', { defaultValue: 'New password must be 6 digits' }));
           return;
         }
         command = `*269#4,${oldPassword},${newPassword},`;
@@ -404,7 +418,7 @@ const CommandsScreen = () => {
       case 'setSerialNumber':
         const newSerial = commandValues.newSerial;
         if (!newSerial || newSerial.length !== 8) {
-          Alert.alert('Error', 'Serial number must be 8 digits');
+          Alert.alert(t('commands.error.title', { defaultValue: 'Error' }), t('commands.error.serial_8_digits', { defaultValue: 'Serial number must be 8 digits' }));
           return;
         }
         command = `*269#2,${newSerial}`;
@@ -412,7 +426,7 @@ const CommandsScreen = () => {
       default:
         break;
     }
-    
+
     if (command) {
       const success = await sendCommand(deviceSn, command);
       if (success) {
@@ -424,21 +438,21 @@ const CommandsScreen = () => {
 
   const sendBulkCommand = async () => {
     if (selectedDevices.length === 0) {
-      Alert.alert('No Devices Selected', 'Please select at least one device');
+      Alert.alert(t('commands.bulk.no_devices_title', { defaultValue: 'No Devices Selected' }), t('commands.bulk.no_devices_message', { defaultValue: 'Please select at least one device' }));
       return;
     }
-    
+
     Alert.alert(
-      'Bulk Command',
-      `Send restart command to ${selectedDevices.length} device(s)?`,
+      t('commands.bulk.title', { defaultValue: 'Bulk Command' }),
+      t('commands.bulk.message', { defaultValue: 'Send restart command to {{count}} device(s)?', count: selectedDevices.length }).replace('{{count}}', selectedDevices.length.toString()),
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: t('commands.bulk.cancel', { defaultValue: 'Cancel' }), style: 'cancel' },
         {
-          text: 'Send',
+          text: t('commands.bulk.send', { defaultValue: 'Send' }),
           onPress: async () => {
             let successCount = 0;
             let failCount = 0;
-            
+
             for (const deviceId of selectedDevices) {
               const device = devices.find(d => d.deviceId === deviceId);
               if (device) {
@@ -447,10 +461,10 @@ const CommandsScreen = () => {
                 else failCount++;
               }
             }
-            
+
             Alert.alert(
-              'Bulk Command Complete',
-              `Success: ${successCount}\nFailed: ${failCount}`,
+              t('commands.bulk.complete_title', { defaultValue: 'Bulk Command Complete' }),
+              t('commands.bulk.complete_message', { defaultValue: 'Success: {{success}}\nFailed: {{fail}}', success: successCount, fail: failCount }).replace('{{success}}', successCount.toString()).replace('{{fail}}', failCount.toString()),
               [{ text: 'OK' }]
             );
             setBulkMode(false);
@@ -463,7 +477,7 @@ const CommandsScreen = () => {
 
   const renderCommandInputModal = () => {
     if (!selectedCommand) return null;
-    
+
     return (
       <Modal
         visible={commandModalVisible}
@@ -479,46 +493,46 @@ const CommandsScreen = () => {
                 <Icon name="close" size={24} color="#999" />
               </TouchableOpacity>
             </View>
-            
+
             <ScrollView style={styles.commandModalBody}>
               <View style={styles.deviceInfoSection}>
                 <Icon name="devices" size={20} color="#FFA500" />
-                <Text style={styles.deviceInfoText}>Device: {selectedDevice?.name || selectedDevice?.serialNo}</Text>
+                <Text style={styles.deviceInfoText}>{t('commands.modal.device_label', { defaultValue: 'Device' })}: {selectedDevice?.name || selectedDevice?.serialNo}</Text>
               </View>
-              
+
               {selectedCommand.id === 'lowPower' && (
                 <>
                   <View style={styles.inputField}>
-                    <Text style={styles.inputLabel}>Battery Level (%)</Text>
+                    <Text style={styles.inputLabel}>{t('commands.modal.battery_level', { defaultValue: 'Battery Level (%)' })}</Text>
                     <TextInput
                       style={styles.input}
-                      placeholder="e.g., 10"
+                      placeholder={t('commands.placeholders.battery_level', { defaultValue: 'e.g., 10' })}
                       keyboardType="numeric"
                       value={commandValues.batteryLevel}
                       onChangeText={(text) => setCommandValues({...commandValues, batteryLevel: text})}
                     />
                   </View>
                   <View style={styles.inputField}>
-                    <Text style={styles.inputLabel}>Report Duration (hours)</Text>
+                    <Text style={styles.inputLabel}>{t('commands.modal.report_duration', { defaultValue: 'Report Duration (hours)' })}</Text>
                     <TextInput
                       style={styles.input}
-                      placeholder="e.g., 0.1 (6 minutes)"
+                      placeholder={t('commands.placeholders.report_duration', { defaultValue: 'e.g., 0.1 (6 minutes)' })}
                       keyboardType="numeric"
                       value={commandValues.reportDuration}
                       onChangeText={(text) => setCommandValues({...commandValues, reportDuration: text})}
                     />
-                    <Text style={styles.inputHint}>0.1 hours = 6 minutes</Text>
+                    <Text style={styles.inputHint}>{t('commands.hints.report_duration', { defaultValue: '0.1 hours = 6 minutes' })}</Text>
                   </View>
                 </>
               )}
-              
+
               {(selectedCommand.id === 'setIPPrimary' || selectedCommand.id === 'setIPSecondary') && (
                 <>
                   <View style={styles.inputField}>
-                    <Text style={styles.inputLabel}>IP/Domain</Text>
+                    <Text style={styles.inputLabel}>{t('commands.modal.ip_domain', { defaultValue: 'IP/Domain' })}</Text>
                     <TextInput
                       style={styles.input}
-                      placeholder="e.g., bsl.co.ke or 192.168.1.100"
+                      placeholder={t('commands.placeholders.ip_domain', { defaultValue: 'e.g., bsl.co.ke or 192.168.1.100' })}
                       value={selectedCommand.id === 'setIPPrimary' ? commandValues.ipPrimary : commandValues.ipSecondary}
                       onChangeText={(text) => setCommandValues({
                         ...commandValues,
@@ -527,10 +541,10 @@ const CommandsScreen = () => {
                     />
                   </View>
                   <View style={styles.inputField}>
-                    <Text style={styles.inputLabel}>Port</Text>
+                    <Text style={styles.inputLabel}>{t('commands.modal.port', { defaultValue: 'Port' })}</Text>
                     <TextInput
                       style={styles.input}
-                      placeholder="e.g., 8080"
+                      placeholder={t('commands.placeholders.port', { defaultValue: 'e.g., 8080' })}
                       keyboardType="numeric"
                       value={selectedCommand.id === 'setIPPrimary' ? commandValues.portPrimary : commandValues.portSecondary}
                       onChangeText={(text) => setCommandValues({
@@ -541,39 +555,39 @@ const CommandsScreen = () => {
                   </View>
                 </>
               )}
-              
+
               {selectedCommand.id === 'resetHistorical' && (
                 <View style={styles.inputField}>
-                  <Text style={styles.inputLabel}>Device Serial Number to Reset</Text>
+                  <Text style={styles.inputLabel}>{t('commands.modal.reset_serial', { defaultValue: 'Device Serial Number to Reset' })}</Text>
                   <TextInput
                     style={styles.input}
-                    placeholder="Enter 8-digit serial number"
+                    placeholder={t('commands.placeholders.reset_serial', { defaultValue: 'Enter 8-digit serial number' })}
                     maxLength={8}
                     keyboardType="numeric"
                     value={commandValues.resetSerial}
                     onChangeText={(text) => setCommandValues({...commandValues, resetSerial: text})}
                   />
-                  <Text style={styles.inputHint}>Enter the device serial number to reset historical position</Text>
+                  <Text style={styles.inputHint}>{t('commands.hints.reset_serial', { defaultValue: 'Enter the device serial number to reset historical position' })}</Text>
                 </View>
               )}
-              
+
               {selectedCommand.id === 'setOperationMode' && (
                 <>
                   <View style={styles.inputField}>
-                    <Text style={styles.inputLabel}>Report Interval when Locked (seconds)</Text>
+                    <Text style={styles.inputLabel}>{t('commands.modal.lock_interval', { defaultValue: 'Report Interval when Locked (seconds)' })}</Text>
                     <TextInput
                       style={styles.input}
-                      placeholder="e.g., 5"
+                      placeholder={t('commands.placeholders.lock_interval', { defaultValue: 'e.g., 5' })}
                       keyboardType="numeric"
                       value={commandValues.lockInterval}
                       onChangeText={(text) => setCommandValues({...commandValues, lockInterval: text})}
                     />
                   </View>
                   <View style={styles.inputField}>
-                    <Text style={styles.inputLabel}>Report Interval when Unlocked (seconds)</Text>
+                    <Text style={styles.inputLabel}>{t('commands.modal.unlock_interval', { defaultValue: 'Report Interval when Unlocked (seconds)' })}</Text>
                     <TextInput
                       style={styles.input}
-                      placeholder="e.g., 300"
+                      placeholder={t('commands.placeholders.unlock_interval', { defaultValue: 'e.g., 300' })}
                       keyboardType="numeric"
                       value={commandValues.unlockInterval}
                       onChangeText={(text) => setCommandValues({...commandValues, unlockInterval: text})}
@@ -581,24 +595,24 @@ const CommandsScreen = () => {
                   </View>
                 </>
               )}
-              
+
               {selectedCommand.id === 'enterSleepMode' && (
                 <>
                   <View style={styles.inputField}>
-                    <Text style={styles.inputLabel}>Wake Up Working Time (seconds)</Text>
+                    <Text style={styles.inputLabel}>{t('commands.modal.wake_time', { defaultValue: 'Wake Up Working Time (seconds)' })}</Text>
                     <TextInput
                       style={styles.input}
-                      placeholder="e.g., 30"
+                      placeholder={t('commands.placeholders.wake_time', { defaultValue: 'e.g., 30' })}
                       keyboardType="numeric"
                       value={commandValues.wakeTime}
                       onChangeText={(text) => setCommandValues({...commandValues, wakeTime: text})}
                     />
                   </View>
                   <View style={styles.inputField}>
-                    <Text style={styles.inputLabel}>Sleep Time (seconds)</Text>
+                    <Text style={styles.inputLabel}>{t('commands.modal.sleep_time', { defaultValue: 'Sleep Time (seconds)' })}</Text>
                     <TextInput
                       style={styles.input}
-                      placeholder="e.g., 300"
+                      placeholder={t('commands.placeholders.sleep_time', { defaultValue: 'e.g., 300' })}
                       keyboardType="numeric"
                       value={commandValues.sleepTime}
                       onChangeText={(text) => setCommandValues({...commandValues, sleepTime: text})}
@@ -606,42 +620,42 @@ const CommandsScreen = () => {
                   </View>
                 </>
               )}
-              
+
               {selectedCommand.id === 'setAuthorizedNumbers' && (
                 <>
                   {[1, 2, 3, 4].map(i => (
                     <View key={i} style={styles.inputField}>
-                      <Text style={styles.inputLabel}>Authorized Number {i} (optional)</Text>
+                      <Text style={styles.inputLabel}>{t('commands.modal.auth_number', { defaultValue: 'Authorized Number {{num}} (optional)', num: i }).replace('{{num}}', i.toString())}</Text>
                       <TextInput
                         style={styles.input}
-                        placeholder={`e.g., 716826814 (without leading 0)`}
+                        placeholder={t('commands.placeholders.auth_number', { defaultValue: 'e.g., 716826814 (without leading 0)' })}
                         keyboardType="phone-pad"
                         value={commandValues[`authNum${i}`]}
                         onChangeText={(text) => setCommandValues({...commandValues, [`authNum${i}`]: text})}
                       />
                     </View>
                   ))}
-                  <Text style={styles.inputHint}>Do not include leading zero. At least one number is required</Text>
+                  <Text style={styles.inputHint}>{t('commands.hints.auth_numbers', { defaultValue: 'Do not include leading zero. At least one number is required' })}</Text>
                 </>
               )}
-              
+
               {selectedCommand.id === 'changePassword' && (
                 <>
                   <View style={styles.inputField}>
-                    <Text style={styles.inputLabel}>Old Password</Text>
+                    <Text style={styles.inputLabel}>{t('commands.modal.old_password', { defaultValue: 'Old Password' })}</Text>
                     <TextInput
                       style={styles.input}
-                      placeholder="Enter old password"
+                      placeholder={t('commands.placeholders.old_password', { defaultValue: 'Enter old password' })}
                       secureTextEntry
                       value={commandValues.oldPassword}
                       onChangeText={(text) => setCommandValues({...commandValues, oldPassword: text})}
                     />
                   </View>
                   <View style={styles.inputField}>
-                    <Text style={styles.inputLabel}>New Password (6 digits)</Text>
+                    <Text style={styles.inputLabel}>{t('commands.modal.new_password', { defaultValue: 'New Password (6 digits)' })}</Text>
                     <TextInput
                       style={styles.input}
-                      placeholder="Enter new password"
+                      placeholder={t('commands.placeholders.new_password', { defaultValue: 'Enter new password' })}
                       secureTextEntry
                       maxLength={6}
                       keyboardType="numeric"
@@ -650,10 +664,10 @@ const CommandsScreen = () => {
                     />
                   </View>
                   <View style={styles.inputField}>
-                    <Text style={styles.inputLabel}>Confirm New Password</Text>
+                    <Text style={styles.inputLabel}>{t('commands.modal.confirm_password', { defaultValue: 'Confirm New Password' })}</Text>
                     <TextInput
                       style={styles.input}
-                      placeholder="Confirm new password"
+                      placeholder={t('commands.placeholders.confirm_password', { defaultValue: 'Confirm new password' })}
                       secureTextEntry
                       maxLength={6}
                       keyboardType="numeric"
@@ -662,31 +676,31 @@ const CommandsScreen = () => {
                     />
                   </View>
                   {commandValues.newPassword && commandValues.confirmPassword && commandValues.newPassword !== commandValues.confirmPassword && (
-                    <Text style={styles.errorText}>Passwords do not match</Text>
+                    <Text style={styles.errorText}>{t('commands.error.password_mismatch', { defaultValue: 'Passwords do not match' })}</Text>
                   )}
                 </>
               )}
-              
+
               {selectedCommand.id === 'setSerialNumber' && (
                 <View style={styles.inputField}>
-                  <Text style={styles.inputLabel}>New Serial Number</Text>
+                  <Text style={styles.inputLabel}>{t('commands.modal.new_serial', { defaultValue: 'New Serial Number' })}</Text>
                   <TextInput
                     style={styles.input}
-                    placeholder="Enter 8-digit serial number"
+                    placeholder={t('commands.placeholders.new_serial', { defaultValue: 'Enter 8-digit serial number' })}
                     maxLength={8}
                     keyboardType="numeric"
                     value={commandValues.newSerial}
                     onChangeText={(text) => setCommandValues({...commandValues, newSerial: text})}
                   />
-                  <Text style={styles.inputHint}>Serial number must be 8 digits</Text>
+                  <Text style={styles.inputHint}>{t('commands.hints.new_serial', { defaultValue: 'Serial number must be 8 digits' })}</Text>
                 </View>
               )}
-              
-              <TouchableOpacity 
+
+              <TouchableOpacity
                 style={styles.sendCommandButton}
                 onPress={handleCommandWithInput}
               >
-                <Text style={styles.sendCommandButtonText}>Send Command</Text>
+                <Text style={styles.sendCommandButtonText}>{t('commands.buttons.send_command', { defaultValue: 'Send Command' })}</Text>
               </TouchableOpacity>
             </ScrollView>
           </Animatable.View>
@@ -698,24 +712,24 @@ const CommandsScreen = () => {
   const renderDevice = ({ item, index }) => {
     const isExpanded = expandedId === item.deviceId;
     const isSelected = selectedDevices.includes(item.deviceId);
-    
+
     return (
-      <Animatable.View 
-        animation="fadeInUp" 
+      <Animatable.View
+        animation="fadeInUp"
         delay={index * 80}
         duration={400}
         style={styles.animationWrapper}
       >
         <View style={[styles.deviceCard, item.isOnline && styles.onlineCard]}>
           {bulkMode && (
-            <TouchableOpacity 
+            <TouchableOpacity
               style={styles.checkbox}
               onPress={() => toggleDeviceSelection(item.deviceId)}
             >
               <Icon name={isSelected ? "check-box" : "check-box-outline-blank"} size={24} color="#FFA500" />
             </TouchableOpacity>
           )}
-          
+
           <View style={[styles.deviceContent, bulkMode && styles.deviceContentWithCheckbox]}>
             <View style={styles.deviceHeader}>
               <View style={styles.deviceInfo}>
@@ -725,12 +739,12 @@ const CommandsScreen = () => {
               <View style={styles.badgeContainer}>
                 {item.isOnline && (
                   <View style={styles.onlineBadge}>
-                    <Text style={styles.onlineBadgeText}>ONLINE</Text>
+                    <Text style={styles.onlineBadgeText}>{t('commands.status.online', { defaultValue: 'ONLINE' })}</Text>
                   </View>
                 )}
                 {!item.isOnline && (
                   <View style={styles.offlineBadge}>
-                    <Text style={styles.offlineBadgeText}>OFFLINE</Text>
+                    <Text style={styles.offlineBadgeText}>{t('commands.status.offline', { defaultValue: 'OFFLINE' })}</Text>
                   </View>
                 )}
               </View>
@@ -738,12 +752,12 @@ const CommandsScreen = () => {
 
             <View style={styles.deviceDetails}>
               <View style={styles.detailRow}>
-                <Text style={styles.detailLabel}>Serial:</Text>
+                <Text style={styles.detailLabel}>{t('commands.details.serial', { defaultValue: 'Serial' })}:</Text>
                 <Text style={styles.detailValue}>{item.serialNo}</Text>
               </View>
               <View style={styles.detailRow}>
-                <Text style={styles.detailLabel}>IMEI:</Text>
-                <Text style={styles.detailValue}>{item.imei || 'N/A'}</Text>
+                <Text style={styles.detailLabel}>{t('commands.details.imei', { defaultValue: 'IMEI' })}:</Text>
+                <Text style={styles.detailValue}>{item.imei || t('commands.na', { defaultValue: 'N/A' })}</Text>
               </View>
             </View>
 
@@ -765,13 +779,13 @@ const CommandsScreen = () => {
                 </View>
               </Animatable.View>
             )}
-            
-            <TouchableOpacity 
+
+            <TouchableOpacity
               style={styles.expandButton}
               onPress={() => toggleExpand(item.deviceId)}
             >
               <Text style={styles.expandButtonText}>
-                {isExpanded ? '▲ Hide Commands' : '▼ Show Commands'}
+                {isExpanded ? t('commands.buttons.hide_commands', { defaultValue: '▲ Hide Commands' }) : t('commands.buttons.show_commands', { defaultValue: '▼ Show Commands' })}
               </Text>
             </TouchableOpacity>
           </View>
@@ -782,7 +796,7 @@ const CommandsScreen = () => {
 
   const renderHeader = () => {
     const stats = getStats();
-    
+
     return (
       <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: slideAnim }] }}>
         <View style={styles.header}>
@@ -790,8 +804,8 @@ const CommandsScreen = () => {
             <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
               <Icon name="arrow-back" size={24} color="#1A1A1A" />
             </TouchableOpacity>
-            <Text style={styles.headerTitle}>Device Commands</Text>
-            <TouchableOpacity 
+            <Text style={styles.headerTitle}>{t('commands.title', { defaultValue: 'Device Commands' })}</Text>
+            <TouchableOpacity
               style={[styles.bulkButton, bulkMode && styles.activeBulkButton]}
               onPress={() => {
                 setBulkMode(!bulkMode);
@@ -806,7 +820,7 @@ const CommandsScreen = () => {
             <Icon name="search" size={20} color="#999" />
             <TextInput
               style={styles.searchInput}
-              placeholder="Search by name, serial, IMEI..."
+              placeholder={t('commands.search_placeholder', { defaultValue: 'Search by name, serial, IMEI...' })}
               placeholderTextColor="#999"
               value={searchQuery}
               onChangeText={setSearchQuery}
@@ -818,43 +832,43 @@ const CommandsScreen = () => {
             )}
           </View>
 
-          <ScrollView 
-            horizontal 
-            showsHorizontalScrollIndicator={false} 
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.statsContainer}
           >
-            <TouchableOpacity 
+            <TouchableOpacity
               style={[styles.statCard, filter === 'all' && styles.activeStatCard]}
               onPress={() => setFilter('all')}
             >
               <Text style={styles.statNumber}>{stats.total}</Text>
-              <Text style={styles.statLabel}>All Devices</Text>
+              <Text style={styles.statLabel}>{t('commands.stats.all_devices', { defaultValue: 'All Devices' })}</Text>
             </TouchableOpacity>
-            
-            <TouchableOpacity 
+
+            <TouchableOpacity
               style={[styles.statCard, filter === 'online' && styles.activeStatCard]}
               onPress={() => setFilter('online')}
             >
               <Text style={[styles.statNumber, { color: '#4CAF50' }]}>{stats.online}</Text>
-              <Text style={styles.statLabel}>Online</Text>
+              <Text style={styles.statLabel}>{t('commands.stats.online', { defaultValue: 'Online' })}</Text>
             </TouchableOpacity>
-            
-            <TouchableOpacity 
+
+            <TouchableOpacity
               style={[styles.statCard, filter === 'offline' && styles.activeStatCard]}
               onPress={() => setFilter('offline')}
             >
               <Text style={[styles.statNumber, { color: '#FF6B6B' }]}>{stats.offline}</Text>
-              <Text style={styles.statLabel}>Offline</Text>
+              <Text style={styles.statLabel}>{t('commands.stats.offline', { defaultValue: 'Offline' })}</Text>
             </TouchableOpacity>
           </ScrollView>
-          
+
           {bulkMode && selectedDevices.length > 0 && (
-            <TouchableOpacity 
+            <TouchableOpacity
               style={styles.bulkSendButton}
               onPress={sendBulkCommand}
             >
               <Icon name="send" size={20} color="#FFFFFF" />
-              <Text style={styles.bulkSendText}>Send to {selectedDevices.length} device(s)</Text>
+              <Text style={styles.bulkSendText}>{t('commands.bulk.send_to', { defaultValue: 'Send to {{count}} device(s)', count: selectedDevices.length }).replace('{{count}}', selectedDevices.length.toString())}</Text>
             </TouchableOpacity>
           )}
         </View>
@@ -868,7 +882,7 @@ const CommandsScreen = () => {
         <StatusBar barStyle="dark-content" backgroundColor="#F8F9FA" />
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#FFA500" />
-          <Text style={styles.loadingText}>Loading devices...</Text>
+          <Text style={styles.loadingText}>{t('commands.loading', { defaultValue: 'Loading devices...' })}</Text>
         </View>
       </SafeAreaView>
     );
@@ -877,15 +891,15 @@ const CommandsScreen = () => {
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#F8F9FA" />
-      
+
       <FlatList
         data={getFilteredDevices()}
         keyExtractor={item => item.deviceId.toString()}
         renderItem={renderDevice}
         ListHeaderComponent={renderHeader}
         refreshControl={
-          <RefreshControl 
-            refreshing={refreshing} 
+          <RefreshControl
+            refreshing={refreshing}
             onRefresh={onRefresh}
             tintColor="#FFA500"
             colors={['#FFA500']}
@@ -896,13 +910,13 @@ const CommandsScreen = () => {
         ListEmptyComponent={
           <Animatable.View animation="fadeIn" duration={500} style={styles.emptyContainer}>
             <Icon name="devices" size={80} color="#CCC" />
-            <Text style={styles.emptyTitle}>No devices found</Text>
+            <Text style={styles.emptyTitle}>{t('commands.empty.title', { defaultValue: 'No devices found' })}</Text>
             <Text style={styles.emptyText}>
-              {searchQuery 
-                ? 'Try adjusting your search' 
+              {searchQuery
+                ? t('commands.empty.adjust_search', { defaultValue: 'Try adjusting your search' })
                 : filter !== 'all'
-                ? `No ${filter} devices available`
-                : 'No devices have been added yet'}
+                ? t('commands.empty.filter', { defaultValue: 'No {{filter}} devices available' }).replace('{{filter}}', filter)
+                : t('commands.empty.no_devices', { defaultValue: 'No devices have been added yet' })}
             </Text>
           </Animatable.View>
         }

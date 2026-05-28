@@ -18,10 +18,12 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import serverUrl from '../config'; 
 import Snackbar from 'react-native-snackbar';
 import * as Animatable from 'react-native-animatable';
+import { useTranslation } from 'react-i18next';
 
 const { width, height } = Dimensions.get('window');
 
 const ForgotPassword = () => {
+  const { t } = useTranslation();
   const navigation = useNavigation<NativeStackNavigationProp<any>>();
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
@@ -36,84 +38,80 @@ const ForgotPassword = () => {
     }, [])
   );
 
-
-
-
-const handleReset = async () => {
-  if (!email.trim()) {
-    console.warn('❌ Email is missing');
-    Snackbar.show({
-      text: 'Email is required',
-      duration: 3000,
-      backgroundColor: '#FF6B6B',
-    });
-    return;
-  }
-
-  setLoading(true);
-  try {
-    const response = await fetch(`${serverUrl}/api/auth/forgotpassword?userEmail=${encodeURIComponent(email)}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    });
-
-    console.log('📥 Password reset response status:', response.status);
-
-    if (response.ok) {
-      let data = null;
-      try {
-        data = await response.json();
-      } catch {
-        // Handle if no JSON in response
-      }
-
+  const handleReset = async () => {
+    if (!email.trim()) {
+      console.warn('❌ Email is missing');
       Snackbar.show({
-        text: 'Password reset successful!',
+        text: t('forgot_password.errors.email_required', { defaultValue: 'Email is required' }),
         duration: 3000,
-        backgroundColor: '#4ECDC4',
+        backgroundColor: '#FF6B6B',
+      });
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const response = await fetch(`${serverUrl}/api/auth/forgotpassword?userEmail=${encodeURIComponent(email)}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
       });
 
-      setLoading(false);
+      console.log('📥 Password reset response status:', response.status);
 
-      console.log('🔁 Redirecting to Login screen...');
-      navigation.reset({
-        index: 0,
-        routes: [{ name: 'Login' }],
-      });
+      if (response.ok) {
+        let data = null;
+        try {
+          data = await response.json();
+        } catch {
+          // Handle if no JSON in response
+        }
 
-    } else {
-      let errorData = {};
-      try {
-        errorData = await response.json();
-      } catch {
-        // fallback if no JSON error response
+        Snackbar.show({
+          text: t('forgot_password.success.password_reset', { defaultValue: 'Password reset successful!' }),
+          duration: 3000,
+          backgroundColor: '#4ECDC4',
+        });
+
+        setLoading(false);
+
+        console.log('🔁 Redirecting to Login screen...');
+        navigation.reset({
+          index: 0,
+          routes: [{ name: 'Login' }],
+        });
+
+      } else {
+        let errorData = {};
+        try {
+          errorData = await response.json();
+        } catch {
+          // fallback if no JSON error response
+        }
+
+        console.error('❌ Password reset failed:', errorData);
+
+        Snackbar.show({
+          text: t('forgot_password.errors.invalid_email', { defaultValue: 'Invalid Email.' }),
+          duration: 3000,
+          backgroundColor: '#FF6B6B',
+        });
+
+        setLoading(false);
       }
-      
-      console.error('❌ Password reset failed:', errorData);
+    } catch (error) {
+      console.error('🛑 Network or server error during password reset:', error);
 
       Snackbar.show({
-        text: 'Invalid Email.',
+        text: t('forgot_password.errors.network_error', { defaultValue: 'Something went wrong. Please try again later.' }),
         duration: 3000,
         backgroundColor: '#FF6B6B',
       });
 
       setLoading(false);
     }
-  } catch (error) {
-    console.error('🛑 Network or server error during password reset:', error);
-
-    Snackbar.show({
-      text: 'Something went wrong. Please try again later.',
-      duration: 3000,
-      backgroundColor: '#FF6B6B',
-    });
-
-    setLoading(false);
-  }
-};
-
+  };
 
   if (!isVisible) {
     return (
@@ -124,77 +122,77 @@ const handleReset = async () => {
   }
 
   return (
-    <KeyboardAvoidingView 
-      style={styles.container} 
+    <KeyboardAvoidingView
+      style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
       <StatusBar barStyle="dark-content" backgroundColor="#fff" />
-      
-      <ScrollView 
+
+      <ScrollView
         contentContainerStyle={styles.scrollContainer}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
         {/* Header Section */}
-        <Animatable.View 
-          animation="fadeInDown" 
+        <Animatable.View
+          animation="fadeInDown"
           duration={800}
           style={styles.headerSection}
         >
           <View style={styles.logoContainer}>
-            <Image 
-              source={require('../assets/tiplogo.jpeg')} 
-              style={styles.logo} 
+            <Image
+              source={require('../assets/tiplogo.jpeg')}
+              style={styles.logo}
               resizeMode="contain"
             />
             <View style={styles.logoGlow} />
           </View>
-          
-          <Text style={styles.welcomeText}>Welcome Back</Text>
-          <Text style={styles.subtitle}>Sign in to continue to Golden Tie</Text>
+
+          <Text style={styles.welcomeText}>{t('forgot_password.welcome_back', { defaultValue: 'Welcome Back' })}</Text>
+          <Text style={styles.subtitle}>{t('forgot_password.subtitle', { defaultValue: 'Reset your password to continue' })}</Text>
         </Animatable.View>
 
         {/* Form Section */}
-        <Animatable.View 
-          animation="fadeInUp" 
+        <Animatable.View
+          animation="fadeInUp"
           duration={800}
           delay={200}
           style={styles.formSection}
         >
           {/* Email Input */}
-          <Animatable.View 
+          <Animatable.View
             animation="fadeInUp"
             delay={400}
             style={styles.inputContainer}
           >
-            <Text style={styles.inputLabel}>Email Address</Text>
+            <Text style={styles.inputLabel}>{t('forgot_password.labels.email', { defaultValue: 'Email Address' })}</Text>
             <View style={[
-              styles.inputWrapper, 
+              styles.inputWrapper,
               emailFocused && styles.inputWrapperFocused,
               email && styles.inputWrapperFilled
             ]}>
               <TextInput
                 style={styles.input}
-                placeholder="Enter your email"
+                placeholder={t('forgot_password.placeholders.email', { defaultValue: 'Enter your email' })}
                 placeholderTextColor="#A0A0A0"
                 keyboardType="email-address"
                 value={email}
                 autoCapitalize="none"
                 onChangeText={setEmail}
+                onFocus={() => setEmailFocused(true)}
+                onBlur={() => setEmailFocused(false)}
               />
             </View>
           </Animatable.View>
 
-        
-
-          {/* Login Button */}
+          {/* Submit Button */}
           <Animatable.View animation="fadeInUp" delay={600}>
-            <TouchableOpacity 
+            <TouchableOpacity
               style={[
-                styles.loginButton, 
+                styles.loginButton,
                 loading && styles.loginButtonDisabled,
                 (email) && styles.loginButtonActive
-              ]} 
+              ]}
               onPress={handleReset}
               disabled={loading}
               activeOpacity={0.8}
@@ -202,15 +200,13 @@ const handleReset = async () => {
               {loading ? (
                 <View style={styles.loadingContainer}>
                   <ActivityIndicator color="#fff" size="small" />
-                  <Text style={styles.loadingText}>Submitting...</Text>
+                  <Text style={styles.loadingText}>{t('forgot_password.loading', { defaultValue: 'Submitting...' })}</Text>
                 </View>
               ) : (
-                <Text style={styles.loginButtonText}>Submit</Text>
+                <Text style={styles.loginButtonText}>{t('forgot_password.buttons.submit', { defaultValue: 'Submit' })}</Text>
               )}
             </TouchableOpacity>
           </Animatable.View>
-
-
 
         </Animatable.View>
       </ScrollView>
@@ -326,7 +322,7 @@ const styles = StyleSheet.create({
     color: '#1A1A1A',
     fontWeight: '400',
   },
- eyeIcon: {
+  eyeIcon: {
     position: 'absolute',
     right: 16,
     top: 8,
@@ -425,15 +421,13 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     letterSpacing: 0.5,
   },
- 
   forgotpasContainer: {
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
     marginTop: 32,
   },
-
-   registerContainer: {
+  registerContainer: {
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
@@ -444,20 +438,17 @@ const styles = StyleSheet.create({
     color: '#666666',
     fontWeight: '400',
   },
-
-   forgotpass: {
+  forgotpass: {
     fontSize: 15,
     color: '#000',
     fontWeight: '400',
   },
-
   registerLink: {
     fontSize: 15,
     color: '#FFD700',
     fontWeight: '600',
   },
-
-   forgotpassLink: {
+  forgotpassLink: {
     fontSize: 15,
     color: '#000',
     fontWeight: '500',

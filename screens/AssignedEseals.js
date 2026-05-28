@@ -21,10 +21,12 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import serverUrl from '../config';
+import { useTranslation } from 'react-i18next';
 
 const { width } = Dimensions.get('window');
 
 const AssignedEseals = () => {
+  const { t } = useTranslation();
   const navigation = useNavigation();
   const [devices, setDevices] = useState([]);
   const [filteredDevices, setFilteredDevices] = useState([]);
@@ -55,7 +57,7 @@ const AssignedEseals = () => {
       const token = await AsyncStorage.getItem('accessToken');
       if (!token) {
         Snackbar.show({
-          text: 'Authentication error. Please log in again.',
+          text: t('assigned_eseals.errors.auth_error', { defaultValue: 'Authentication error. Please log in again.' }),
           duration: 3000,
           backgroundColor: '#FF6B6B',
         });
@@ -73,7 +75,7 @@ const AssignedEseals = () => {
     } catch (error) {
       console.error('Failed to fetch devices:', error);
       Snackbar.show({
-        text: 'Failed to load assigned eseals',
+        text: t('assigned_eseals.errors.load_failed', { defaultValue: 'Failed to load assigned eseals' }),
         duration: 3000,
         backgroundColor: '#FF6B6B',
       });
@@ -129,7 +131,9 @@ const AssignedEseals = () => {
 
   const renderDeviceCard = ({ item }) => {
     const statusColor = item.isOnline ? '#4CAF50' : '#9E9E9E';
-    const statusText = item.isOnline ? 'Online' : 'Offline';
+    const statusText = item.isOnline
+      ? t('assigned_eseals.status.online', { defaultValue: 'Online' })
+      : t('assigned_eseals.status.offline', { defaultValue: 'Offline' });
 
     return (
       <TouchableOpacity
@@ -143,7 +147,7 @@ const AssignedEseals = () => {
         <View style={styles.cardHeader}>
           <View style={styles.deviceInfo}>
             <Icon name="devices" size={24} color="#FFA500" />
-            <Text style={styles.deviceName}>{item.name || 'N/A'}</Text>
+            <Text style={styles.deviceName}>{item.name || t('assigned_eseals.na', { defaultValue: 'N/A' })}</Text>
           </View>
           <View style={[styles.statusBadge, { backgroundColor: statusColor + '20' }]}>
             <Text style={[styles.statusText, { color: statusColor }]}>{statusText}</Text>
@@ -153,16 +157,16 @@ const AssignedEseals = () => {
         <View style={styles.cardDetails}>
           <View style={styles.detailRow}>
             <Icon name="confirmation-number" size={16} color="#666" />
-            <Text style={styles.detailText}>Serial: {item.serialNo || 'N/A'}</Text>
+            <Text style={styles.detailText}>{t('assigned_eseals.serial_label', { defaultValue: 'Serial' })}: {item.serialNo || t('assigned_eseals.na', { defaultValue: 'N/A' })}</Text>
           </View>
           <View style={styles.detailRow}>
             <Icon name="group" size={16} color="#666" />
-            <Text style={styles.detailText}>Group: {item.groupName || 'N/A'}</Text>
+            <Text style={styles.detailText}>{t('assigned_eseals.group_label', { defaultValue: 'Group' })}: {item.groupName || t('assigned_eseals.na', { defaultValue: 'N/A' })}</Text>
           </View>
           <View style={styles.detailRow}>
             <Icon name="security" size={16} color="#666" />
             <Text style={styles.detailText}>
-              Warranty: {item.warrantyStatus || 'N/A'} ({item.warrantyStartDate} - {item.warrantyEndDate})
+              {t('assigned_eseals.warranty_label', { defaultValue: 'Warranty' })}: {item.warrantyStatus || t('assigned_eseals.na', { defaultValue: 'N/A' })} ({item.warrantyStartDate} - {item.warrantyEndDate})
             </Text>
           </View>
         </View>
@@ -178,21 +182,27 @@ const AssignedEseals = () => {
           style={[styles.filterChip, statusFilter === 'all' && styles.activeFilter]}
           onPress={() => setStatusFilter('all')}
         >
-          <Text style={[styles.filterText, statusFilter === 'all' && styles.activeFilterText]}>All</Text>
+          <Text style={[styles.filterText, statusFilter === 'all' && styles.activeFilterText]}>
+            {t('assigned_eseals.filters.all', { defaultValue: 'All' })}
+          </Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={[styles.filterChip, statusFilter === 'online' && styles.activeFilter]}
           onPress={() => setStatusFilter('online')}
         >
           <Icon name="wifi" size={16} color={statusFilter === 'online' ? '#FFA500' : '#666'} />
-          <Text style={[styles.filterText, statusFilter === 'online' && styles.activeFilterText]}>Online</Text>
+          <Text style={[styles.filterText, statusFilter === 'online' && styles.activeFilterText]}>
+            {t('assigned_eseals.filters.online', { defaultValue: 'Online' })}
+          </Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={[styles.filterChip, statusFilter === 'offline' && styles.activeFilter]}
           onPress={() => setStatusFilter('offline')}
         >
           <Icon name="wifi-off" size={16} color={statusFilter === 'offline' ? '#FFA500' : '#666'} />
-          <Text style={[styles.filterText, statusFilter === 'offline' && styles.activeFilterText]}>Offline</Text>
+          <Text style={[styles.filterText, statusFilter === 'offline' && styles.activeFilterText]}>
+            {t('assigned_eseals.filters.offline', { defaultValue: 'Offline' })}
+          </Text>
         </TouchableOpacity>
 
         {/* Warranty Chips */}
@@ -201,20 +211,24 @@ const AssignedEseals = () => {
           onPress={() => setWarrantyFilter('active')}
         >
           <Icon name="verified" size={16} color={warrantyFilter === 'active' ? '#FFA500' : '#666'} />
-          <Text style={[styles.filterText, warrantyFilter === 'active' && styles.activeFilterText]}>Warranty Active</Text>
+          <Text style={[styles.filterText, warrantyFilter === 'active' && styles.activeFilterText]}>
+            {t('assigned_eseals.filters.warranty_active', { defaultValue: 'Warranty Active' })}
+          </Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={[styles.filterChip, warrantyFilter === 'expired' && styles.activeFilter]}
           onPress={() => setWarrantyFilter('expired')}
         >
           <Icon name="warning" size={16} color={warrantyFilter === 'expired' ? '#FFA500' : '#666'} />
-          <Text style={[styles.filterText, warrantyFilter === 'expired' && styles.activeFilterText]}>Warranty Expired</Text>
+          <Text style={[styles.filterText, warrantyFilter === 'expired' && styles.activeFilterText]}>
+            {t('assigned_eseals.filters.warranty_expired', { defaultValue: 'Warranty Expired' })}
+          </Text>
         </TouchableOpacity>
 
         {/* Clear filters button */}
         <TouchableOpacity style={styles.clearChip} onPress={clearFilters}>
           <Icon name="clear" size={16} color="#FFA500" />
-          <Text style={styles.clearText}>Clear</Text>
+          <Text style={styles.clearText}>{t('assigned_eseals.filters.clear', { defaultValue: 'Clear' })}</Text>
         </TouchableOpacity>
       </ScrollView>
     </View>
@@ -226,20 +240,22 @@ const AssignedEseals = () => {
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
           <Icon name="arrow-back" size={24} color="#1A1A1A" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Assigned E-Seals</Text>
+        <Text style={styles.headerTitle}>{t('assigned_eseals.title', { defaultValue: 'Assigned E-Seals' })}</Text>
         <View style={{ width: 40 }} />
       </View>
 
       <View style={styles.statsCard}>
         <Icon name="inventory" size={24} color="#FFA500" />
-        <Text style={styles.statsText}>Available Count: {availableCount}</Text>
+        <Text style={styles.statsText}>
+          {t('assigned_eseals.available_count', { defaultValue: 'Available Count' })}: {availableCount}
+        </Text>
       </View>
 
       <View style={styles.searchContainer}>
         <Icon name="search" size={20} color="#999" style={styles.searchIcon} />
         <TextInput
           style={styles.searchInput}
-          placeholder="Search by name or serial"
+          placeholder={t('assigned_eseals.search_placeholder', { defaultValue: 'Search by name or serial' })}
           placeholderTextColor="#999"
           value={searchQuery}
           onChangeText={setSearchQuery}
@@ -261,7 +277,7 @@ const AssignedEseals = () => {
         <StatusBar barStyle="dark-content" backgroundColor="#F8F9FA" />
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#FFA500" />
-          <Text style={styles.loadingText}>Loading assigned eseals...</Text>
+          <Text style={styles.loadingText}>{t('assigned_eseals.loading', { defaultValue: 'Loading assigned eseals...' })}</Text>
         </View>
       </SafeAreaView>
     );
@@ -284,11 +300,11 @@ const AssignedEseals = () => {
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
             <Icon name="devices-off" size={64} color="#ccc" />
-            <Text style={styles.emptyTitle}>No devices found</Text>
+            <Text style={styles.emptyTitle}>{t('assigned_eseals.empty.title', { defaultValue: 'No devices found' })}</Text>
             <Text style={styles.emptyText}>
               {searchQuery || statusFilter !== 'all' || warrantyFilter !== 'all'
-                ? 'Try adjusting your filters'
-                : 'No assigned eseals available'}
+                ? t('assigned_eseals.empty.adjust_filters', { defaultValue: 'Try adjusting your filters' })
+                : t('assigned_eseals.empty.no_devices', { defaultValue: 'No assigned eseals available' })}
             </Text>
           </View>
         }
@@ -304,7 +320,7 @@ const AssignedEseals = () => {
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Device Details</Text>
+              <Text style={styles.modalTitle}>{t('assigned_eseals.modal.title', { defaultValue: 'Device Details' })}</Text>
               <TouchableOpacity onPress={() => setModalVisible(false)} style={styles.closeButton}>
                 <Icon name="close" size={24} color="#999" />
               </TouchableOpacity>
@@ -313,50 +329,52 @@ const AssignedEseals = () => {
               <>
                 <ScrollView style={styles.modalBody}>
                   <View style={styles.modalDetailRow}>
-                    <Text style={styles.modalLabel}>Device Name:</Text>
-                    <Text style={styles.modalValue}>{selectedDevice.name || 'N/A'}</Text>
+                    <Text style={styles.modalLabel}>{t('assigned_eseals.modal.device_name', { defaultValue: 'Device Name' })}:</Text>
+                    <Text style={styles.modalValue}>{selectedDevice.name || t('assigned_eseals.na', { defaultValue: 'N/A' })}</Text>
                   </View>
                   <View style={styles.modalDetailRow}>
-                    <Text style={styles.modalLabel}>Serial Number:</Text>
-                    <Text style={styles.modalValue}>{selectedDevice.serialNo || 'N/A'}</Text>
+                    <Text style={styles.modalLabel}>{t('assigned_eseals.modal.serial_number', { defaultValue: 'Serial Number' })}:</Text>
+                    <Text style={styles.modalValue}>{selectedDevice.serialNo || t('assigned_eseals.na', { defaultValue: 'N/A' })}</Text>
                   </View>
                   <View style={styles.modalDetailRow}>
-                    <Text style={styles.modalLabel}>IMEI:</Text>
-                    <Text style={styles.modalValue}>{selectedDevice.imei || 'N/A'}</Text>
+                    <Text style={styles.modalLabel}>{t('assigned_eseals.modal.imei', { defaultValue: 'IMEI' })}:</Text>
+                    <Text style={styles.modalValue}>{selectedDevice.imei || t('assigned_eseals.na', { defaultValue: 'N/A' })}</Text>
                   </View>
                   <View style={styles.modalDetailRow}>
-                    <Text style={styles.modalLabel}>Model:</Text>
+                    <Text style={styles.modalLabel}>{t('assigned_eseals.modal.model', { defaultValue: 'Model' })}:</Text>
                     <Text style={styles.modalValue}>
                       {selectedDevice.make} {selectedDevice.model}
                     </Text>
                   </View>
                   <View style={styles.modalDetailRow}>
-                    <Text style={styles.modalLabel}>Year of Manufacture:</Text>
-                    <Text style={styles.modalValue}>{selectedDevice.yearOfManufacture || 'N/A'}</Text>
+                    <Text style={styles.modalLabel}>{t('assigned_eseals.modal.year_of_manufacture', { defaultValue: 'Year of Manufacture' })}:</Text>
+                    <Text style={styles.modalValue}>{selectedDevice.yearOfManufacture || t('assigned_eseals.na', { defaultValue: 'N/A' })}</Text>
                   </View>
                   <View style={styles.modalDetailRow}>
-                    <Text style={styles.modalLabel}>Group:</Text>
-                    <Text style={styles.modalValue}>{selectedDevice.groupName || 'N/A'}</Text>
+                    <Text style={styles.modalLabel}>{t('assigned_eseals.modal.group', { defaultValue: 'Group' })}:</Text>
+                    <Text style={styles.modalValue}>{selectedDevice.groupName || t('assigned_eseals.na', { defaultValue: 'N/A' })}</Text>
                   </View>
                   <View style={styles.modalDetailRow}>
-                    <Text style={styles.modalLabel}>Firmware Version:</Text>
-                    <Text style={styles.modalValue}>{selectedDevice.firmwareVersion || 'N/A'}</Text>
+                    <Text style={styles.modalLabel}>{t('assigned_eseals.modal.firmware_version', { defaultValue: 'Firmware Version' })}:</Text>
+                    <Text style={styles.modalValue}>{selectedDevice.firmwareVersion || t('assigned_eseals.na', { defaultValue: 'N/A' })}</Text>
                   </View>
                   <View style={styles.modalDetailRow}>
-                    <Text style={styles.modalLabel}>Warranty:</Text>
+                    <Text style={styles.modalLabel}>{t('assigned_eseals.modal.warranty', { defaultValue: 'Warranty' })}:</Text>
                     <Text style={styles.modalValue}>
-                      {selectedDevice.warrantyStatus || 'N/A'} ({selectedDevice.warrantyStartDate} - {selectedDevice.warrantyEndDate})
+                      {selectedDevice.warrantyStatus || t('assigned_eseals.na', { defaultValue: 'N/A' })} ({selectedDevice.warrantyStartDate} - {selectedDevice.warrantyEndDate})
                     </Text>
                   </View>
                   <View style={styles.modalDetailRow}>
-                    <Text style={styles.modalLabel}>Status:</Text>
+                    <Text style={styles.modalLabel}>{t('assigned_eseals.modal.status', { defaultValue: 'Status' })}:</Text>
                     <Text style={[styles.modalValue, { color: selectedDevice.isOnline ? '#4CAF50' : '#9E9E9E' }]}>
-                      {selectedDevice.isOnline ? 'Online' : 'Offline'}
+                      {selectedDevice.isOnline
+                        ? t('assigned_eseals.status.online', { defaultValue: 'Online' })
+                        : t('assigned_eseals.status.offline', { defaultValue: 'Offline' })}
                     </Text>
                   </View>
                 </ScrollView>
                 <TouchableOpacity style={styles.closeModalButton} onPress={() => setModalVisible(false)}>
-                  <Text style={styles.closeModalButtonText}>Close</Text>
+                  <Text style={styles.closeModalButtonText}>{t('assigned_eseals.modal.close', { defaultValue: 'Close' })}</Text>
                 </TouchableOpacity>
               </>
             )}

@@ -20,10 +20,12 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import Snackbar from 'react-native-snackbar';
+import { useTranslation } from 'react-i18next';
 
 const serverUrl = 'https://demo2.bsl.co.ke/api/v1';
 
 const EsealsReplacement = () => {
+  const { t } = useTranslation();
   const navigation = useNavigation();
   const [requests, setRequests] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -58,7 +60,7 @@ const EsealsReplacement = () => {
     } catch (error) {
       console.error('Fetch seal replacement error:', error);
       Snackbar.show({
-        text: error.response?.data?.message || 'Failed to load requests',
+        text: error.response?.data?.message || t('eseals_replacement.errors.load_failed', { defaultValue: 'Failed to load requests' }),
         duration: 3000,
         backgroundColor: '#FF6B6B',
       });
@@ -83,19 +85,19 @@ const EsealsReplacement = () => {
   const handleSubmitRequest = async () => {
     // Validation
     if (!formData.ticketId || isNaN(parseInt(formData.ticketId))) {
-      Snackbar.show({ text: 'Valid Ticket ID is required', duration: 3000, backgroundColor: '#FF6B6B' });
+      Snackbar.show({ text: t('eseals_replacement.errors.valid_ticket_id', { defaultValue: 'Valid Ticket ID is required' }), duration: 3000, backgroundColor: '#FF6B6B' });
       return;
     }
     if (!formData.newSealNumber.trim()) {
-      Snackbar.show({ text: 'New seal number is required', duration: 3000, backgroundColor: '#FF6B6B' });
+      Snackbar.show({ text: t('eseals_replacement.errors.new_seal_required', { defaultValue: 'New seal number is required' }), duration: 3000, backgroundColor: '#FF6B6B' });
       return;
     }
     if (!formData.reason.trim()) {
-      Snackbar.show({ text: 'Please provide a reason', duration: 3000, backgroundColor: '#FF6B6B' });
+      Snackbar.show({ text: t('eseals_replacement.errors.reason_required', { defaultValue: 'Please provide a reason' }), duration: 3000, backgroundColor: '#FF6B6B' });
       return;
     }
     if (!formData.oldDeviceConditionId || isNaN(parseInt(formData.oldDeviceConditionId))) {
-      Snackbar.show({ text: 'Valid old device condition ID is required', duration: 3000, backgroundColor: '#FF6B6B' });
+      Snackbar.show({ text: t('eseals_replacement.errors.condition_id_required', { defaultValue: 'Valid old device condition ID is required' }), duration: 3000, backgroundColor: '#FF6B6B' });
       return;
     }
 
@@ -120,7 +122,7 @@ const EsealsReplacement = () => {
 
       if (response.status === 200 || response.status === 201) {
         Snackbar.show({
-          text: 'Seal replacement request submitted!',
+          text: t('eseals_replacement.success.submitted', { defaultValue: 'Seal replacement request submitted!' }),
           duration: 3000,
           backgroundColor: '#4CAF50',
         });
@@ -135,7 +137,7 @@ const EsealsReplacement = () => {
     } catch (error) {
       console.error('Submit error:', error);
       Snackbar.show({
-        text: error.response?.data?.message || 'Failed to submit request',
+        text: error.response?.data?.message || t('eseals_replacement.errors.submit_failed', { defaultValue: 'Failed to submit request' }),
         duration: 3000,
         backgroundColor: '#FF6B6B',
       });
@@ -147,15 +149,15 @@ const EsealsReplacement = () => {
   const getStatusStyle = (status) => {
     switch (status?.toUpperCase()) {
       case 'PENDING':
-        return { bg: '#FFF3E0', text: '#FF9800', icon: 'pending' };
+        return { bg: '#FFF3E0', text: '#FF9800', icon: 'pending', label: t('eseals_replacement.status.pending', { defaultValue: 'PENDING' }) };
       case 'APPROVED':
-        return { bg: '#E8F5E9', text: '#4CAF50', icon: 'check-circle' };
+        return { bg: '#E8F5E9', text: '#4CAF50', icon: 'check-circle', label: t('eseals_replacement.status.approved', { defaultValue: 'APPROVED' }) };
       case 'REJECTED':
-        return { bg: '#FFEBEE', text: '#F44336', icon: 'cancel' };
+        return { bg: '#FFEBEE', text: '#F44336', icon: 'cancel', label: t('eseals_replacement.status.rejected', { defaultValue: 'REJECTED' }) };
       case 'IN_PROGRESS':
-        return { bg: '#E3F2FD', text: '#2196F3', icon: 'autorenew' };
+        return { bg: '#E3F2FD', text: '#2196F3', icon: 'autorenew', label: t('eseals_replacement.status.in_progress', { defaultValue: 'IN_PROGRESS' }) };
       default:
-        return { bg: '#F5F5F5', text: '#9E9E9E', icon: 'help' };
+        return { bg: '#F5F5F5', text: '#9E9E9E', icon: 'help', label: status || t('eseals_replacement.status.unknown', { defaultValue: 'UNKNOWN' }) };
     }
   };
 
@@ -206,7 +208,7 @@ const EsealsReplacement = () => {
           <View style={[styles.statusBadge, { backgroundColor: statusStyle.bg }]}>
             <Icon name={statusStyle.icon} size={14} color={statusStyle.text} />
             <Text style={[styles.statusText, { color: statusStyle.text }]}>
-              {item.status || 'UNKNOWN'}
+              {statusStyle.label}
             </Text>
           </View>
           <Text style={styles.date}>{formatDate(item.createdAt)}</Text>
@@ -219,11 +221,11 @@ const EsealsReplacement = () => {
         {/* Device and Truck Info */}
         <View style={styles.infoRow}>
           <Icon name="devices" size={14} color="#888" />
-          <Text style={styles.infoText}>Device: {item.deviceSerialNumber}</Text>
+          <Text style={styles.infoText}>{t('eseals_replacement.device_label', { defaultValue: 'Device' })}: {item.deviceSerialNumber}</Text>
         </View>
         <View style={styles.infoRow}>
           <Icon name="local-shipping" size={14} color="#888" />
-          <Text style={styles.infoText}>Truck: {item.truckRegistrationNumber}</Text>
+          <Text style={styles.infoText}>{t('eseals_replacement.truck_label', { defaultValue: 'Truck' })}: {item.truckRegistrationNumber}</Text>
         </View>
 
         {/* Seal Replacement Info */}
@@ -231,19 +233,19 @@ const EsealsReplacement = () => {
           <View style={styles.sealRequestContainer}>
             <View style={styles.sealBadge}>
               <Icon name="enhanced-encryption" size={14} color="#FF9800" />
-              <Text style={styles.sealBadgeText}>Seal Replacement Requested</Text>
+              <Text style={styles.sealBadgeText}>{t('eseals_replacement.seal_requested', { defaultValue: 'Seal Replacement Requested' })}</Text>
             </View>
 
             {newSealNumber && (
               <View style={styles.infoRow}>
                 <Icon name="vpn-key" size={14} color="#4CAF50" />
-                <Text style={styles.infoText}>New Seal: {newSealNumber}</Text>
+                <Text style={styles.infoText}>{t('eseals_replacement.new_seal_label', { defaultValue: 'New Seal' })}: {newSealNumber}</Text>
               </View>
             )}
 
             {sealReason && (
               <View style={styles.reasonContainer}>
-                <Text style={styles.reasonLabel}>Reason:</Text>
+                <Text style={styles.reasonLabel}>{t('eseals_replacement.reason_label', { defaultValue: 'Reason' })}:</Text>
                 <Text style={styles.reasonText}>{sealReason}</Text>
               </View>
             )}
@@ -251,14 +253,14 @@ const EsealsReplacement = () => {
             {isApproved && (
               <View style={styles.approvedRow}>
                 <Icon name="verified-user" size={16} color="#4CAF50" />
-                <Text style={styles.approvedText}>Approved</Text>
+                <Text style={styles.approvedText}>{t('eseals_replacement.approved_label', { defaultValue: 'Approved' })}</Text>
               </View>
             )}
 
             {isRejected && (
               <View style={styles.rejectionRow}>
                 <Icon name="error-outline" size={16} color="#F44336" />
-                <Text style={styles.rejectionText}>Rejected</Text>
+                <Text style={styles.rejectionText}>{t('eseals_replacement.rejected_label', { defaultValue: 'Rejected' })}</Text>
               </View>
             )}
           </View>
@@ -283,15 +285,15 @@ const EsealsReplacement = () => {
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
           <Icon name="arrow-back" size={24} color="#1A1A1A" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Seal Replacement Requests</Text>
+        <Text style={styles.headerTitle}>{t('eseals_replacement.title', { defaultValue: 'Seal Replacement Requests' })}</Text>
         <View style={{ width: 40 }} />
       </View>
 
       {requests.length === 0 ? (
         <View style={styles.emptyContainer}>
           <Icon name="inventory" size={64} color="#CCCCCC" />
-          <Text style={styles.emptyText}>No replacement requests</Text>
-          <Text style={styles.emptySubtext}>Tap + to request a seal replacement</Text>
+          <Text style={styles.emptyText}>{t('eseals_replacement.empty.title', { defaultValue: 'No replacement requests' })}</Text>
+          <Text style={styles.emptySubtext}>{t('eseals_replacement.empty.subtext', { defaultValue: 'Tap + to request a seal replacement' })}</Text>
         </View>
       ) : (
         <FlatList
@@ -324,7 +326,7 @@ const EsealsReplacement = () => {
         >
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>New Seal Replacement</Text>
+              <Text style={styles.modalTitle}>{t('eseals_replacement.modal.title', { defaultValue: 'New Seal Replacement' })}</Text>
               <TouchableOpacity onPress={() => setModalVisible(false)}>
                 <Icon name="close" size={24} color="#999" />
               </TouchableOpacity>
@@ -332,10 +334,10 @@ const EsealsReplacement = () => {
 
             <ScrollView showsVerticalScrollIndicator={false}>
               <View style={styles.inputGroup}>
-                <Text style={styles.label}>Ticket ID *</Text>
+                <Text style={styles.label}>{t('eseals_replacement.form.ticket_id', { defaultValue: 'Ticket ID' })} *</Text>
                 <TextInput
                   style={styles.input}
-                  placeholder="Enter ticket ID"
+                  placeholder={t('eseals_replacement.placeholders.ticket_id', { defaultValue: 'Enter ticket ID' })}
                   keyboardType="numeric"
                   value={formData.ticketId}
                   onChangeText={(text) => setFormData({ ...formData, ticketId: text })}
@@ -343,20 +345,20 @@ const EsealsReplacement = () => {
               </View>
 
               <View style={styles.inputGroup}>
-                <Text style={styles.label}>New Seal Number *</Text>
+                <Text style={styles.label}>{t('eseals_replacement.form.new_seal_number', { defaultValue: 'New Seal Number' })} *</Text>
                 <TextInput
                   style={styles.input}
-                  placeholder="Enter new seal number"
+                  placeholder={t('eseals_replacement.placeholders.new_seal_number', { defaultValue: 'Enter new seal number' })}
                   value={formData.newSealNumber}
                   onChangeText={(text) => setFormData({ ...formData, newSealNumber: text })}
                 />
               </View>
 
               <View style={styles.inputGroup}>
-                <Text style={styles.label}>Reason *</Text>
+                <Text style={styles.label}>{t('eseals_replacement.form.reason', { defaultValue: 'Reason' })} *</Text>
                 <TextInput
                   style={[styles.input, styles.textArea]}
-                  placeholder="Explain the reason for replacement"
+                  placeholder={t('eseals_replacement.placeholders.reason', { defaultValue: 'Explain the reason for replacement' })}
                   multiline
                   numberOfLines={3}
                   textAlignVertical="top"
@@ -366,10 +368,10 @@ const EsealsReplacement = () => {
               </View>
 
               <View style={styles.inputGroup}>
-                <Text style={styles.label}>Old Device Condition ID *</Text>
+                <Text style={styles.label}>{t('eseals_replacement.form.condition_id', { defaultValue: 'Old Device Condition ID' })} *</Text>
                 <TextInput
                   style={styles.input}
-                  placeholder="Enter condition ID (e.g., 1 for damaged)"
+                  placeholder={t('eseals_replacement.placeholders.condition_id', { defaultValue: 'Enter condition ID (e.g., 1 for damaged)' })}
                   keyboardType="numeric"
                   value={formData.oldDeviceConditionId}
                   onChangeText={(text) => setFormData({ ...formData, oldDeviceConditionId: text })}
@@ -384,7 +386,7 @@ const EsealsReplacement = () => {
                 {submitting ? (
                   <ActivityIndicator color="#FFFFFF" size="small" />
                 ) : (
-                  <Text style={styles.submitButtonText}>Submit Request</Text>
+                  <Text style={styles.submitButtonText}>{t('eseals_replacement.buttons.submit', { defaultValue: 'Submit Request' })}</Text>
                 )}
               </TouchableOpacity>
             </ScrollView>

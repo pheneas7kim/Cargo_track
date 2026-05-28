@@ -25,12 +25,14 @@ import axios from 'axios';
 import MapView, { Marker, Callout, PROVIDER_GOOGLE, Polyline, Circle } from 'react-native-maps';
 import serverUrl from '../config';
 import Icon from 'react-native-vector-icons/MaterialIcons';
+import { useTranslation } from 'react-i18next';
 
 const { width, height } = Dimensions.get('window');
 const BOTTOM_SHEET_MIN_HEIGHT = 70;
 const BOTTOM_SHEET_MAX_HEIGHT = height * 0.6;
 
 const DeviceMapScreen = () => {
+  const { t } = useTranslation();
   const navigation = useNavigation();
   const [devices, setDevices] = useState([]);
   const [geofences, setGeofences] = useState([]);
@@ -75,7 +77,7 @@ const DeviceMapScreen = () => {
   useFocusEffect(
     React.useCallback(() => {
       fetchAllData();
-      
+
       const backAction = () => false;
       const backHandler = BackHandler.addEventListener('hardwareBackPress', backAction);
       return () => backHandler.remove();
@@ -115,7 +117,7 @@ const DeviceMapScreen = () => {
     } catch (error) {
       console.error('Failed to fetch data:', error);
       Snackbar.show({
-        text: 'Failed to load data',
+        text: t('device_map.errors.load_failed', { defaultValue: 'Failed to load data' }),
         duration: 3000,
         backgroundColor: '#FF6B6B',
       });
@@ -178,14 +180,14 @@ const DeviceMapScreen = () => {
 
   const centerOnDevice = (device) => {
     if (!device.latitude || !device.longitude) return;
-    
+
     const region = {
       latitude: parseFloat(device.latitude),
       longitude: parseFloat(device.longitude),
       latitudeDelta: 0.01,
       longitudeDelta: 0.01,
     };
-    
+
     setMapRegion(region);
     if (mapRef.current && mapReady) {
       try {
@@ -209,7 +211,7 @@ const DeviceMapScreen = () => {
     let filtered = [...devices];
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
-      filtered = filtered.filter(d => 
+      filtered = filtered.filter(d =>
         d.deviceName?.toLowerCase().includes(query) ||
         d.deviceSn?.toLowerCase().includes(query) ||
         d.t1Number?.toLowerCase().includes(query)
@@ -219,18 +221,18 @@ const DeviceMapScreen = () => {
   };
 
   const formatSpeed = (speed) => {
-    if (!speed && speed !== 0) return 'N/A';
+    if (!speed && speed !== 0) return t('device_map.na', { defaultValue: 'N/A' });
     return `${Math.round(speed)} km/h`;
   };
 
   const formatDate = (dateString) => {
-    if (!dateString) return 'N/A';
+    if (!dateString) return t('device_map.na', { defaultValue: 'N/A' });
     const date = new Date(dateString);
     const now = new Date();
     const diff = Math.floor((now - date) / 1000 / 60);
-    if (diff < 1) return 'Just now';
-    if (diff < 60) return `${diff} min ago`;
-    if (diff < 1440) return `${Math.floor(diff / 60)} hr ago`;
+    if (diff < 1) return t('device_map.time.just_now', { defaultValue: 'Just now' });
+    if (diff < 60) return t('device_map.time.minutes_ago', { defaultValue: '{{count}} min ago' }).replace('{{count}}', diff.toString());
+    if (diff < 1440) return t('device_map.time.hours_ago', { defaultValue: '{{count}} hr ago' }).replace('{{count}}', Math.floor(diff / 60).toString());
     return date.toLocaleTimeString();
   };
 
@@ -267,10 +269,10 @@ const DeviceMapScreen = () => {
         <TouchableOpacity style={styles.handleBarContainer} onPress={togglePanel}>
           <View style={styles.handleBar} />
           <View style={styles.panelHeader}>
-            <Text style={styles.panelTitle}>Devices ({filteredDevices.length})</Text>
+            <Text style={styles.panelTitle}>{t('device_map.devices_title', { defaultValue: 'Devices' })} ({filteredDevices.length})</Text>
           </View>
         </TouchableOpacity>
-        
+
         {isPanelExpanded && (
           <ScrollView showsVerticalScrollIndicator={false} style={styles.deviceListContainer}>
             {filteredDevices.map((device, index) => (
@@ -291,26 +293,26 @@ const DeviceMapScreen = () => {
                 </View>
                 <View style={styles.deviceItemDetails}>
                   <View style={styles.detailRow}>
-                    <Text style={styles.detailLabel}>Speed:</Text>
+                    <Text style={styles.detailLabel}>{t('device_map.speed_label', { defaultValue: 'Speed' })}:</Text>
                     <Text style={styles.detailValue}>{formatSpeed(device.speedKmh)}</Text>
                   </View>
                   <View style={styles.detailRow}>
-                    <Text style={styles.detailLabel}>Location:</Text>
+                    <Text style={styles.detailLabel}>{t('device_map.location_label', { defaultValue: 'Location' })}:</Text>
                     <Text style={styles.detailValue}>
-                      {device.latitude?.toFixed(4) || 'N/A'}, {device.longitude?.toFixed(4) || 'N/A'}
+                      {device.latitude?.toFixed(4) || t('device_map.na', { defaultValue: 'N/A' })}, {device.longitude?.toFixed(4) || t('device_map.na', { defaultValue: 'N/A' })}
                     </Text>
                   </View>
                   <View style={styles.detailRow}>
-                    <Text style={styles.detailLabel}>Last Update:</Text>
+                    <Text style={styles.detailLabel}>{t('device_map.last_update_label', { defaultValue: 'Last Update' })}:</Text>
                     <Text style={styles.detailValue}>{formatDate(device.timestamp)}</Text>
                   </View>
                 </View>
-                <Text style={styles.viewOnMapText}>Tap to view on map →</Text>
+                <Text style={styles.viewOnMapText}>{t('device_map.tap_to_view', { defaultValue: 'Tap to view on map →' })}</Text>
               </TouchableOpacity>
             ))}
             {filteredDevices.length === 0 && (
               <View style={styles.emptyListContainer}>
-                <Text style={styles.emptyListText}>No devices found</Text>
+                <Text style={styles.emptyListText}>{t('device_map.no_devices', { defaultValue: 'No devices found' })}</Text>
               </View>
             )}
           </ScrollView>
@@ -326,7 +328,7 @@ const DeviceMapScreen = () => {
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
              <Icon name="arrow-back" size={24} color="#1A1A1A" />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Device Monitoring</Text>
+          <Text style={styles.headerTitle}>{t('device_map.title', { defaultValue: 'Device Monitoring' })}</Text>
           <TouchableOpacity onPress={onRefresh} style={styles.refreshButton}>
             <Text style={styles.refreshButtonText}>↻</Text>
           </TouchableOpacity>
@@ -336,7 +338,7 @@ const DeviceMapScreen = () => {
           <Text style={styles.searchIcon}>🔍</Text>
           <TextInput
             style={styles.searchInput}
-            placeholder="Search devices..."
+            placeholder={t('device_map.search_placeholder', { defaultValue: 'Search devices...' })}
             placeholderTextColor="#999"
             value={searchQuery}
             onChangeText={setSearchQuery}
@@ -349,35 +351,35 @@ const DeviceMapScreen = () => {
         </View>
 
         <View style={styles.mapTypeRow}>
-          <TouchableOpacity 
+          <TouchableOpacity
             style={[styles.mapTypeButton, mapType === 'standard' && styles.activeMapType]}
             onPress={() => setMapType('standard')}
           >
-            <Text style={[styles.mapTypeText, mapType === 'standard' && styles.activeMapTypeText]}>🗺️ Standard</Text>
+            <Text style={[styles.mapTypeText, mapType === 'standard' && styles.activeMapTypeText]}>{t('device_map.map_types.standard', { defaultValue: '🗺️ Standard' })}</Text>
           </TouchableOpacity>
-          
-          <TouchableOpacity 
+
+          <TouchableOpacity
             style={[styles.mapTypeButton, mapType === 'satellite' && styles.activeMapType]}
             onPress={() => setMapType('satellite')}
           >
-            <Text style={[styles.mapTypeText, mapType === 'satellite' && styles.activeMapTypeText]}>🛰️ Satellite</Text>
+            <Text style={[styles.mapTypeText, mapType === 'satellite' && styles.activeMapTypeText]}>{t('device_map.map_types.satellite', { defaultValue: '🛰️ Satellite' })}</Text>
           </TouchableOpacity>
-          
-          <TouchableOpacity 
+
+          <TouchableOpacity
             style={[styles.mapTypeButton, mapType === 'hybrid' && styles.activeMapType]}
             onPress={() => setMapType('hybrid')}
           >
-            <Text style={[styles.mapTypeText, mapType === 'hybrid' && styles.activeMapTypeText]}>🌍 Hybrid</Text>
+            <Text style={[styles.mapTypeText, mapType === 'hybrid' && styles.activeMapTypeText]}>{t('device_map.map_types.hybrid', { defaultValue: '🌍 Hybrid' })}</Text>
           </TouchableOpacity>
         </View>
 
         <View style={styles.mapTypeRow}>
-          <TouchableOpacity 
+          <TouchableOpacity
             style={[styles.mapTypeButton, showGeofences && styles.activeMapType]}
             onPress={() => setShowGeofences(!showGeofences)}
           >
             <Text style={[styles.mapTypeText, showGeofences && styles.activeMapTypeText]}>
-              {showGeofences ? 'Hide Geofences' : 'Show Geofences'}
+              {showGeofences ? t('device_map.hide_geofences', { defaultValue: 'Hide Geofences' }) : t('device_map.show_geofences', { defaultValue: 'Show Geofences' })}
             </Text>
           </TouchableOpacity>
         </View>
@@ -391,7 +393,7 @@ const DeviceMapScreen = () => {
         <StatusBar barStyle="dark-content" backgroundColor="#F8F9FA" />
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#FFA500" />
-          <Text style={styles.loadingText}>Loading device locations & geofences...</Text>
+          <Text style={styles.loadingText}>{t('device_map.loading', { defaultValue: 'Loading device locations & geofences...' })}</Text>
         </View>
       </SafeAreaView>
     );
@@ -400,9 +402,9 @@ const DeviceMapScreen = () => {
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#F8F9FA" />
-      
+
       {renderHeader()}
-      
+
       <View style={styles.mapContainer}>
         <MapView
           ref={mapRef}
@@ -432,13 +434,13 @@ const DeviceMapScreen = () => {
             const latitude = parseFloat(device.latitude);
             const longitude = parseFloat(device.longitude);
             if (isNaN(latitude) || isNaN(longitude)) return null;
-            
+
             return (
               <Marker
                 key={device.id || index}
                 coordinate={{ latitude, longitude }}
                 title={device.deviceName || device.deviceSn}
-                description={`Speed: ${formatSpeed(device.speedKmh)}`}
+                description={`${t('device_map.speed_label', { defaultValue: 'Speed' })}: ${formatSpeed(device.speedKmh)}`}
                 onPress={() => {
                   setSelectedDeviceMarker(device);
                   setSelectedDevice(device);
@@ -453,17 +455,17 @@ const DeviceMapScreen = () => {
                 <Callout>
                   <View style={styles.calloutContainer}>
                     <Text style={styles.calloutTitle}>{device.deviceName || device.deviceSn}</Text>
-                    <Text style={styles.calloutText}>Speed: {formatSpeed(device.speedKmh)}</Text>
-                    <Text style={styles.calloutText}>Mileage: {Math.round(device.mileageKm || 0)} km</Text>
-                    <Text style={styles.calloutText}>Updated: {formatDate(device.timestamp)}</Text>
-                    <TouchableOpacity 
+                    <Text style={styles.calloutText}>{t('device_map.speed_label', { defaultValue: 'Speed' })}: {formatSpeed(device.speedKmh)}</Text>
+                    <Text style={styles.calloutText}>{t('device_map.mileage_label', { defaultValue: 'Mileage' })}: {Math.round(device.mileageKm || 0)} km</Text>
+                    <Text style={styles.calloutText}>{t('device_map.updated_label', { defaultValue: 'Updated' })}: {formatDate(device.timestamp)}</Text>
+                    <TouchableOpacity
                       style={styles.calloutButton}
                       onPress={() => {
                         setSelectedDevice(device);
                         setModalVisible(true);
                       }}
                     >
-                      <Text style={styles.calloutButtonText}>View Details</Text>
+                      <Text style={styles.calloutButtonText}>{t('device_map.view_details', { defaultValue: 'View Details' })}</Text>
                     </TouchableOpacity>
                   </View>
                 </Callout>
@@ -506,9 +508,9 @@ const DeviceMapScreen = () => {
             return null;
           })}
         </MapView>
-        
+
         {/* Center on current location button */}
-        <TouchableOpacity 
+        <TouchableOpacity
           style={styles.myLocationButton}
           onPress={() => {
             if (mapRef.current) {
@@ -524,10 +526,10 @@ const DeviceMapScreen = () => {
           <Text style={styles.myLocationText}>📍</Text>
         </TouchableOpacity>
       </View>
-      
+
       {renderDeviceList()}
 
-      {/* Device Detail Modal (unchanged) */}
+      {/* Device Detail Modal */}
       <Modal
         visible={modalVisible}
         animationType="slide"
@@ -537,83 +539,83 @@ const DeviceMapScreen = () => {
         <View style={styles.modalOverlay}>
           <Animatable.View animation="slideInUp" duration={300} style={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Device Details</Text>
+              <Text style={styles.modalTitle}>{t('device_map.modal.title', { defaultValue: 'Device Details' })}</Text>
               <TouchableOpacity onPress={() => setModalVisible(false)} style={styles.closeButton}>
                 <Text style={styles.closeButtonText}>✕</Text>
               </TouchableOpacity>
             </View>
-            
+
             {selectedDevice && (
               <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
                 <View style={styles.modalStatusContainer}>
                   <View style={[styles.modalStatusDot, { backgroundColor: getMarkerColor(selectedDevice.speedKmh) }]} />
                   <Text style={styles.modalStatusText}>
-                    {selectedDevice.speedKmh > 5 ? 'Moving' : 'Stationary'}
+                    {selectedDevice.speedKmh > 5 ? t('device_map.modal.moving', { defaultValue: 'Moving' }) : t('device_map.modal.stationary', { defaultValue: 'Stationary' })}
                   </Text>
                 </View>
 
                 <Text style={styles.modalDeviceName}>
                   {selectedDevice.deviceName || selectedDevice.deviceSn}
                 </Text>
-                
+
                 <View style={styles.infoGrid}>
                   <View style={styles.infoItem}>
-                    <Text style={styles.infoLabel}>Serial Number</Text>
-                    <Text style={styles.infoValue}>{selectedDevice.deviceSn || 'N/A'}</Text>
+                    <Text style={styles.infoLabel}>{t('device_map.modal.serial_number', { defaultValue: 'Serial Number' })}</Text>
+                    <Text style={styles.infoValue}>{selectedDevice.deviceSn || t('device_map.na', { defaultValue: 'N/A' })}</Text>
                   </View>
-                  
+
                   <View style={styles.infoItem}>
-                    <Text style={styles.infoLabel}>T1 Number</Text>
-                    <Text style={styles.infoValue}>{selectedDevice.t1Number || 'N/A'}</Text>
+                    <Text style={styles.infoLabel}>{t('device_map.modal.t1_number', { defaultValue: 'T1 Number' })}</Text>
+                    <Text style={styles.infoValue}>{selectedDevice.t1Number || t('device_map.na', { defaultValue: 'N/A' })}</Text>
                   </View>
-                  
+
                   <View style={styles.infoItem}>
-                    <Text style={styles.infoLabel}>Speed</Text>
+                    <Text style={styles.infoLabel}>{t('device_map.modal.speed', { defaultValue: 'Speed' })}</Text>
                     <Text style={styles.infoValue}>{formatSpeed(selectedDevice.speedKmh)}</Text>
                   </View>
-                  
+
                   <View style={styles.infoItem}>
-                    <Text style={styles.infoLabel}>Mileage</Text>
+                    <Text style={styles.infoLabel}>{t('device_map.modal.mileage', { defaultValue: 'Mileage' })}</Text>
                     <Text style={styles.infoValue}>{Math.round(selectedDevice.mileageKm || 0)} km</Text>
                   </View>
                 </View>
 
                 <View style={styles.sectionContainer}>
-                  <Text style={styles.sectionTitle}>Location</Text>
+                  <Text style={styles.sectionTitle}>{t('device_map.modal.location', { defaultValue: 'Location' })}</Text>
                   <View style={styles.locationCard}>
-                    <Text style={styles.locationLabel}>Coordinates</Text>
+                    <Text style={styles.locationLabel}>{t('device_map.modal.coordinates', { defaultValue: 'Coordinates' })}</Text>
                     <Text style={styles.locationValue}>
-                      {selectedDevice.latitude?.toFixed(6) || 'N/A'}, {selectedDevice.longitude?.toFixed(6) || 'N/A'}
+                      {selectedDevice.latitude?.toFixed(6) || t('device_map.na', { defaultValue: 'N/A' })}, {selectedDevice.longitude?.toFixed(6) || t('device_map.na', { defaultValue: 'N/A' })}
                     </Text>
                   </View>
                 </View>
 
                 <View style={styles.sectionContainer}>
-                  <Text style={styles.sectionTitle}>Last Update</Text>
+                  <Text style={styles.sectionTitle}>{t('device_map.modal.last_update', { defaultValue: 'Last Update' })}</Text>
                   <View style={styles.timestampCard}>
                     <Text style={styles.timestampValue}>
-                      {selectedDevice.timestamp ? new Date(selectedDevice.timestamp).toLocaleString() : 'N/A'}
+                      {selectedDevice.timestamp ? new Date(selectedDevice.timestamp).toLocaleString() : t('device_map.na', { defaultValue: 'N/A' })}
                     </Text>
                   </View>
                 </View>
 
                 <View style={styles.actionButtons}>
-                  <TouchableOpacity 
+                  <TouchableOpacity
                     style={styles.centerButton}
                     onPress={() => {
                       centerOnDevice(selectedDevice);
                       setModalVisible(false);
                     }}
                   >
-                    <Text style={styles.centerButtonText}>Center on Map</Text>
+                    <Text style={styles.centerButtonText}>{t('device_map.modal.center_on_map', { defaultValue: 'Center on Map' })}</Text>
                   </TouchableOpacity>
                 </View>
 
-                <TouchableOpacity 
+                <TouchableOpacity
                   style={styles.closeModalButton}
                   onPress={() => setModalVisible(false)}
                 >
-                  <Text style={styles.closeModalButtonText}>Close</Text>
+                  <Text style={styles.closeModalButtonText}>{t('device_map.modal.close', { defaultValue: 'Close' })}</Text>
                 </TouchableOpacity>
               </ScrollView>
             )}

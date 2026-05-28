@@ -59,39 +59,329 @@
     "error_timeout": "Request timed out",
     "success": "Success",
     "warning": "Warning",
-    "info": "Information"
-  },
-  "navigation": {
-    "home": "Home",
-    "dashboard": "Dashboard",
-    "tickets": "Tickets",
-    "devices": "Devices",
-    "profile": "Profile",
-    "settings": "Settings",
+    "info": "Information",
+    "time": {
+      "just_now": "Just now",
+      "min_ago": "min ago",
+      "hours_ago": "hours ago",
+      "days_ago": "days ago",
+      "ago": "ago"
+    },
+    "ticket_status": {
+      "open": "Open",
+      "in_progress": "In Progress",
+      "acknowledged": "Acknowledged",
+      "resolved": "Resolved",
+      "closed": "Closed",
+      "unknown": "Unknown"
+    },
+    "shipment_status": {
+      "in_transit": "In Transit",
+      "delivered": "Delivered",
+      "pending": "Pending",
+      "unknown": "Unknown"
+    },
+    "greeting": {
+      "morning": "Good Morning",
+      "afternoon": "Good Afternoon",
+      "evening": "Good Evening"
+    },
+    "errors": {
+      "login_again": "Please log in again",
+      "session_expired": "Session expired. Please log in again.",
+      "enter_tracking": "Please enter a tracking number",
+      "shipment_not_found": "Shipment not found",
+      "phone_required": "Phone number is required",
+      "amount_required": "Amount is required"
+    },
+    "actions": {
+      "scan_to_unlock": "Scan to Unlock",
+      "sensors_mapping": "Sensors Mapping",
+      "mapped_sensors": "Mapped Sensors",
+      "tickets": "Tickets",
+      "random_stop": "Random Stop",
+      "request_eseals": "Request Eseals",
+      "eseals_replacement": "Eseals Replacement",
+      "assigned_eseals": "Assigned Eseals",
+      "geofences": "Geofences",
+      "hotspots": "Hotspots",
+      "shipments": "Shipments",
+      "stations": "Stations",
+      "scan_to_add": "Scan to Add Devices",
+      "receive": "Receive"
+    },
+    "commands": {
+      "check_status": "Check Status",
+      "check_status_desc": "Get real-time status of your shipment",
+      "share_location": "Share Location",
+      "share_location_desc": "Share current location with support",
+      "request_support": "Request Support",
+      "request_support_desc": "Request immediate assistance",
+      "update_delivery": "Update Delivery",
+      "update_delivery_desc": "Update delivery preferences",
+      "report_issue": "Report Issue",
+      "report_issue_desc": "Report a problem with your shipment"
+    },
+    "tabs": {
+      "shipments": "Shipments",
+      "tickets": "Tickets",
+      "alerts": "Alerts"
+    },
+    "unknown": "Unknown",
+    "location": "Location",
+    "last_update": "Last Update",
+    "device": "Device",
+    "speed": "Speed",
+    "complete": "Complete",
+    "track_on_map": "Track on Map",
+    "view_on_map": "View on Map",
+    "comments": "comments",
+    "alert": "Alert",
+    "notification": "Notification",
     "logout": "Logout",
-    "help": "Help",
-    "about": "About"
+    "logout_confirm": "Are you sure you want to logout?",
+    "logout_failed": "Failed to logout",
+    "topup_success": "Top up successful!",
+    "withdraw_success": "Withdrawal initiated successfully!",
+    "ticket_acknowledged": "Ticket acknowledged successfully",
+    "ticket_acknowledge_failed": "Failed to acknowledge ticket",
+    "ticket_resolved": "Ticket resolved successfully",
+    "ticket_resolve_failed": "Failed to resolve ticket",
+    "loading_tickets": "Loading tickets...",
+    "no_tickets": "No tickets found",
+    "shipment_details": "Shipment Details",
+    "tracking_number": "Tracking Number",
+    "status": "Status",
+    "current_location": "Current Location",
+    "origin": "Origin",
+    "destination": "Destination",
+    "progress": "Progress",
+    "commands": "Commands",
+    "ticket_details": "Ticket Details",
+    "priority": "Priority",
+    "t1_number": "T1 Number",
+    "created": "Created",
+    "last_updated": "Last Updated",
+    "resolve": "Resolve",
+    "acknowledge": "Acknowledge",
+    "resolved": "✓ Resolved",
+    "closed": "✓ Closed"
   },
-  "dashboard": {
-    "title": "Dashboard",
-    "greeting": "Hello, {{name}}",
-    "quick_actions": "Quick Actions",
-    "active_shipments": "Active Shipments",
-    "pending_tickets": "Pending Tickets",
-    "device_status": "Device Status",
-    "view_all": "View All"
+  "qr_scanner": {
+    "title": "Scan To Unlock",
+    "subtitle": "Scan Device QR Code or Barcode",
+    "instructions": {
+      "align": "Align QR code or barcode inside the frame",
+      "supported": "Both QR codes and barcodes supported"
+    },
+    "device_types": {
+      "telematics": "Telematics",
+      "joint_tech": "Joint Tech"
+    },
+    "buttons": {
+      "scan_again": "Scan Again"
+    },
+    "loading": {
+      "sending": "Sending command to device..."
+    },
+    "result": {
+      "success": "Success!",
+      "failed": "Failed!",
+      "device_type": "Device Type",
+      "device_id": "Device ID",
+      "digits": "digits"
+    },
+    "errors": {
+      "auth_required": "Authentication required. Please login again.",
+      "session_expired": "Session expired. Please login again.",
+      "command_failed": "Failed to send command",
+      "command_failed_status": "Failed to send command",
+      "network_error": "Network error",
+      "command_execution_failed": "Failed to execute command",
+      "invalid_barcode": "Invalid barcode: Got {{digits}} digits. (Expected 8 for Telematics or 10 for Joint Tech)",
+      "non_numeric": "Invalid barcode: Device SN must contain only numbers"
+    },
+    "success": {
+      "command_sent": "Command sent successfully"
+    }
+  },
+  "master_slave": {
+    "dashboard": {
+      "title": "Master-Slave Mapper",
+      "subtitle": "Map sensors to master device",
+      "current_master": "Current Master",
+      "scan_master": "Scan a Master Device",
+      "current_slaves": "Current Slaves: {{count}}",
+      "scanned_slaves": "Scanned Slaves",
+      "extracted_from": "Extracted from"
+    },
+    "scanner": {
+      "master_title": "Scanning Master (QR/Barcode)",
+      "slave_title": "Scanning Slaves",
+      "master_subtitle": "Auto-detects Telematics (8 digits) or Joint Tech (10 digits)",
+      "slave_subtitle": "Scan slave/sensor barcodes (alphanumeric)",
+      "master_instruction": "Scan device QR or barcode (8 digits for Telematics, 10 for Joint Tech)",
+      "slave_instruction": "Scan slave/sensor barcode (alphanumeric like E170BG789)"
+    },
+    "summary": {
+      "title": "Truck Mapping History",
+      "total_trucks": "Total Trucks: {{count}}",
+      "master_label": "Master",
+      "slaves_label": "Slaves ({{count}})",
+      "empty": "No mappings performed yet."
+    },
+    "buttons": {
+      "scan_master": "Scan Master",
+      "scan_slaves": "Scan Slaves",
+      "map_all": "✓ MAP ALL SLAVES TO MASTER",
+      "remove_mapping": "🗑️ Remove Mapping",
+      "reset_form": "Reset Form",
+      "back_to_scanner": "BACK TO SCANNER",
+      "clear_history": "Clear All History",
+      "cancel_scan": "CANCEL SCAN"
+    },
+    "device_types": {
+      "telematics": "📱 Telematics",
+      "joint_tech": "📊 Joint Tech",
+      "telematics_detail": "📱 Telematics Device (8 digits)",
+      "joint_tech_detail": "📊 Joint Tech Device (10 digits)"
+    },
+    "warnings": {
+      "joint_tech_only": "Mapping only available for Joint Tech master devices"
+    },
+    "errors": {
+      "auth_required": "Authentication required. Please login again.",
+      "session_expired": "Session expired. Please login again.",
+      "command_failed": "Failed to send command",
+      "network_error": "Network error",
+      "no_master": "No master set to remove",
+      "no_master_device": "No master device scanned",
+      "invalid_scan": {
+        "title": "Invalid Scan",
+        "message": "Could not find device ID in the scanned code. Please ensure you scan the device QR/barcode."
+      },
+      "unknown_device": {
+        "title": "Unknown Device",
+        "message": "Device ID \"{{id}}\" has {{digits}} digits.\n\nExpected:\n• Telematics: 8 digits\n• Joint Tech: 10 digits"
+      },
+      "slave_too_short": "Invalid slave code - too short",
+      "slave_duplicate": "Slave already scanned",
+      "missing_master_or_slaves": "Master or slaves missing",
+      "joint_tech_only_error": "Mapping only available for Joint Tech master devices",
+      "mapping_failed": "Mapping failed: {{message}}",
+      "server_error": "Server responded with status {{status}}"
+    },
+    "success": {
+      "command_sent": "Command sent successfully",
+      "command_sent_format": "Command sent: {{command}}",
+      "command_sent_to_device": "Command sent to {{deviceType}} device",
+      "master_set": "{{deviceType}} Master set: {{id}}",
+      "slave_added": "✓ Slave added: {{id}}",
+      "slave_removed": "Removed {{id}}",
+      "mapping_complete": "✓ Successfully mapped {{count}} slave(s) to master {{master}}",
+      "history_cleared": "History cleared"
+    },
+    "remove_mapping": {
+      "title": "Remove Mapping",
+      "message": "Are you sure you want to remove the mapping for master {{master}}?",
+      "cancel": "Cancel",
+      "confirm": "Remove",
+      "success": "✓ Mapping cleared from form"
+    }
+  },
+  "sensor_list": {
+    "locale": "en-US",
+    "unknown": "Unknown",
+    "master_device": "Master Device",
+    "mapped": "Mapped",
+    "connected_sensors": "Connected Sensors",
+    "id_label": "ID",
+    "added": "Added",
+    "no_sensors": "No sensors connected",
+    "no_sensors_subtext": "Use the mapper to add sensors to this master",
+    "no_masters_title": "No Masters Found",
+    "no_masters_text": "You haven't mapped any masters yet.",
+    "error_title": "Error Loading Data",
+    "go_to_mapper": "Go to Mapper",
+    "retry": "Retry",
+    "loading": "Loading masters...",
+    "header_title": "Master & Sensor Mapping",
+    "total_masters": "Total Masters",
+    "total_sensors": "Total Sensors",
+    "remove_sensor_message": "Remove {{sensorId}} - API endpoint needed",
+    "errors": {
+      "auth_required": "Authentication required",
+      "session_expired": "Session expired",
+      "load_failed": "Failed to load masters"
+    }
   },
   "tickets": {
-    "title": "Tickets",
+    "header_title": "Tickets",
+    "new_button": "+ New",
+    "search_placeholder": "Search tickets....",
+    "total": "Total",
+    "tickets_label": "tickets",
+    "loading": "Loading tickets...",
+    "comments": "comments",
+    "na": "N/A",
+    "system": "System",
+    "priority": "Priority",
+    "t1_number": "T1 Number",
+    "device": "Device",
+    "geofence": "Geofence",
+    "created": "Created",
+    "last_updated": "Last Updated",
+    "track_on_map": "Track on Map",
+    "comments_title": "Comments",
+    "comment_placeholder": "Add a comment...",
+    "post_comment": "Post Comment",
+    "resolve": "Resolve",
+    "acknowledge": "Acknowledge",
+    "resolved": "✓ Resolved",
+    "closed": "✓ Closed",
+    "modal_title": "Ticket Details",
+    "empty_title": "No tickets found",
+    "empty_search": "Try adjusting your search",
+    "empty_filter": "No {{filter}} tickets available",
+    "empty_default": "Create a new ticket to get started",
+    "time": {
+      "just_now": "Just now",
+      "minutes_ago": "{{count}}m ago",
+      "hours_ago": "{{count}}h ago",
+      "days_ago": "{{count}}d ago"
+    },
+    "status": {
+      "reported": "Reported",
+      "acknowledged": "Acknowledged",
+      "resolved": "Resolved",
+      "closed": "Closed",
+      "unknown": "Unknown"
+    },
+    "filters": {
+      "all": "All",
+      "reported": "Reported",
+      "acknowledged": "Acknowledged",
+      "resolved": "Resolved"
+    },
+    "errors": {
+      "comment_required": "Please enter a comment",
+      "comment_failed": "Failed to add comment",
+      "load_failed": "Failed to load tickets",
+      "acknowledge_failed": "Failed to acknowledge ticket",
+      "resolve_failed": "Failed to resolve ticket"
+    },
+    "success": {
+      "comment_added": "Comment added successfully",
+      "acknowledged": "Ticket acknowledged successfully",
+      "resolved": "Ticket resolved successfully"
+    },
+    "acknowledge_content": "Acknowledged from mobile app",
+    "resolve_notes": "Resolved from mobile app",
+    "status_change": "Status changed from {{old}} to {{new}}",
+    "no_comments": "No comments yet",
     "create_new": "Create New Ticket",
     "my_tickets": "My Tickets",
     "all_tickets": "All Tickets",
-    "filters": {
-      "open": "Open",
-      "in_progress": "In Progress",
-      "resolved": "Resolved",
-      "closed": "Closed"
-    },
     "fields": {
       "title": "Ticket Title",
       "description": "Description",
@@ -122,6 +412,985 @@
       "create_failed": "Failed to create ticket. Please try again.",
       "load_failed": "Failed to load tickets. Please check your connection."
     }
+  },
+  "random_stop": {
+    "title": "Random Stops",
+    "report_button": "+ Report",
+    "search_placeholder": "Search Plate or Ticket...",
+    "loading": "Loading stops...",
+    "vehicle_not_found": "⚠️ Vehicle Not Found",
+    "no_ticket": "No Ticket",
+    "reason_label": "Reason",
+    "no_reason": "No reason provided",
+    "by_label": "By",
+    "unknown": "Unknown",
+    "unknown_date": "Unknown date",
+    "status": {
+      "approved": "APPROVED",
+      "pending": "PENDING"
+    },
+    "form": {
+      "plate_number": "Vehicle Plate Number",
+      "incident_type": "Incident Type",
+      "reason": "Reason",
+      "select_incident_type": "Select incident type"
+    },
+    "placeholders": {
+      "plate_number": "e.g. KCT 102 P",
+      "reason": "Enter detailed reason for the stop..."
+    },
+    "buttons": {
+      "submit": "Submit Request"
+    },
+    "modal": {
+      "create_title": "Request Random Stop",
+      "select_incident": "Select Incident Type",
+      "detail_title": "Request Details"
+    },
+    "details": {
+      "plate_number": "Plate Number",
+      "ticket_number": "Ticket Number",
+      "reason": "Reason",
+      "status": "Status",
+      "requested_by": "Requested By",
+      "approved_by": "Approved By",
+      "requested_at": "Requested At",
+      "approved_at": "Approved At",
+      "not_assigned": "Not assigned yet",
+      "pending": "Pending"
+    },
+    "empty": {
+      "title": "No Stop Requests Found",
+      "search_suggestion": "Try a different search term",
+      "refresh_suggestion": "Pull down to refresh or create a new request"
+    },
+    "errors": {
+      "load_incident_types": "Failed to load incident types",
+      "load_stops": "Failed to load stops: {{message}}",
+      "plate_reason_required": "Plate Number and Reason are required",
+      "incident_type_required": "Please select an incident type",
+      "vehicle_not_found": "⚠️ Stop created but vehicle \"{{plate}}\" not found in system",
+      "vehicle_not_found_message": "Vehicle plate number not found in system",
+      "submission_failed": "Submission failed",
+      "auth_failed": "Authentication failed - please login again",
+      "no_incident_types": "No incident types found"
+    },
+    "success": {
+      "submitted": "✓ Request submitted successfully"
+    }
+  },
+  "request_eseals_list": {
+    "title": "My E-Seal Requests",
+    "total": "Total",
+    "request_singular": "request",
+    "requests_plural": "requests",
+    "pending": "Pending",
+    "e_seal_unit": "E-Seal",
+    "reason_label": "Reason",
+    "no_reason": "No reason provided",
+    "requested_by": "Requested by",
+    "approved_by": "Approved by",
+    "approved_on": "Approved on",
+    "rejection_reason": "Rejection reason",
+    "tap_for_details": "Tap for details",
+    "not_available": "Not available",
+    "invalid_date": "Invalid date",
+    "unknown": "Unknown",
+    "request_hash": "Request #{{id}}",
+    "status": {
+      "pending": "Pending",
+      "fulfilled": "Fulfilled",
+      "rejected": "Rejected",
+      "approved": "Approved",
+      "unknown": "Unknown"
+    },
+    "time": {
+      "just_now": "Just now",
+      "minutes_ago": "{{count}} min ago",
+      "hours_ago": "{{count}} hour ago",
+      "days_ago": "{{count}} day ago"
+    },
+    "empty": {
+      "title": "No requests found",
+      "subtext": "Tap the + button to request e-seals"
+    },
+    "modal": {
+      "title": "Request Details",
+      "request_id": "Request ID",
+      "status": "Status",
+      "quantity": "Quantity",
+      "reason": "Reason",
+      "requested_by": "Requested By",
+      "requested_on": "Requested On",
+      "approved_by": "Approved By",
+      "approved_on": "Approved On",
+      "rejection_reason": "Rejection Reason"
+    },
+    "errors": {
+      "load_failed": "Failed to load requests"
+    }
+  },
+  "eseals_replacement": {
+    "title": "Seal Replacement Requests",
+    "device_label": "Device",
+    "truck_label": "Truck",
+    "seal_requested": "Seal Replacement Requested",
+    "new_seal_label": "New Seal",
+    "reason_label": "Reason",
+    "approved_label": "Approved",
+    "rejected_label": "Rejected",
+    "status": {
+      "pending": "PENDING",
+      "approved": "APPROVED",
+      "rejected": "REJECTED",
+      "in_progress": "IN_PROGRESS",
+      "unknown": "UNKNOWN"
+    },
+    "empty": {
+      "title": "No replacement requests",
+      "subtext": "Tap + to request a seal replacement"
+    },
+    "modal": {
+      "title": "New Seal Replacement"
+    },
+    "form": {
+      "ticket_id": "Ticket ID",
+      "new_seal_number": "New Seal Number",
+      "reason": "Reason",
+      "condition_id": "Old Device Condition ID"
+    },
+    "placeholders": {
+      "ticket_id": "Enter ticket ID",
+      "new_seal_number": "Enter new seal number",
+      "reason": "Explain the reason for replacement",
+      "condition_id": "Enter condition ID (e.g., 1 for damaged)"
+    },
+    "buttons": {
+      "submit": "Submit Request"
+    },
+    "errors": {
+      "load_failed": "Failed to load requests",
+      "valid_ticket_id": "Valid Ticket ID is required",
+      "new_seal_required": "New seal number is required",
+      "reason_required": "Please provide a reason",
+      "condition_id_required": "Valid old device condition ID is required",
+      "submit_failed": "Failed to submit request"
+    },
+    "success": {
+      "submitted": "Seal replacement request submitted!"
+    }
+  },
+  "assigned_eseals": {
+    "title": "Assigned E-Seals",
+    "na": "N/A",
+    "available_count": "Available Count",
+    "search_placeholder": "Search by name or serial",
+    "loading": "Loading assigned eseals...",
+    "serial_label": "Serial",
+    "group_label": "Group",
+    "warranty_label": "Warranty",
+    "status": {
+      "online": "Online",
+      "offline": "Offline"
+    },
+    "filters": {
+      "all": "All",
+      "online": "Online",
+      "offline": "Offline",
+      "warranty_active": "Warranty Active",
+      "warranty_expired": "Warranty Expired",
+      "clear": "Clear"
+    },
+    "empty": {
+      "title": "No devices found",
+      "adjust_filters": "Try adjusting your filters",
+      "no_devices": "No assigned eseals available"
+    },
+    "modal": {
+      "title": "Device Details",
+      "device_name": "Device Name",
+      "serial_number": "Serial Number",
+      "imei": "IMEI",
+      "model": "Model",
+      "year_of_manufacture": "Year of Manufacture",
+      "group": "Group",
+      "firmware_version": "Firmware Version",
+      "warranty": "Warranty",
+      "status": "Status",
+      "close": "Close"
+    },
+    "errors": {
+      "auth_error": "Authentication error. Please log in again.",
+      "load_failed": "Failed to load assigned eseals"
+    }
+  },
+  "geofences": {
+    "title": "Geofences",
+    "na": "N/A",
+    "active": "ACTIVE",
+    "inactive": "INACTIVE",
+    "no_description": "No description available",
+    "devices_label": "devices",
+    "coordinates_label": "Coordinates",
+    "polygon_label": "Polygon (LINE)",
+    "radius_label": "Radius",
+    "station_type_label": "Station Type",
+    "assigned_routes_label": "Assigned Routes",
+    "created_label": "Created",
+    "updated_label": "Updated",
+    "view_on_map": "View on Map",
+    "more_details": "▼ More details",
+    "less_details": "▲ Less details",
+    "route_s": "route(s)",
+    "loading": "Loading geofences...",
+    "search_placeholder": "Search geofences...",
+    "types": {
+      "hotspot": "HOTSPOT",
+      "route": "ROUTE",
+      "station": "STATION",
+      "geofence": "GEOFENCE"
+    },
+    "filters": {
+      "all": "All",
+      "hotspots": "Hotspots",
+      "routes": "Routes",
+      "stations": "Stations"
+    },
+    "stats": {
+      "total": "Total",
+      "active": "Active",
+      "inactive": "Inactive"
+    },
+    "time": {
+      "just_now": "Just now",
+      "minutes_ago": "{{count}} min ago",
+      "hours_ago": "{{count}} hr ago"
+    },
+    "empty": {
+      "title": "No geofences found",
+      "adjust_search": "Try adjusting your search",
+      "no_geofences": "No geofences have been created yet"
+    },
+    "modal": {
+      "title": "Geofence Details",
+      "description": "Description",
+      "location": "Location",
+      "type_label": "Type",
+      "coordinates_label": "Coordinates",
+      "radius_label": "Radius",
+      "polygon_label": "Polygon",
+      "line_route": "Line route with multiple points",
+      "details": "Details",
+      "devices_label": "Devices",
+      "route_status_label": "Route Status",
+      "color_label": "Color",
+      "station_type_label": "Station Type",
+      "assigned_routes_label": "Assigned Routes",
+      "timestamps": "Timestamps",
+      "created_label": "Created",
+      "updated_label": "Updated",
+      "close": "Close"
+    },
+    "errors": {
+      "load_failed": "Failed to load geofences"
+    }
+  },
+  "hotspots": {
+    "title": "Hotspots",
+    "na": "N/A",
+    "active": "ACTIVE",
+    "inactive": "INACTIVE",
+    "no_description": "No description available",
+    "fence_type_label": "Fence Type",
+    "status_label": "Status",
+    "assigned_routes_label": "Assigned Routes",
+    "created_label": "Created",
+    "updated_label": "Updated",
+    "view_on_map": "View on Map",
+    "more_details": "▼ More details",
+    "less_details": "▲ Less details",
+    "route_s": "route(s)",
+    "loading": "Loading hotspots...",
+    "search_placeholder": "Search hotspots...",
+    "stats": {
+      "total": "Total Hotspots",
+      "active": "Active",
+      "inactive": "Inactive"
+    },
+    "time": {
+      "just_now": "Just now",
+      "minutes_ago": "{{count}} min ago",
+      "hours_ago": "{{count}} hr ago"
+    },
+    "empty": {
+      "title": "No hotspots found",
+      "adjust_search": "Try adjusting your search",
+      "no_hotspots": "No hotspots have been created yet"
+    },
+    "modal": {
+      "title": "Hotspot Details",
+      "description": "Description",
+      "location": "Location",
+      "coordinates_label": "Coordinates",
+      "radius_label": "Radius",
+      "details": "Details",
+      "fence_type_label": "Fence Type",
+      "route_status_label": "Route Status",
+      "color_label": "Color",
+      "assigned_routes_label": "Assigned Routes",
+      "timestamps": "Timestamps",
+      "created_label": "Created",
+      "updated_label": "Updated",
+      "close": "Close"
+    },
+    "errors": {
+      "load_failed": "Failed to load hotspots"
+    }
+  },
+  "device_map": {
+    "title": "Device Monitoring",
+    "na": "N/A",
+    "search_placeholder": "Search devices...",
+    "loading": "Loading device locations & geofences...",
+    "devices_title": "Devices",
+    "speed_label": "Speed",
+    "location_label": "Location",
+    "last_update_label": "Last Update",
+    "mileage_label": "Mileage",
+    "updated_label": "Updated",
+    "tap_to_view": "Tap to view on map →",
+    "no_devices": "No devices found",
+    "hide_geofences": "Hide Geofences",
+    "show_geofences": "Show Geofences",
+    "view_details": "View Details",
+    "map_types": {
+      "standard": "🗺️ Standard",
+      "satellite": "🛰️ Satellite",
+      "hybrid": "🌍 Hybrid"
+    },
+    "time": {
+      "just_now": "Just now",
+      "minutes_ago": "{{count}} min ago",
+      "hours_ago": "{{count}} hr ago"
+    },
+    "modal": {
+      "title": "Device Details",
+      "moving": "Moving",
+      "stationary": "Stationary",
+      "serial_number": "Serial Number",
+      "t1_number": "T1 Number",
+      "speed": "Speed",
+      "mileage": "Mileage",
+      "location": "Location",
+      "coordinates": "Coordinates",
+      "last_update": "Last Update",
+      "center_on_map": "Center on Map",
+      "close": "Close"
+    },
+    "errors": {
+      "load_failed": "Failed to load data"
+    }
+  },
+  "stations": {
+    "title": "Stations",
+    "na": "N/A",
+    "active": "ACTIVE",
+    "inactive": "INACTIVE",
+    "no_description": "No description available",
+    "fence_type_label": "Fence Type",
+    "route_status_label": "Route Status",
+    "assigned_routes_label": "Assigned Routes",
+    "created_label": "Created",
+    "updated_label": "Updated",
+    "view_on_map": "View on Map",
+    "more_details": "▼ More details",
+    "less_details": "▲ Less details",
+    "route_s": "route(s)",
+    "loading": "Loading stations...",
+    "search_placeholder": "Search stations...",
+    "types": {
+      "checkpoint": "CHECKPOINT",
+      "bus_stop": "BUS STOP",
+      "station": "STATION"
+    },
+    "filters": {
+      "all": "All",
+      "checkpoints": "Checkpoints",
+      "bus_stops": "Bus Stops"
+    },
+    "stats": {
+      "total": "Total Stations",
+      "active": "Active",
+      "inactive": "Inactive"
+    },
+    "time": {
+      "just_now": "Just now",
+      "minutes_ago": "{{count}} min ago",
+      "hours_ago": "{{count}} hr ago"
+    },
+    "empty": {
+      "title": "No stations found",
+      "adjust_search": "Try adjusting your search",
+      "no_stations": "No stations have been created yet"
+    },
+    "modal": {
+      "title": "Station Details",
+      "description": "Description",
+      "location": "Location",
+      "coordinates_label": "Coordinates",
+      "radius_label": "Radius",
+      "details": "Details",
+      "fence_type_label": "Fence Type",
+      "route_status_label": "Route Status",
+      "color_label": "Color",
+      "assigned_routes_label": "Assigned Routes",
+      "timestamps": "Timestamps",
+      "created_label": "Created",
+      "updated_label": "Updated",
+      "close": "Close"
+    },
+    "errors": {
+      "load_failed": "Failed to load stations"
+    }
+  },
+  "inventory_scan": {
+    "title": "Device Inventory",
+    "na": "N/A",
+    "devices_count": "devices",
+    "local_mode": "🔓 Local Mode",
+    "sn_label": "SN",
+    "model_label": "Model",
+    "loading": "Loading inventory...",
+    "syncing": "Syncing...",
+    "added_to_list": "Added to List",
+    "scan_another": "Scan Another",
+    "scan_device": "Scan Device",
+    "manufacturers": {
+      "telematics": "Telematics",
+      "joint_tech": "Joint Tech"
+    },
+    "device_types": {
+      "telematics": "Telematics (8 digits)",
+      "joint_tech": "Joint Tech (10 digits)",
+      "qr_codes": "QR Codes supported"
+    },
+    "instructions": {
+      "align": "Align barcode or QR code inside the frame",
+      "saved_locally": "✓ Saved locally even if offline"
+    },
+    "empty": {
+      "title": "No devices found",
+      "subtext": "Tap + to scan barcode or QR code"
+    },
+    "status": {
+      "saved_locally_offline": "Saved locally (offline mode)",
+      "synced_to_server": "Synced to server",
+      "saved_locally_login_to_sync": "Saved locally (login to sync)",
+      "already_on_server": "Already on server",
+      "saved_locally_server_error": "Saved locally (server error)",
+      "saved_locally_network_error": "Saved locally (network error)"
+    },
+    "errors": {
+      "cannot_read": "Could not read code. Try again.",
+      "already_in_inventory": "⚠️ {{serialNo}} already in inventory"
+    },
+    "success": {
+      "added_to_inventory": "✓ {{serialNo}} added to inventory"
+    }
+  },
+  "receive_devices": {
+    "title": "Receive Devices",
+    "unknown": "Unknown",
+    "scan_title": "Scan Device QR Code",
+    "scan_subtitle": "Align QR code inside the frame",
+    "scan_note": "Both QR codes and barcodes supported",
+    "devices_to_receive": "Devices to Receive",
+    "clear_all": "Clear All",
+    "submit_button": "Submit {{count}} Device",
+    "conditions": {
+      "good": "Good",
+      "faulty": "Faulty",
+      "available": "Available",
+      "in_use": "In Use",
+      "in_return_transit": "In Return Transit",
+      "awaiting_charging": "Awaiting Charging",
+      "charging": "Charging",
+      "under_repair": "Under Repair",
+      "decommissioned": "Decommissioned"
+    },
+    "modal": {
+      "title": "Select Device Condition",
+      "serial_label": "Serial",
+      "cancel": "Cancel",
+      "add_device": "Add Device"
+    },
+    "remove_device": {
+      "title": "Remove Device",
+      "message": "Are you sure you want to remove this device?",
+      "cancel": "Cancel",
+      "confirm": "Remove"
+    },
+    "clear_all": {
+      "title": "Clear All",
+      "message": "Are you sure you want to remove all {{count}} devices?",
+      "cancel": "Cancel",
+      "confirm": "Clear All"
+    },
+    "alert": {
+      "partial_success": "Partial Success",
+      "partial_success_message": "Some devices failed:\n{{errors}}"
+    },
+    "errors": {
+      "no_store": "No store assigned. Please contact admin.",
+      "invalid_barcode": "Invalid barcode: Serial number must contain only numbers",
+      "duplicate_serial": "Serial number {{serialNumber}} is already in the list",
+      "select_condition": "Please select a device condition",
+      "no_devices": "Please add at least one device",
+      "no_token": "No authentication token found",
+      "session_expired": "Session expired. Please log in again.",
+      "submit_failed": "Failed to submit devices. Please try again."
+    },
+    "success": {
+      "device_added": "Device {{serialNumber}} added with condition: {{condition}}",
+      "submitted": "Successfully received {{count}} device(s)",
+      "with_errors": ", {{count}} error(s) occurred"
+    }
+  },
+  "alerts": {
+    "title": "Alerts",
+    "notification": "Notification",
+    "no_message": "No message content",
+    "loading": "Loading...",
+    "mark_all_read": "Mark all read",
+    "no_unread": "No unread notifications",
+    "priority": {
+      "critical": "CRITICAL",
+      "high": "HIGH",
+      "medium": "MEDIUM",
+      "low": "LOW"
+    },
+    "stats": {
+      "total": "Total",
+      "unread": "Unread",
+      "unattended": "Unattended",
+      "critical": "Critical"
+    },
+    "filters": {
+      "all": "All",
+      "unattended": "Unattended",
+      "critical": "Critical"
+    },
+    "time": {
+      "just_now": "Just now",
+      "minutes_ago": "{{count}}m ago",
+      "hours_ago": "{{count}}h ago",
+      "days_ago": "{{count}}d ago"
+    },
+    "status": {
+      "read": "Read",
+      "unread": "Unread",
+      "attended": "Attended",
+      "unattended": "Unattended"
+    },
+    "buttons": {
+      "read": "Read",
+      "attend": "Attend",
+      "assign": "Assign",
+      "view": "View"
+    },
+    "empty": {
+      "title": "No notifications",
+      "no_unread": "No unread notifications",
+      "no_unattended": "No unattended notifications",
+      "no_critical": "No critical notifications",
+      "all_caught": "All caught up!"
+    },
+    "modal": {
+      "title": "Notification Details",
+      "title_label": "Title",
+      "message_label": "Message",
+      "priority_label": "Priority",
+      "type_label": "Type",
+      "device_serial_label": "Device Serial",
+      "geofence_label": "Geofence",
+      "date_time_label": "Date & Time",
+      "status_label": "Status",
+      "close": "Close"
+    },
+    "assign_modal": {
+      "title": "Assign Notification",
+      "select_user": "Select User",
+      "comment": "Comment (optional)",
+      "comment_placeholder": "Add a comment...",
+      "cancel": "Cancel",
+      "assign": "Assign"
+    },
+    "attend_modal": {
+      "title": "Attend Notification",
+      "comments": "Comments",
+      "comment_placeholder": "Enter comments...",
+      "cancel": "Cancel",
+      "submit": "Submit"
+    },
+    "success": {
+      "marked_read": "Marked as read",
+      "all_marked_read": "All marked as read",
+      "marked_attended": "Marked as attended",
+      "assigned": "Notification assigned"
+    },
+    "errors": {
+      "load_failed": "Failed to load notifications",
+      "select_user": "Please select a user",
+      "assign_failed": "Assignment failed",
+      "comment_required": "Please enter comments"
+    }
+  },
+  "alarms": {
+    "title": "Alarms",
+    "notification": "Alarm",
+    "no_message": "No message content",
+    "loading": "Loading alarms...",
+    "mark_all_read": "Mark all read",
+    "no_unread": "No unread alarms",
+    "priority": {
+      "critical": "CRITICAL",
+      "high": "HIGH",
+      "medium": "MEDIUM",
+      "low": "LOW"
+    },
+    "stats": {
+      "total": "Total",
+      "unread": "Unread",
+      "unattended": "Unattended",
+      "critical": "Critical"
+    },
+    "filters": {
+      "all": "All",
+      "unattended": "Unattended",
+      "critical": "Critical"
+    },
+    "time": {
+      "just_now": "Just now",
+      "minutes_ago": "{{count}}m ago",
+      "hours_ago": "{{count}}h ago",
+      "days_ago": "{{count}}d ago"
+    },
+    "status": {
+      "read": "Read",
+      "unread": "Unread",
+      "attended": "Attended",
+      "unattended": "Unattended"
+    },
+    "buttons": {
+      "read": "Read",
+      "attend": "Attend",
+      "assign": "Assign",
+      "view": "View"
+    },
+    "empty": {
+      "title": "No alarms",
+      "no_unread": "No unread alarms",
+      "no_unattended": "No unattended alarms",
+      "no_critical": "No critical alarms",
+      "all_caught": "All caught up!"
+    },
+    "modal": {
+      "title": "Alarm Details",
+      "title_label": "Title",
+      "message_label": "Message",
+      "priority_label": "Priority",
+      "type_label": "Type",
+      "device_serial_label": "Device Serial",
+      "geofence_label": "Geofence",
+      "date_time_label": "Date & Time",
+      "status_label": "Status",
+      "close": "Close"
+    },
+    "assign_modal": {
+      "title": "Assign Alarm",
+      "select_user": "Select User",
+      "comment": "Comment (optional)",
+      "comment_placeholder": "Add a comment...",
+      "cancel": "Cancel",
+      "assign": "Assign"
+    },
+    "attend_modal": {
+      "title": "Attend Alarm",
+      "comments": "Comments",
+      "comment_placeholder": "Enter comments...",
+      "cancel": "Cancel",
+      "submit": "Submit"
+    },
+    "success": {
+      "marked_read": "Marked as read",
+      "all_marked_read": "All marked as read",
+      "marked_attended": "Marked as attended",
+      "assigned": "Alarm assigned"
+    },
+    "errors": {
+      "load_failed": "Failed to load alarms",
+      "select_user": "Please select a user",
+      "assign_failed": "Assignment failed",
+      "comment_required": "Please enter comments"
+    }
+  },
+  "attach_evidence": {
+    "ticket_label": "Ticket",
+    "subtitle": "Capture one or more images as evidence",
+    "no_photos": "No photos taken yet",
+    "add_photo": "📸 ADD A PHOTO",
+    "upload_button": "UPLOAD {{count}} IMAGE",
+    "cancel_back": "Cancel and go back",
+    "missing_photo": {
+      "title": "Missing Photo",
+      "message": "Please take at least one photo."
+    },
+    "success": {
+      "title": "Success",
+      "message": "All evidence uploaded successfully!"
+    },
+    "errors": {
+      "check_network": "Check network or server logs",
+      "upload_failed": "Upload Failed",
+      "error_message": "Error: {{message}}"
+    }
+  },
+  "commands": {
+    "title": "Device Commands",
+    "na": "N/A",
+    "loading": "Loading devices...",
+    "search_placeholder": "Search by name, serial, IMEI...",
+    "status": {
+      "online": "ONLINE",
+      "offline": "OFFLINE"
+    },
+    "details": {
+      "serial": "Serial",
+      "imei": "IMEI"
+    },
+    "stats": {
+      "all_devices": "All Devices",
+      "online": "Online",
+      "offline": "Offline"
+    },
+    "buttons": {
+      "send_command": "Send Command",
+      "show_commands": "▼ Show Commands",
+      "hide_commands": "▲ Hide Commands"
+    },
+    "list": {
+      "low_power": "Low Power Mode",
+      "set_primary_ip": "Set Primary IP",
+      "set_secondary_ip": "Set Secondary IP",
+      "reset_historical": "Reset Historical Position",
+      "disable_sleep": "Disable Sleep Mode",
+      "set_timezone": "Set Timezone (GMT+3)",
+      "set_operation_mode": "Set Operation Mode",
+      "exit_deep_sleep": "Exit Deep Sleep",
+      "enter_sleep_mode": "Enter Sleep Mode",
+      "set_authorized_numbers": "Set Authorized Numbers",
+      "change_password": "Change Unlock Password",
+      "unlock_device": "Unlock Device",
+      "factory_reset": "Factory Reset",
+      "restart_device": "Restart Device",
+      "set_serial_number": "Set Serial Number",
+      "query_device_info": "Query Device Info",
+      "query_device_status": "Query Device Status"
+    },
+    "modal": {
+      "device_label": "Device",
+      "battery_level": "Battery Level (%)",
+      "report_duration": "Report Duration (hours)",
+      "ip_domain": "IP/Domain",
+      "port": "Port",
+      "reset_serial": "Device Serial Number to Reset",
+      "lock_interval": "Report Interval when Locked (seconds)",
+      "unlock_interval": "Report Interval when Unlocked (seconds)",
+      "wake_time": "Wake Up Working Time (seconds)",
+      "sleep_time": "Sleep Time (seconds)",
+      "auth_number": "Authorized Number {{num}} (optional)",
+      "old_password": "Old Password",
+      "new_password": "New Password (6 digits)",
+      "confirm_password": "Confirm New Password",
+      "new_serial": "New Serial Number"
+    },
+    "placeholders": {
+      "battery_level": "e.g., 10",
+      "report_duration": "e.g., 0.1 (6 minutes)",
+      "ip_domain": "e.g., bsl.co.ke or 192.168.1.100",
+      "port": "e.g., 8080",
+      "reset_serial": "Enter 8-digit serial number",
+      "lock_interval": "e.g., 5",
+      "unlock_interval": "e.g., 300",
+      "wake_time": "e.g., 30",
+      "sleep_time": "e.g., 300",
+      "auth_number": "e.g., 716826814 (without leading 0)",
+      "old_password": "Enter old password",
+      "new_password": "Enter new password",
+      "confirm_password": "Confirm new password",
+      "new_serial": "Enter 8-digit serial number"
+    },
+    "hints": {
+      "report_duration": "0.1 hours = 6 minutes",
+      "reset_serial": "Enter the device serial number to reset historical position",
+      "auth_numbers": "Do not include leading zero. At least one number is required",
+      "new_serial": "Serial number must be 8 digits"
+    },
+    "query": {
+      "device_info_title": "Device Information",
+      "device_info_message": "Device: {{sn}}\n\nResponse: {{response}}",
+      "device_status_title": "Device Status",
+      "device_status_message": "Device: {{sn}}\n\nStatus: {{status}}",
+      "query_failed": "Query Failed",
+      "info_failed": "Failed to query device info",
+      "status_failed": "Failed to query device status",
+      "error": "Error",
+      "info_error": "Failed to query device information",
+      "status_error": "Failed to query device status"
+    },
+    "bulk": {
+      "no_devices_title": "No Devices Selected",
+      "no_devices_message": "Please select at least one device",
+      "title": "Bulk Command",
+      "message": "Send restart command to {{count}} device(s)?",
+      "cancel": "Cancel",
+      "send": "Send",
+      "complete_title": "Bulk Command Complete",
+      "complete_message": "Success: {{success}}\nFailed: {{fail}}",
+      "send_to": "Send to {{count}} device(s)"
+    },
+    "error": {
+      "title": "Error",
+      "ip_port_required": "Please enter IP and Port",
+      "serial_8_digits": "Please enter 8-digit serial number",
+      "auth_numbers_required": "At least one authorized number is required",
+      "password_6_digits": "New password must be 6 digits",
+      "password_mismatch": "Passwords do not match"
+    },
+    "empty": {
+      "title": "No devices found",
+      "adjust_search": "Try adjusting your search",
+      "filter": "No {{filter}} devices available",
+      "no_devices": "No devices have been added yet"
+    },
+    "success": {
+      "command_sent": "Command sent successfully"
+    },
+    "errors": {
+      "load_failed": "Failed to load devices",
+      "command_failed": "Failed to send command"
+    }
+  },
+  "device_map_view": {
+    "map_view": "Map View",
+    "loading": "Loading map...",
+    "traffic": "Traffic",
+    "active": "ACTIVE",
+    "inactive": "INACTIVE",
+    "active_status": "ACTIVE",
+    "inactive_status": "INACTIVE",
+    "radius_label": "Radius",
+    "devices": "devices",
+    "devices_label": "Devices",
+    "type_label": "Type",
+    "routes_assigned": "route(s) assigned",
+    "center_on_map": "Center on Map",
+    "types": {
+      "hotspot": "Hotspot",
+      "route": "Route",
+      "station": "Station",
+      "geofence": "Geofence"
+    },
+    "map_types": {
+      "standard": "Map",
+      "satellite": "Satellite",
+      "hybrid": "Hybrid"
+    }
+  },
+  "forgot_password": {
+    "welcome_back": "Welcome Back",
+    "subtitle": "Reset your password to continue",
+    "labels": {
+      "email": "Email Address"
+    },
+    "placeholders": {
+      "email": "Enter your email"
+    },
+    "buttons": {
+      "submit": "Submit"
+    },
+    "loading": "Submitting...",
+    "errors": {
+      "email_required": "Email is required",
+      "invalid_email": "Invalid Email.",
+      "network_error": "Something went wrong. Please try again later."
+    },
+    "success": {
+      "password_reset": "Password reset successful!"
+    }
+  },
+  "device_map": {
+    "title": "Fleet Tracker",
+    "na": "N/A",
+    "loading": "Loading fleet data...",
+    "search_placeholder": "Search by name, serial, or ID...",
+    "status": {
+      "moving": "In Motion",
+      "parked": "Parked"
+    },
+    "stats": {
+      "total": "Total",
+      "moving": "Moving",
+      "stationary": "Stationary"
+    },
+    "controls": {
+      "traffic": "Traffic",
+      "live": "Live"
+    },
+    "details": {
+      "vehicle_id": "Vehicle ID",
+      "location": "Location",
+      "last_update": "Last Update",
+      "mileage": "Mileage"
+    },
+    "buttons": {
+      "center_on_map": "Center on Map"
+    },
+    "bottom_sheet": {
+      "nearby_vehicles": "Nearby Vehicles"
+    },
+    "empty": {
+      "no_vehicles": "No vehicles found",
+      "adjust_search": "Try adjusting your search"
+    },
+    "time": {
+      "just_now": "Just now",
+      "minutes_ago": "{{count}} min ago",
+      "hours_ago": "{{count}} hr ago"
+    },
+    "errors": {
+      "load_failed": "Failed to load device locations"
+    }
+  },
+  "navigation": {
+    "home": "Home",
+    "dashboard": "Dashboard",
+    "tickets": "Tickets",
+    "devices": "Devices",
+    "profile": "Profile",
+    "settings": "Settings",
+    "logout": "Logout",
+    "help": "Help",
+    "about": "About"
+  },
+  "dashboard": {
+    "title": "Dashboard",
+    "greeting": "Hello, {{name}}",
+    "quick_actions": "Quick Actions",
+    "active_shipments": "Active Shipments",
+    "pending_tickets": "Pending Tickets",
+    "device_status": "Device Status",
+    "view_all": "View All"
   },
   "devices": {
     "title": "Devices",

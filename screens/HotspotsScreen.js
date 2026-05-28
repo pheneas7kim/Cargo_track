@@ -25,10 +25,12 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import serverUrl from '../config';
+import { useTranslation } from 'react-i18next';
 
 const { width, height } = Dimensions.get('window');
 
 const HotspotsScreen = () => {
+  const { t } = useTranslation();
   const navigation = useNavigation();
   const [hotspots, setHotspots] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -37,7 +39,7 @@ const HotspotsScreen = () => {
   const [selectedHotspot, setSelectedHotspot] = useState(null);
   const [modalVisible, setModalVisible] = useState(false);
   const [expandedId, setExpandedId] = useState(null);
-  
+
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(30)).current;
 
@@ -59,7 +61,7 @@ const HotspotsScreen = () => {
   useFocusEffect(
     React.useCallback(() => {
       fetchHotspots();
-      
+
       const backAction = () => {
         return false;
       };
@@ -71,7 +73,7 @@ const HotspotsScreen = () => {
   const fetchHotspots = async (isRefresh = false) => {
     try {
       if (!isRefresh) setLoading(true);
-      
+
       const token = await AsyncStorage.getItem('accessToken');
       if (!token) {
         console.error('No token found');
@@ -95,7 +97,7 @@ const HotspotsScreen = () => {
     } catch (error) {
       console.error('Failed to fetch hotspots:', error);
       Snackbar.show({
-        text: 'Failed to load hotspots',
+        text: t('hotspots.errors.load_failed', { defaultValue: 'Failed to load hotspots' }),
         duration: 3000,
         backgroundColor: '#FF6B6B',
       });
@@ -112,36 +114,36 @@ const HotspotsScreen = () => {
 
   const getFilteredHotspots = () => {
     let filtered = [...hotspots];
-    
+
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
-      filtered = filtered.filter(h => 
+      filtered = filtered.filter(h =>
         h.name?.toLowerCase().includes(query) ||
         h.description?.toLowerCase().includes(query)
       );
     }
-    
+
     return filtered;
   };
 
   const formatDate = (dateString) => {
-    if (!dateString) return 'N/A';
+    if (!dateString) return t('hotspots.na', { defaultValue: 'N/A' });
     const date = new Date(dateString);
     const now = new Date();
     const diff = Math.floor((now - date) / 1000 / 60);
-    if (diff < 1) return 'Just now';
-    if (diff < 60) return `${diff} min ago`;
-    if (diff < 1440) return `${Math.floor(diff / 60)} hr ago`;
+    if (diff < 1) return t('hotspots.time.just_now', { defaultValue: 'Just now' });
+    if (diff < 60) return t('hotspots.time.minutes_ago', { defaultValue: '{{count}} min ago' }).replace('{{count}}', diff.toString());
+    if (diff < 1440) return t('hotspots.time.hours_ago', { defaultValue: '{{count}} hr ago' }).replace('{{count}}', Math.floor(diff / 60).toString());
     return date.toLocaleDateString();
   };
 
   const formatCoordinates = (lat, lng) => {
-    if (!lat || !lng) return 'N/A';
+    if (!lat || !lng) return t('hotspots.na', { defaultValue: 'N/A' });
     return `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
   };
 
   const formatRadius = (meters) => {
-    if (!meters) return 'N/A';
+    if (!meters) return t('hotspots.na', { defaultValue: 'N/A' });
     if (meters >= 1000) {
       return `${(meters / 1000).toFixed(2)} km`;
     }
@@ -154,10 +156,10 @@ const HotspotsScreen = () => {
 
   const renderHotspotCard = ({ item, index }) => {
     const isExpanded = expandedId === item.id;
-    
+
     return (
-      <Animatable.View 
-        animation="fadeInUp" 
+      <Animatable.View
+        animation="fadeInUp"
         delay={index * 80}
         duration={400}
         style={styles.animationWrapper}
@@ -179,13 +181,13 @@ const HotspotsScreen = () => {
               </View>
               <View style={[styles.activeBadge, item.isActive ? styles.active : styles.inactive]}>
                 <Text style={styles.activeText}>
-                  {item.isActive ? 'ACTIVE' : 'INACTIVE'}
+                  {item.isActive ? t('hotspots.active', { defaultValue: 'ACTIVE' }) : t('hotspots.inactive', { defaultValue: 'INACTIVE' })}
                 </Text>
               </View>
             </View>
 
             <Text style={styles.description} numberOfLines={isExpanded ? undefined : 2}>
-              {item.description || 'No description available'}
+              {item.description || t('hotspots.no_description', { defaultValue: 'No description available' })}
             </Text>
 
             <View style={styles.infoRow}>
@@ -204,59 +206,59 @@ const HotspotsScreen = () => {
             {isExpanded && (
               <Animatable.View animation="fadeIn" duration={300} style={styles.expandedContent}>
                 <View style={styles.divider} />
-                
+
                 <View style={styles.detailRow}>
                   <Icon name="info" size={16} color="#999" />
-                  <Text style={styles.detailLabel}>Fence Type:</Text>
+                  <Text style={styles.detailLabel}>{t('hotspots.fence_type_label', { defaultValue: 'Fence Type' })}:</Text>
                   <Text style={styles.detailValue}>{item.fenceType || 'CIRCLE'}</Text>
                 </View>
-                
+
                 <View style={styles.detailRow}>
                   <Icon name="flag" size={16} color="#999" />
-                  <Text style={styles.detailLabel}>Status:</Text>
+                  <Text style={styles.detailLabel}>{t('hotspots.status_label', { defaultValue: 'Status' })}:</Text>
                   <Text style={[styles.detailValue, { color: item.routeStatus === 'ACTIVE' ? '#4CAF50' : '#FF6B6B' }]}>
                     {item.routeStatus || 'ACTIVE'}
                   </Text>
                 </View>
-                
+
                 {item.assignedRouteIds && item.assignedRouteIds.length > 0 && (
                   <View style={styles.detailRow}>
                     <Icon name="route" size={16} color="#999" />
-                    <Text style={styles.detailLabel}>Assigned Routes:</Text>
-                    <Text style={styles.detailValue}>{item.assignedRouteIds.length} route(s)</Text>
+                    <Text style={styles.detailLabel}>{t('hotspots.assigned_routes_label', { defaultValue: 'Assigned Routes' })}:</Text>
+                    <Text style={styles.detailValue}>{item.assignedRouteIds.length} {t('hotspots.route_s', { defaultValue: 'route(s)' })}</Text>
                   </View>
                 )}
-                
+
                 <View style={styles.detailRow}>
                   <Icon name="access-time" size={16} color="#999" />
-                  <Text style={styles.detailLabel}>Created:</Text>
+                  <Text style={styles.detailLabel}>{t('hotspots.created_label', { defaultValue: 'Created' })}:</Text>
                   <Text style={styles.detailValue}>{formatDate(item.createdAt)}</Text>
                 </View>
-                
+
                 <View style={styles.detailRow}>
                   <Icon name="update" size={16} color="#999" />
-                  <Text style={styles.detailLabel}>Updated:</Text>
+                  <Text style={styles.detailLabel}>{t('hotspots.updated_label', { defaultValue: 'Updated' })}:</Text>
                   <Text style={styles.detailValue}>{formatDate(item.updatedAt)}</Text>
                 </View>
-                
-                <TouchableOpacity 
+
+                <TouchableOpacity
                   style={styles.viewOnMapButton}
                   onPress={() => {
                     // Navigate to map with this hotspot
-                    navigation.navigate('DeviceMapScreenView', { 
-                      hotspot: item 
+                    navigation.navigate('DeviceMapScreenView', {
+                      hotspot: item
                     });
                   }}
                 >
                   <Icon name="map" size={18} color="#FFA500" />
-                  <Text style={styles.viewOnMapText}>View on Map</Text>
+                  <Text style={styles.viewOnMapText}>{t('hotspots.view_on_map', { defaultValue: 'View on Map' })}</Text>
                 </TouchableOpacity>
               </Animatable.View>
             )}
-            
+
             <View style={styles.expandIndicator}>
               <Text style={styles.expandIcon}>
-                {isExpanded ? '▲ Less details' : '▼ More details'}
+                {isExpanded ? t('hotspots.less_details', { defaultValue: '▲ Less details' }) : t('hotspots.more_details', { defaultValue: '▼ More details' })}
               </Text>
             </View>
           </View>
@@ -267,14 +269,14 @@ const HotspotsScreen = () => {
 
   const renderHeader = () => {
     const filteredHotspots = getFilteredHotspots();
-    
+
     return (
       <Animated.View style={[styles.header, { opacity: fadeAnim }]}>
         <View style={styles.headerTop}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
             <Icon name="arrow-back" size={24} color="#1A1A1A" />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Hotspots</Text>
+          <Text style={styles.headerTitle}>{t('hotspots.title', { defaultValue: 'Hotspots' })}</Text>
           <View style={styles.headerRight}>
             <Text style={styles.countBadge}>{filteredHotspots.length}</Text>
           </View>
@@ -284,7 +286,7 @@ const HotspotsScreen = () => {
           <Icon name="search" size={20} color="#999" />
           <TextInput
             style={styles.searchInput}
-            placeholder="Search hotspots..."
+            placeholder={t('hotspots.search_placeholder', { defaultValue: 'Search hotspots...' })}
             placeholderTextColor="#999"
             value={searchQuery}
             onChangeText={setSearchQuery}
@@ -299,19 +301,19 @@ const HotspotsScreen = () => {
         <View style={styles.statsContainer}>
           <View style={styles.statCard}>
             <Text style={styles.statNumber}>{hotspots.length}</Text>
-            <Text style={styles.statLabel}>Total Hotspots</Text>
+            <Text style={styles.statLabel}>{t('hotspots.stats.total', { defaultValue: 'Total Hotspots' })}</Text>
           </View>
           <View style={styles.statCard}>
             <Text style={[styles.statNumber, { color: '#4CAF50' }]}>
               {hotspots.filter(h => h.isActive).length}
             </Text>
-            <Text style={styles.statLabel}>Active</Text>
+            <Text style={styles.statLabel}>{t('hotspots.stats.active', { defaultValue: 'Active' })}</Text>
           </View>
           <View style={styles.statCard}>
             <Text style={[styles.statNumber, { color: '#FF6B6B' }]}>
               {hotspots.filter(h => !h.isActive).length}
             </Text>
-            <Text style={styles.statLabel}>Inactive</Text>
+            <Text style={styles.statLabel}>{t('hotspots.stats.inactive', { defaultValue: 'Inactive' })}</Text>
           </View>
         </View>
       </Animated.View>
@@ -324,7 +326,7 @@ const HotspotsScreen = () => {
         <StatusBar barStyle="dark-content" backgroundColor="#F8F9FA" />
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#FFA500" />
-          <Text style={styles.loadingText}>Loading hotspots...</Text>
+          <Text style={styles.loadingText}>{t('hotspots.loading', { defaultValue: 'Loading hotspots...' })}</Text>
         </View>
       </SafeAreaView>
     );
@@ -335,15 +337,15 @@ const HotspotsScreen = () => {
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#F8F9FA" />
-      
+
       <FlatList
         data={filteredHotspots}
         keyExtractor={item => item.id.toString()}
         renderItem={renderHotspotCard}
         ListHeaderComponent={renderHeader}
         refreshControl={
-          <RefreshControl 
-            refreshing={refreshing} 
+          <RefreshControl
+            refreshing={refreshing}
             onRefresh={onRefresh}
             tintColor="#FFA500"
             colors={['#FFA500']}
@@ -354,11 +356,11 @@ const HotspotsScreen = () => {
         ListEmptyComponent={
           <Animatable.View animation="fadeIn" duration={500} style={styles.emptyContainer}>
             <Icon name="location-off" size={80} color="#CCC" />
-            <Text style={styles.emptyTitle}>No hotspots found</Text>
+            <Text style={styles.emptyTitle}>{t('hotspots.empty.title', { defaultValue: 'No hotspots found' })}</Text>
             <Text style={styles.emptyText}>
-              {searchQuery 
-                ? 'Try adjusting your search' 
-                : 'No hotspots have been created yet'}
+              {searchQuery
+                ? t('hotspots.empty.adjust_search', { defaultValue: 'Try adjusting your search' })
+                : t('hotspots.empty.no_hotspots', { defaultValue: 'No hotspots have been created yet' })}
             </Text>
           </Animatable.View>
         }
@@ -374,48 +376,48 @@ const HotspotsScreen = () => {
         <View style={styles.modalOverlay}>
           <Animatable.View animation="slideInUp" duration={300} style={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Hotspot Details</Text>
+              <Text style={styles.modalTitle}>{t('hotspots.modal.title', { defaultValue: 'Hotspot Details' })}</Text>
               <TouchableOpacity onPress={() => setModalVisible(false)} style={styles.closeButton}>
                 <Icon name="close" size={24} color="#999" />
               </TouchableOpacity>
             </View>
-            
+
             {selectedHotspot && (
               <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
                 {/* Status Header */}
                 <View style={styles.modalStatusHeader}>
                   <View style={[styles.modalStatusBadge, selectedHotspot.isActive ? styles.modalActive : styles.modalInactive]}>
                     <Text style={styles.modalStatusText}>
-                      {selectedHotspot.isActive ? 'ACTIVE' : 'INACTIVE'}
+                      {selectedHotspot.isActive ? t('hotspots.active', { defaultValue: 'ACTIVE' }) : t('hotspots.inactive', { defaultValue: 'INACTIVE' })}
                     </Text>
                   </View>
                 </View>
 
                 {/* Hotspot Name */}
                 <Text style={styles.modalHotspotName}>{selectedHotspot.name}</Text>
-                
+
                 {/* Description */}
                 {selectedHotspot.description && (
                   <View style={styles.modalSection}>
-                    <Text style={styles.modalSectionTitle}>Description</Text>
+                    <Text style={styles.modalSectionTitle}>{t('hotspots.modal.description', { defaultValue: 'Description' })}</Text>
                     <Text style={styles.modalDescription}>{selectedHotspot.description}</Text>
                   </View>
                 )}
 
                 {/* Location Info */}
                 <View style={styles.modalSection}>
-                  <Text style={styles.modalSectionTitle}>Location</Text>
+                  <Text style={styles.modalSectionTitle}>{t('hotspots.modal.location', { defaultValue: 'Location' })}</Text>
                   <View style={styles.locationCard}>
                     <View style={styles.locationRow}>
                       <Icon name="location-on" size={18} color="#FFA500" />
-                      <Text style={styles.locationLabel}>Coordinates:</Text>
+                      <Text style={styles.locationLabel}>{t('hotspots.modal.coordinates_label', { defaultValue: 'Coordinates' })}:</Text>
                       <Text style={styles.locationValue}>
                         {formatCoordinates(selectedHotspot.centerLat, selectedHotspot.centerLng)}
                       </Text>
                     </View>
                     <View style={styles.locationRow}>
                       <Icon name="radio-button-unchecked" size={18} color="#FFA500" />
-                      <Text style={styles.locationLabel}>Radius:</Text>
+                      <Text style={styles.locationLabel}>{t('hotspots.modal.radius_label', { defaultValue: 'Radius' })}:</Text>
                       <Text style={styles.locationValue}>{formatRadius(selectedHotspot.radiusMeters)}</Text>
                     </View>
                   </View>
@@ -423,23 +425,23 @@ const HotspotsScreen = () => {
 
                 {/* Details Grid */}
                 <View style={styles.modalSection}>
-                  <Text style={styles.modalSectionTitle}>Details</Text>
+                  <Text style={styles.modalSectionTitle}>{t('hotspots.modal.details', { defaultValue: 'Details' })}</Text>
                   <View style={styles.detailsGrid}>
                     <View style={styles.detailCard}>
                       <Icon name="info" size={20} color="#666" />
-                      <Text style={styles.detailCardLabel}>Fence Type</Text>
+                      <Text style={styles.detailCardLabel}>{t('hotspots.modal.fence_type_label', { defaultValue: 'Fence Type' })}</Text>
                       <Text style={styles.detailCardValue}>{selectedHotspot.fenceType || 'CIRCLE'}</Text>
                     </View>
                     <View style={styles.detailCard}>
                       <Icon name="flag" size={20} color="#666" />
-                      <Text style={styles.detailCardLabel}>Route Status</Text>
+                      <Text style={styles.detailCardLabel}>{t('hotspots.modal.route_status_label', { defaultValue: 'Route Status' })}</Text>
                       <Text style={[styles.detailCardValue, { color: selectedHotspot.routeStatus === 'ACTIVE' ? '#4CAF50' : '#FF6B6B' }]}>
                         {selectedHotspot.routeStatus || 'ACTIVE'}
                       </Text>
                     </View>
                     <View style={styles.detailCard}>
                       <Icon name="palette" size={20} color="#666" />
-                      <Text style={styles.detailCardLabel}>Color</Text>
+                      <Text style={styles.detailCardLabel}>{t('hotspots.modal.color_label', { defaultValue: 'Color' })}</Text>
                       <View style={styles.colorPreview}>
                         <View style={[styles.colorBox, { backgroundColor: selectedHotspot.colorHex || '#FFA500' }]} />
                         <Text style={styles.detailCardValue}>{selectedHotspot.colorHex || '#FFA500'}</Text>
@@ -448,8 +450,8 @@ const HotspotsScreen = () => {
                     {selectedHotspot.assignedRouteIds && selectedHotspot.assignedRouteIds.length > 0 && (
                       <View style={styles.detailCard}>
                         <Icon name="route" size={20} color="#666" />
-                        <Text style={styles.detailCardLabel}>Assigned Routes</Text>
-                        <Text style={styles.detailCardValue}>{selectedHotspot.assignedRouteIds.length} route(s)</Text>
+                        <Text style={styles.detailCardLabel}>{t('hotspots.modal.assigned_routes_label', { defaultValue: 'Assigned Routes' })}</Text>
+                        <Text style={styles.detailCardValue}>{selectedHotspot.assignedRouteIds.length} {t('hotspots.route_s', { defaultValue: 'route(s)' })}</Text>
                       </View>
                     )}
                   </View>
@@ -457,18 +459,18 @@ const HotspotsScreen = () => {
 
                 {/* Timestamps */}
                 <View style={styles.modalSection}>
-                  <Text style={styles.modalSectionTitle}>Timestamps</Text>
+                  <Text style={styles.modalSectionTitle}>{t('hotspots.modal.timestamps', { defaultValue: 'Timestamps' })}</Text>
                   <View style={styles.timestampCard}>
                     <View style={styles.timestampRow}>
                       <Icon name="access-time" size={16} color="#999" />
-                      <Text style={styles.timestampLabel}>Created:</Text>
+                      <Text style={styles.timestampLabel}>{t('hotspots.modal.created_label', { defaultValue: 'Created' })}:</Text>
                       <Text style={styles.timestampValue}>
                         {new Date(selectedHotspot.createdAt).toLocaleString()}
                       </Text>
                     </View>
                     <View style={styles.timestampRow}>
                       <Icon name="update" size={16} color="#999" />
-                      <Text style={styles.timestampLabel}>Updated:</Text>
+                      <Text style={styles.timestampLabel}>{t('hotspots.modal.updated_label', { defaultValue: 'Updated' })}:</Text>
                       <Text style={styles.timestampValue}>
                         {new Date(selectedHotspot.updatedAt).toLocaleString()}
                       </Text>
@@ -476,11 +478,11 @@ const HotspotsScreen = () => {
                   </View>
                 </View>
 
-                <TouchableOpacity 
+                <TouchableOpacity
                   style={styles.closeModalButton}
                   onPress={() => setModalVisible(false)}
                 >
-                  <Text style={styles.closeModalButtonText}>Close</Text>
+                  <Text style={styles.closeModalButtonText}>{t('hotspots.modal.close', { defaultValue: 'Close' })}</Text>
                 </TouchableOpacity>
               </ScrollView>
             )}
