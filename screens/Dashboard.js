@@ -938,8 +938,9 @@ function HomeScreen() {
           }}
         >
           <View style={styles.ticketCard}>
-            {/* Top Row: Ticket Number | Priority | Status */}
-            <View style={styles.ticketHeader}>
+            {/* Row 1: Ticket Number + Priority */}
+            <View style={styles.ticketHeaderRow}>
+              <Text style={styles.ticketNumberLabel}>Ticket Number:</Text>
               <Text style={styles.ticketNumber}>{item.ticketNumber || `#${item.id}`}</Text>
               <View style={[styles.priorityBadge, { backgroundColor: priorityColor + '20' }]}>
                 <Text style={styles.priorityIcon}>{getPriorityIcon(item.priority)}</Text>
@@ -947,7 +948,11 @@ function HomeScreen() {
                   {item.priority}
                 </Text>
               </View>
-              {/* Status Badge - Added this */}
+            </View>
+
+            {/* Row 2: Status */}
+            <View style={styles.statusRow}>
+              <Text style={styles.statusLabel}>Status:</Text>
               <View style={[styles.statusBadgeSmall, { backgroundColor: statusColor + '20' }]}>
                 <Text style={[styles.statusTextSmall, { color: statusColor }]}>
                   {statusInfo.text}
@@ -958,29 +963,35 @@ function HomeScreen() {
             {/* Title */}
             <Text style={styles.ticketTitle}>{item.subject}</Text>
 
-            {/* Description */}
-            <Text style={styles.ticketDescription} numberOfLines={2}>
-              {cleanTicketDescription(item.description)}
-            </Text>
+            {/* Description with label */}
+            <View style={styles.descriptionContainer}>
+              <Text style={styles.descriptionLabel}>Description:</Text>
+              <Text style={styles.ticketDescription} numberOfLines={2}>
+                {cleanTicketDescription(item.description) || 'No description provided'}
+              </Text>
+            </View>
 
-            {/* Bottom Row: Time, T1, Device */}
-            <View style={styles.ticketFooter}>
+            {/* Footer with field names */}
+            <View style={styles.ticketFooterRow}>
               <View style={styles.footerItem}>
                 <Text style={styles.footerIcon}>🕒</Text>
-                <Text style={styles.footerText}>{formatDate(item.updatedAt, t)}</Text>
+                <Text style={styles.footerLabel}>Updated:</Text>
+                <Text style={styles.footerValue}>{formatDate(item.updatedAt, t)}</Text>
               </View>
 
               {item.t1Number && (
                 <View style={styles.footerItem}>
                   <Text style={styles.footerIcon}>📄</Text>
-                  <Text style={styles.footerText}>{item.t1Number}</Text>
+                  <Text style={styles.footerLabel}>T1:</Text>
+                  <Text style={styles.footerValue}>{item.t1Number}</Text>
                 </View>
               )}
 
               {item.truckReg && (
                 <View style={styles.footerItem}>
                   <Text style={styles.footerIcon}>📱</Text>
-                  <Text style={styles.footerText}>{item.truckReg}</Text>
+                  <Text style={styles.footerLabel}>Device:</Text>
+                  <Text style={styles.footerValue}>{item.truckReg}</Text>
                 </View>
               )}
             </View>
@@ -989,7 +1000,7 @@ function HomeScreen() {
             {item.comments && item.comments.length > 0 && (
               <View style={styles.commentsCount}>
                 <Text style={styles.commentsIcon}>💬</Text>
-                <Text style={styles.commentsText}>{item.comments.length} {t('common.comments', { defaultValue: 'comments' })}</Text>
+                <Text style={styles.commentsText}>{item.comments.length} comments</Text>
               </View>
             )}
           </View>
@@ -997,6 +1008,7 @@ function HomeScreen() {
       </Animatable.View>
     );
   };
+
   const renderAlert = ({ item, index }) => (
     <Animatable.View
       animation="fadeInUp"
@@ -1037,6 +1049,52 @@ function HomeScreen() {
       {(roleId === 1 || roleId === 102 || roleId === 255 || roleId === 103 || roleId === 257) && (
         <View style={styles.quickActionsGrid}>
           <View style={styles.actionsContainer}>
+
+            {/* ROLE 102: 4 icons in first row, Eseals Replacement in second row */}
+            {roleId === 102 && (
+              <>
+                <View style={styles.actionRowSingle}>
+                  <TouchableOpacity style={styles.actionCardSmall} onPress={handleTicketsScreen}>
+                    <View style={[styles.actionIconBg, { backgroundColor: '#2196F320' }]}>
+                      <Image source={require('../assets/phone.png')} style={styles.actionIcon} />
+                    </View>
+                    <Text style={styles.actionLabel}>{t('common.actions.tickets', { defaultValue: 'Tickets' })}</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity style={styles.actionCardSmall} onPress={handleRandomStopScreen}>
+                    <View style={[styles.actionIconBg, { backgroundColor: '#2196F320' }]}>
+                      <Image source={require('../assets/randomstop.png')} style={styles.actionIcon} />
+                    </View>
+                    <Text style={styles.actionLabel}>{t('common.actions.random_stop', { defaultValue: 'Random Stop' })}</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity style={styles.actionCardSmall} onPress={handleRequestEsealsList}>
+                    <View style={[styles.actionIconBg, { backgroundColor: '#FF6B6B20' }]}>
+                      <Image source={require('../assets/alarm.png')} style={styles.actionIcon} />
+                    </View>
+                    <Text style={styles.actionLabel}>{t('common.actions.request_eseals', { defaultValue: 'Request Eseals' })}</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity style={styles.actionCardSmall} onPress={handleAssignedEseals}>
+                    <View style={[styles.actionIconBg, { backgroundColor: '#2196F320' }]}>
+                      <Image source={require('../assets/phone.png')} style={styles.actionIcon} />
+                    </View>
+                    <Text style={styles.actionLabel}>{t('common.actions.assigned_eseals', { defaultValue: 'Assigned Eseals' })}</Text>
+                  </TouchableOpacity>
+                </View>
+
+                {/* Second row for Eseals Replacement */}
+                <View style={styles.actionRowSingle}>
+                  <TouchableOpacity style={styles.actionCardSmall} onPress={handleEsealsReplacement}>
+                    <View style={[styles.actionIconBg, { backgroundColor: '#4CAF5020' }]}>
+                      <Image source={require('../assets/bell.png')} style={styles.actionIcon} />
+                    </View>
+                    <Text style={styles.actionLabel}>{t('common.actions.eseals_replacement', { defaultValue: 'Eseals Replacement' })}</Text>
+                  </TouchableOpacity>
+                </View>
+              </>
+            )}
+
             {/* Row 1 – visible only for role 1 */}
             {roleId === 1 && (
               <View style={styles.actionRow}>
@@ -1082,43 +1140,50 @@ function HomeScreen() {
               </View>
             )}
 
-            {/* Row 2 – visible for both role 1 and role 102 */}
-            <View style={styles.actionRow}>
-              {roleId !== 255 && roleId !== 103 && roleId !== 257 && (
+            {/* Row for role 257 - only Tickets */}
+            {roleId === 257 && (
+              <View style={styles.actionRow}>
+                <TouchableOpacity style={styles.actionCard} onPress={handleTicketsScreen}>
+                  <View style={[styles.actionIconBg, { backgroundColor: '#2196F320' }]}>
+                    <Image source={require('../assets/phone.png')} style={styles.actionIcon} />
+                  </View>
+                  <Text style={styles.actionLabel}>{t('common.actions.tickets', { defaultValue: 'Tickets' })}</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
+            {/* Row 2 – visible for role 1 only */}
+            {roleId === 1 && (
+              <View style={styles.actionRow}>
                 <TouchableOpacity style={styles.actionCard} onPress={handleRandomStopScreen}>
                   <View style={[styles.actionIconBg, { backgroundColor: '#2196F320' }]}>
                     <Image source={require('../assets/randomstop.png')} style={styles.actionIcon} />
                   </View>
                   <Text style={styles.actionLabel}>{t('common.actions.random_stop', { defaultValue: 'Random Stop' })}</Text>
                 </TouchableOpacity>
-              )}
 
-             {(roleId === 102 || (roleId !== 255 && roleId !== 103 && roleId !== 257)) && (
-               <TouchableOpacity style={styles.actionCard} onPress={handleRequestEsealsList}>
-                 <View style={[styles.actionIconBg, { backgroundColor: '#FF6B6B20' }]}>
-                   <Image source={require('../assets/alarm.png')} style={styles.actionIcon} />
-                 </View>
-                 <Text style={styles.actionLabel}>{t('common.actions.request_eseals', { defaultValue: 'Request Eseals' })}</Text>
-               </TouchableOpacity>
-             )}
-              {roleId !== 102 && roleId !== 103 && roleId !== 255 && roleId !== 257 && (
+                <TouchableOpacity style={styles.actionCard} onPress={handleRequestEsealsList}>
+                  <View style={[styles.actionIconBg, { backgroundColor: '#FF6B6B20' }]}>
+                    <Image source={require('../assets/alarm.png')} style={styles.actionIcon} />
+                  </View>
+                  <Text style={styles.actionLabel}>{t('common.actions.request_eseals', { defaultValue: 'Request Eseals' })}</Text>
+                </TouchableOpacity>
+
                 <TouchableOpacity style={styles.actionCard} onPress={handleEsealsReplacement}>
                   <View style={[styles.actionIconBg, { backgroundColor: '#4CAF5020' }]}>
                     <Image source={require('../assets/bell.png')} style={styles.actionIcon} />
                   </View>
                   <Text style={styles.actionLabel}>{t('common.actions.eseals_replacement', { defaultValue: 'Eseals Replacement' })}</Text>
                 </TouchableOpacity>
-              )}
 
-              {roleId !== 255 && roleId !== 103 && roleId !== 257 && (
                 <TouchableOpacity style={styles.actionCard} onPress={handleAssignedEseals}>
                   <View style={[styles.actionIconBg, { backgroundColor: '#2196F320' }]}>
                     <Image source={require('../assets/phone.png')} style={styles.actionIcon} />
                   </View>
                   <Text style={styles.actionLabel}>{t('common.actions.assigned_eseals', { defaultValue: 'Assigned Eseals' })}</Text>
                 </TouchableOpacity>
-              )}
-            </View>
+              </View>
+            )}
 
             {/* Row 3 – visible only for role 1 (admin features) */}
             {roleId === 1 && (
@@ -1156,30 +1221,31 @@ function HomeScreen() {
         </View>
       )}
 
-{/* Fixed the conditional logic using proper parenthesis mapping */}
-{( roleId === 1 ||  roleId ===202 ) && (
-  <View style={styles.actionRow}>
-  {( roleId === 1 ) && (
-    <TouchableOpacity style={styles.actionCard} onPress={handleInventoryScan}>
-      <View style={[styles.actionIconBg, { backgroundColor: '#9C27B020' }]}>
-        <Image source={require('../assets/trk.png')} style={styles.actionIcon} />
-      </View>
-      <Text style={styles.actionLabel}>{t('common.actions.scan_to_add', { defaultValue: 'Scan to Add Devices' })}</Text>
-    </TouchableOpacity> )}
+      {/* Fixed the conditional logic using proper parenthesis mapping */}
+      {(roleId === 1 || roleId === 202) && (
+        <View style={styles.actionRow}>
+          {(roleId === 1) && (
+            <TouchableOpacity style={styles.actionCard} onPress={handleInventoryScan}>
+              <View style={[styles.actionIconBg, { backgroundColor: '#9C27B020' }]}>
+                <Image source={require('../assets/trk.png')} style={styles.actionIcon} />
+              </View>
+              <Text style={styles.actionLabel}>{t('common.actions.scan_to_add', { defaultValue: 'Scan to Add Devices' })}</Text>
+            </TouchableOpacity>
+          )}
 
-    {/* Removed the unstyled wrapper view so both cards are direct siblings */}
-    {(roleId === 202 || roleId === 1 ) && (
-      <TouchableOpacity style={styles.actionCard} onPress={handleReceiveDevicesScreen}>
-        <View style={[styles.actionIconBg, { backgroundColor: '#9C27B020' }]}>
-          <Image source={require('../assets/trk.png')} style={styles.actionIcon} />
+          {/* Removed the unstyled wrapper view so both cards are direct siblings */}
+          {(roleId === 202 || roleId === 1) && (
+            <TouchableOpacity style={styles.actionCard} onPress={handleReceiveDevicesScreen}>
+              <View style={[styles.actionIconBg, { backgroundColor: '#9C27B020' }]}>
+                <Image source={require('../assets/trk.png')} style={styles.actionIcon} />
+              </View>
+              <Text style={styles.actionLabel}>{t('common.actions.receive', { defaultValue: 'Receive' })}</Text>
+            </TouchableOpacity>
+          )}
         </View>
-        <Text style={styles.actionLabel}>{t('common.actions.receive', { defaultValue: 'Receive' })}</Text>
-      </TouchableOpacity>
-    )}
-  </View>
-)}
+      )}
 
-{/*
+      {/*
       {roleId !== 257 && (
               <View style={styles.alarmCard}>
                 <View style={styles.alarmInfo}>
@@ -1197,7 +1263,7 @@ function HomeScreen() {
                 />
               </View>
             )}
-*/}
+      */}
 
       <View style={styles.tabs}>
         {/* Only show Shipments tab if role is not 255, not 103, and not 257 */}
@@ -1598,13 +1664,42 @@ const styles = StyleSheet.create({
   searchInput: { flex: 1, borderWidth: 1.5, borderColor: '#E5E5E5', borderRadius: 12, paddingHorizontal: 16, paddingVertical: 12, fontSize: 14, backgroundColor: '#FAFAFA', marginRight: 12 },
   trackButton: { backgroundColor: '#FFA500', borderRadius: 12, paddingHorizontal: 24, justifyContent: 'center', shadowColor: '#FFA500', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 3 },
   trackButtonText: { color: '#FFFFFF', fontWeight: '600', fontSize: 14 },
-  quickActionsGrid: { marginHorizontal: 12, marginBottom: 20 },
-  actionsContainer: { gap: 16 },
-  actionRow: {flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'flex-start', },
-  actionCard: { width: '22%', marginHorizontal: '1.5%', marginBottom: 15, alignItems: 'center', },
-  actionIconBg: { width: 46, height: 46, borderRadius: 28, justifyContent: 'center', alignItems: 'center', marginBottom: 8 },
+  quickActionsGrid: { marginHorizontal: 2, marginBottom: 20, marginTop: 16 },
+  actionsContainer: { gap: 6 },
+  actionRow: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'flex-start' },
+  actionRowSingle: { flexDirection: 'row', flexWrap: 'nowrap', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 4, marginBottom: 15 },
+  actionCard: {
+    width: '22%',
+    marginHorizontal: '1.5%',
+    marginBottom: 15,
+    alignItems: 'center',
+    minHeight: 80,
+  },
+  actionCardSmall: {
+    width: '23%',
+    marginHorizontal: '1%',
+    marginBottom: 0,
+    alignItems: 'center',
+    minHeight: 80,
+  },
+  actionIconBg: {
+    width: 46,
+    height: 46,
+    borderRadius: 28,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
   actionIcon: { width: 24, height: 24 },
-  actionLabel: { fontSize: 10, color: '#333', fontWeight: '500', textAlign: 'center' },
+  actionLabel: {
+    fontSize: 10,
+    color: '#333',
+    fontWeight: '500',
+    textAlign: 'center',
+    lineHeight: 14,
+    height: 28,
+    width: '100%',   
+  },
   alarmCard: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#FFFFFF', marginHorizontal: 20, marginBottom: 16, padding: 16, borderRadius: 12, shadowOpacity: 0.05, elevation: 1 },
   alarmInfo: { flexDirection: 'row', alignItems: 'center', flex: 1 },
   alarmIcon: { width: 32, height: 32, marginRight: 12, tintColor: '#FFA500' },
@@ -1616,6 +1711,8 @@ const styles = StyleSheet.create({
   tabText: { fontSize: 14, fontWeight: '500', color: '#666' },
   activeTabText: { color: '#FFA500', fontWeight: '600' },
   listContent: { paddingBottom: 100 },
+
+  // Shipment Card Styles
   shipmentCard: { backgroundColor: '#FFFFFF', borderRadius: 16, marginHorizontal: 16, padding: 16, marginBottom: 12, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 3 },
   shipmentHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
   trackingInfo: { flex: 1 },
@@ -1640,28 +1737,147 @@ const styles = StyleSheet.create({
   shipmentActions: { flexDirection: 'row', gap: 12 },
   actionBtn: { flex: 1, backgroundColor: '#F5F5F5', paddingVertical: 10, borderRadius: 10, alignItems: 'center' },
   actionBtnText: { fontSize: 14, color: '#FFA500', fontWeight: '500' },
-  notificationCard: { flexDirection: 'row', backgroundColor: '#FFFFFF', borderRadius: 12, padding: 12, marginBottom: 8, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 2, elevation: 1 },
-  unreadNotification: { backgroundColor: '#FFF9E6' },
-  notificationIcon: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#F5F5F5', justifyContent: 'center', alignItems: 'center', marginRight: 12 },
-  notificationIconText: { fontSize: 20 },
-  notificationContent: { flex: 1 },
-  notificationTitle: { fontSize: 14, fontWeight: '600', color: '#1A1A1A', marginBottom: 4 },
-  notificationMessage: { fontSize: 12, color: '#666', marginBottom: 4 },
-  notificationTime: { fontSize: 10, color: '#999' },
-  ticketCard: {backgroundColor: '#FFFFFF', borderRadius: 10, marginHorizontal: 2, padding: 10, marginBottom: 0, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.04, shadowRadius: 6, elevation: 2,},
-  ticketId: { fontSize: 12, color: '#999', fontWeight: '500' },
-  priorityBadge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
-  priorityText: { fontSize: 10, fontWeight: '600' },
-  ticketSubject: { fontSize: 16, fontWeight: '600', color: '#1A1A1A', marginBottom: 4 },
-  ticketDescription: { fontSize: 12, color: '#666', marginBottom: 8 },
-  ticketFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  ticketDate: { fontSize: 10, color: '#999' },
-  statusBadgeSmall: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
-  statusTextSmall: { fontSize: 10, fontWeight: '600' },
+
+  // Ticket Card Styles - With Field Names
+  ticketCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    marginHorizontal: 2,
+    padding: 14,
+    marginBottom: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
+    elevation: 2,
+    borderWidth: 1,
+    borderColor: '#F0F0F0',
+  },
+  ticketHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    marginBottom: 10,
+    gap: 8,
+  },
+  ticketNumberLabel: {
+    fontSize: 11,
+    fontWeight: '500',
+    color: '#999',
+  },
+  ticketNumber: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#FFA500',
+    marginRight: 'auto',
+  },
+  priorityBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    gap: 4,
+  },
+  priorityIcon: {
+    fontSize: 10,
+  },
+  priorityText: {
+    fontSize: 10,
+    fontWeight: '600',
+  },
+  statusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 10,
+    gap: 8,
+  },
+  statusLabel: {
+    fontSize: 11,
+    fontWeight: '500',
+    color: '#999',
+  },
+  statusBadgeSmall: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  statusTextSmall: {
+    fontSize: 10,
+    fontWeight: '600',
+  },
+  ticketTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#1A1A1A',
+    marginBottom: 6,
+  },
+  // Description with label
+  descriptionContainer: {
+    marginBottom: 10,
+  },
+  descriptionLabel: {
+    fontSize: 11,
+    fontWeight: '500',
+    color: '#999',
+    marginBottom: 4,
+  },
+  ticketDescription: {
+    fontSize: 12,
+    color: '#666',
+    lineHeight: 17,
+  },
+  // Footer with field names
+  ticketFooterRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 16,
+    marginTop: 8,
+    marginBottom: 6,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#F5F5F5',
+  },
+  footerItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  footerLabel: {
+    fontSize: 10,
+    fontWeight: '500',
+    color: '#999',
+  },
+  footerIcon: {
+    fontSize: 11,
+  },
+  footerValue: {
+    fontSize: 11,
+    color: '#666',
+    fontWeight: '500',
+  },
+  commentsCount: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingTop: 4,
+    marginTop: 2,
+  },
+  commentsIcon: {
+    fontSize: 11,
+  },
+  commentsText: {
+    fontSize: 10,
+    color: '#FFA500',
+  },
+
+  // Alert Card Styles
   alertCard: { backgroundColor: '#FFFFFF', borderRadius: 16, marginHorizontal: 16, padding: 16, marginBottom: 12, borderLeftWidth: 4, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 3 },
   alertTitle: { fontSize: 14, fontWeight: '600', color: '#1A1A1A', marginBottom: 4 },
   alertMessage: { fontSize: 12, color: '#666', marginBottom: 8 },
   alertTime: { fontSize: 10, color: '#999' },
+
+  // Modal Styles
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
   modalContent: { backgroundColor: '#FFF', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, maxHeight: '80%' },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
@@ -1672,25 +1888,37 @@ const styles = StyleSheet.create({
   detailValueLarge: { fontSize: 18, fontWeight: '600', color: '#1A1A1A', marginBottom: 8 },
   mapButton: { backgroundColor: '#FFA500', borderRadius: 12, paddingVertical: 14, alignItems: 'center', marginTop: 20 },
   mapButtonText: { color: '#FFFFFF', fontWeight: '600', fontSize: 14 },
+
+  // FAB
   fab: { position: 'absolute', bottom: 30, right: 20, width: 56, height: 56, borderRadius: 28, backgroundColor: '#FFA500', justifyContent: 'center', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 8 },
   fabText: { fontSize: 32, color: '#FFFFFF', fontWeight: '300' },
+
+  // Command Modal
   commandItem: { padding: 16, borderBottomWidth: 1, borderBottomColor: '#F0F0F0' },
   commandName: { fontSize: 16, fontWeight: '600', color: '#1A1A1A', marginBottom: 4 },
   commandDescription: { fontSize: 12, color: '#666' },
   commandList: { paddingBottom: 20 },
+
+  // Input Styles
   inputContainer: { paddingHorizontal: 20, marginBottom: 16 },
   inputLabel: { fontSize: 14, fontWeight: '600', color: '#333333', marginBottom: 8 },
   input: { borderWidth: 1.5, borderColor: '#E5E5E5', borderRadius: 12, paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: '#1A1A1A', backgroundColor: '#FAFAFA' },
+
+  // Modal Actions
   modalActions: { flexDirection: 'row', paddingHorizontal: 20, paddingTop: 8, paddingBottom: 20, gap: 12 },
   cancelButton: { flex: 1, paddingVertical: 14, borderRadius: 12, borderWidth: 1, borderColor: '#E5E5E5', alignItems: 'center' },
   cancelButtonText: { fontSize: 16, fontWeight: '600', color: '#666666' },
   submitButton: { flex: 1, paddingVertical: 14, borderRadius: 12, backgroundColor: '#FFA500', alignItems: 'center' },
   submitButtonDisabled: { backgroundColor: '#CCCCCC' },
   submitButtonText: { fontSize: 16, fontWeight: '600', color: '#FFFFFF' },
+
+  // Loading & Empty States
   loaderContainer: { padding: 40, alignItems: 'center' },
   loaderText: { marginTop: 12, fontSize: 14, color: '#666' },
   emptyContainer: { padding: 40, alignItems: 'center' },
   emptyText: { fontSize: 14, color: '#999' },
+
+  // Ticket Detail Modal Styles
   ticketDetailHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
   ticketDetailNumber: { fontSize: 14, fontWeight: '600', color: '#666' },
   statusBadgeLarge: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 },
@@ -1703,15 +1931,24 @@ const styles = StyleSheet.create({
   infoValue: { fontSize: 13, color: '#333', fontWeight: '500' },
   priorityBadgeLarge: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8, gap: 6 },
   priorityTextLarge: { fontSize: 12, fontWeight: '600' },
+
+  // Animation Wrapper
   animationWrapper: { marginHorizontal: 8, marginBottom: 8 },
-  ticketNumber: { fontSize: 12, fontWeight: '600', color: '#666' },
-  ticketTitle: { fontSize: 16, fontWeight: '600', color: '#1A1A1A', marginBottom: 8 },
-  footerItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  footerIcon: { fontSize: 12 },
-  footerText: { fontSize: 11, color: '#999' },
-  commentsCount: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingTop: 8, borderTopWidth: 1, borderTopColor: '#F0F0F0' },
-  commentsIcon: { fontSize: 12 },
-  commentsText: { fontSize: 11, color: '#FFA500' },
+
+  // Additional Ticket Styles
+  ticketId: { fontSize: 12, color: '#999', fontWeight: '500' },
+  ticketSubject: { fontSize: 16, fontWeight: '600', color: '#1A1A1A', marginBottom: 4 },
+  ticketDate: { fontSize: 10, color: '#999' },
+
+  // Notification Styles
+  notificationCard: { flexDirection: 'row', backgroundColor: '#FFFFFF', borderRadius: 12, padding: 12, marginBottom: 8, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 2, elevation: 1 },
+  unreadNotification: { backgroundColor: '#FFF9E6' },
+  notificationIcon: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#F5F5F5', justifyContent: 'center', alignItems: 'center', marginRight: 12 },
+  notificationIconText: { fontSize: 20 },
+  notificationContent: { flex: 1 },
+  notificationTitle: { fontSize: 14, fontWeight: '600', color: '#1A1A1A', marginBottom: 4 },
+  notificationMessage: { fontSize: 12, color: '#666', marginBottom: 4 },
+  notificationTime: { fontSize: 10, color: '#999' },
 });
 
 export default HomeScreen;
