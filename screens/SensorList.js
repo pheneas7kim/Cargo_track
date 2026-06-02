@@ -17,6 +17,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import Snackbar from 'react-native-snackbar';
 import serverURL from '../config';
 import { useTranslation } from 'react-i18next';
+// ✅ Import global token refresh service
+import { refreshAccessToken, addTokenRefreshListener } from '../services/TokenService';
 
 const getAuthToken = async () => {
   try {
@@ -28,31 +30,79 @@ const getAuthToken = async () => {
   }
 };
 
+// ✅ Helper function to get language header
+const getLanguageHeader = async (i18n) => {
+  try {
+    const language = await AsyncStorage.getItem('userLanguage') || i18n?.language || 'en';
+    return language;
+  } catch (error) {
+    console.error('Error getting language:', error);
+    return 'en';
+  }
+};
+
+// ✅ Helper function to make authenticated fetch with retry on 401
+const authenticatedFetch = async (url, options, i18n, retryCount = 0) => {
+  try {
+    let token = await getAuthToken();
+    const language = await getLanguageHeader(i18n);
+
+    const response = await fetch(url, {
+      ...options,
+      headers: {
+        ...options.headers,
+        'Authorization': `Bearer ${token}`,
+        'Accept-Language': language,
+      },
+    });
+
+    if (response.status === 401 && retryCount === 0) {
+      console.log('🔐 Token expired, attempting refresh...');
+      const newToken = await refreshAccessToken();
+      if (newToken) {
+        console.log('✅ Token refreshed, retrying request...');
+        return authenticatedFetch(url, options, i18n, 1);
+      }
+    }
+
+    return response;
+  } catch (error) {
+    console.error('❌ Authenticated fetch error:', error);
+    throw error;
+  }
+};
+
 const SensorList = ({ navigation }) => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [mastersData, setMastersData] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState(null);
 
+  // ✅ Listen for token refresh events
+  useEffect(() => {
+    const removeListener = addTokenRefreshListener((newToken) => {
+      console.log('📡 Token refreshed in SensorList');
+    });
+    return () => removeListener();
+  }, []);
+
   // Fetch sensors for a specific master from API
   const fetchSensorsForMaster = async (masterSN) => {
     try {
-      const token = await getAuthToken();
-      if (!token) {
-        throw new Error(t('sensor_list.errors.auth_required', { defaultValue: 'Authentication required' }));
-      }
-
       const url = `${serverURL}sensors/${masterSN}`;
       console.log(`📡 Fetching sensors for master ${masterSN}:`, url);
 
-      const response = await fetch(url, {
-        method: 'GET',
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': `Bearer ${token}`,
+      const response = await authenticatedFetch(
+        url,
+        {
+          method: 'GET',
+          headers: {
+            'Accept': 'application/json',
+          },
         },
-      });
+        i18n
+      );
 
       if (response.status === 401) {
         throw new Error(t('sensor_list.errors.session_expired', { defaultValue: 'Session expired' }));

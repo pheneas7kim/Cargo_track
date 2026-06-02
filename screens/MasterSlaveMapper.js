@@ -18,6 +18,8 @@ import Ionicons from 'react-native-vector-icons/Ionicons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import serverURL from '../config';
 import { useTranslation } from 'react-i18next';
+// ✅ Import global token refresh service
+import { refreshAccessToken, addTokenRefreshListener } from '../services/TokenService';
 
 const { width, height } = Dimensions.get('window');
 const SCAN_SIZE = width * 0.7;
@@ -38,8 +40,50 @@ const getAuthToken = async () => {
   }
 };
 
+// ✅ Helper function to get language header
+const getLanguageHeader = async (i18n) => {
+  try {
+    const language = await AsyncStorage.getItem('userLanguage') || i18n?.language || 'en';
+    return language;
+  } catch (error) {
+    console.error('Error getting language:', error);
+    return 'en';
+  }
+};
+
+// ✅ Helper function to make authenticated fetch with retry on 401
+const authenticatedFetch = async (url, options, i18n, retryCount = 0) => {
+  try {
+    let token = await getAuthToken();
+    const language = await getLanguageHeader(i18n);
+
+    const response = await fetch(url, {
+      ...options,
+      headers: {
+        ...options.headers,
+        'Authorization': `Bearer ${token}`,
+        'Accept-Language': language,
+      },
+    });
+
+    if (response.status === 401 && retryCount === 0) {
+      console.log('🔐 Token expired, attempting refresh...');
+      const newToken = await refreshAccessToken();
+      if (newToken) {
+        console.log('✅ Token refreshed, retrying request...');
+        return authenticatedFetch(url, options, i18n, 1);
+      }
+    }
+
+    return response;
+  } catch (error) {
+    console.error('❌ Authenticated fetch error:', error);
+    throw error;
+  }
+};
+
 const MasterSlaveMapper = ({ navigation }) => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   // Current session state
   const [master, setMaster] = useState(null);
   const [masterType, setMasterType] = useState(null); // 'JOINT_TECH' or 'TELEMATICS'
@@ -53,6 +97,14 @@ const MasterSlaveMapper = ({ navigation }) => {
   // Navigation state
   const [viewMode, setViewMode] = useState('DASHBOARD'); // DASHBOARD, SCANNER, SUMMARY
   const [scanType, setScanType] = useState(null);
+
+  // ✅ Listen for token refresh events
+  useEffect(() => {
+    const removeListener = addTokenRefreshListener((newToken) => {
+      console.log('📡 Token refreshed in MasterSlaveMapper');
+    });
+    return () => removeListener();
+  }, []);
 
   console.log('--- COMPONENT RENDERED ---');
 
@@ -134,11 +186,6 @@ const MasterSlaveMapper = ({ navigation }) => {
   // Send command to Telematics device (8 digits - POST request)
   const sendTelematicsCommand = async (deviceSn, command) => {
     try {
-      const token = await getAuthToken();
-      if (!token) {
-        return { success: false, message: t('master_slave.errors.auth_required', { defaultValue: 'Authentication required. Please login again.' }) };
-      }
-
       const url = `${serverURL}devices/command/set`;
       const formJson = {
         deviceSn: deviceSn,
@@ -152,14 +199,17 @@ const MasterSlaveMapper = ({ navigation }) => {
       console.log('URL:', url);
       console.log('==============================');
 
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
+      const response = await authenticatedFetch(
+        url,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(formJson),
         },
-        body: JSON.stringify(formJson),
-      });
+        i18n
+      );
 
       const data = await response.json();
 
@@ -181,11 +231,6 @@ const MasterSlaveMapper = ({ navigation }) => {
   // Send command to Joint Tech device (10 digits - GET request with fixed command)
   const sendJointTechCommand = async (deviceSn) => {
     try {
-      const token = await getAuthToken();
-      if (!token) {
-        return { success: false, message: t('master_slave.errors.auth_required', { defaultValue: 'Authentication required. Please login again.' }) };
-      }
-
       const url = `${serverURL}joint-tech/command/${deviceSn}?command=${encodeURIComponent(
         JOINT_TECH_FIXED_COMMAND
       )}`;
@@ -197,13 +242,16 @@ const MasterSlaveMapper = ({ navigation }) => {
       console.log('URL:', url);
       console.log('==============================');
 
-      const response = await fetch(url, {
-        method: 'GET',
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': `Bearer ${token}`,
+      const response = await authenticatedFetch(
+        url,
+        {
+          method: 'GET',
+          headers: {
+            'Accept': 'application/json',
+          },
         },
-      });
+        i18n
+      );
 
       const data = await response.text();
 
@@ -277,11 +325,6 @@ const MasterSlaveMapper = ({ navigation }) => {
     console.log('Slaves to map:', slaveList);
 
     try {
-      const token = await getAuthToken();
-      if (!token) {
-        throw new Error(t('master_slave.errors.auth_required', { defaultValue: 'Authentication required. Please login again.' }));
-      }
-
       // Clean slave IDs (remove leading zeros)
       const cleanedSlaves = slaveList.map(slave => {
         // Remove leading zeros from slave IDs
@@ -311,12 +354,14 @@ const MasterSlaveMapper = ({ navigation }) => {
       console.log('URL:', url);
       console.log('==============================');
 
-      const response = await fetch(url, {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${token}`,
+      const response = await authenticatedFetch(
+        url,
+        {
+          method: 'GET',
+          headers: {},
         },
-      });
+        i18n
+      );
 
       const responseText = await response.text();
 

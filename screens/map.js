@@ -27,13 +27,15 @@ import MapView, { Marker, Callout, PROVIDER_GOOGLE } from 'react-native-maps';
 import LinearGradient from 'react-native-linear-gradient';
 import serverUrl from '../config';
 import { useTranslation } from 'react-i18next';
+// ✅ Import global token refresh service
+import { refreshAccessToken, getValidToken, addTokenRefreshListener } from '../services/TokenService';
 
 const { width, height } = Dimensions.get('window');
 const BOTTOM_SHEET_MAX_HEIGHT = height * 0.65;
 const BOTTOM_SHEET_MIN_HEIGHT = height * 0.15;
 
 const DeviceMapScreen = () => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const navigation = useNavigation();
   const [devices, setDevices] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -76,6 +78,18 @@ const DeviceMapScreen = () => {
     ]).start();
   }, []);
 
+  // ✅ Listen for token refresh events to update headers
+  useEffect(() => {
+    const removeListener = addTokenRefreshListener((newToken) => {
+      console.log('📡 Token refreshed, updating axios headers');
+      // Update axios default headers with new token
+      axios.defaults.headers.common['Authorization'] = `Bearer ${newToken}`;
+    });
+
+    return () => removeListener();
+  }, []);
+
+  // Auto-refresh device locations every 30 seconds
   useEffect(() => {
     if (autoRefresh) {
       intervalRef.current = setInterval(() => {
@@ -105,22 +119,46 @@ const DeviceMapScreen = () => {
     try {
       if (!isAutoRefresh) setLoading(true);
 
-      const token = await AsyncStorage.getItem('accessToken');
+      // ✅ Get valid token (will auto-refresh if expired)
+      let token = await AsyncStorage.getItem('accessToken');
+      const language = await AsyncStorage.getItem('userLanguage') || i18n.language || 'en';
+
       if (!token) {
         console.error('No token found');
         return;
       }
 
-      const response = await axios.get(
-        `${serverUrl}/telemetry/latest-t1s`,
-        {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-          },
-        }
-      );
+      let response;
+      let retryCount = 0;
+      const maxRetries = 2;
 
-      if (response.data && Array.isArray(response.data)) {
+      while (retryCount < maxRetries) {
+        try {
+          response = await axios.get(
+            `${serverUrl}/telemetry/latest-t1s`,
+            {
+              headers: {
+                'Authorization': `Bearer ${token}`,
+                'Accept-Language': language,
+              },
+            }
+          );
+          break; // Success, exit retry loop
+        } catch (error) {
+          if (error.response?.status === 401 && retryCount === 0) {
+            console.log('🔐 Token expired, attempting refresh...');
+            const newToken = await refreshAccessToken();
+            if (newToken) {
+              token = newToken;
+              retryCount++;
+              continue; // Retry with new token
+            }
+          }
+          throw error; // Re-throw if not recoverable
+        }
+      }
+
+      if (response && response.data && Array.isArray(response.data)) {
         setDevices(response.data);
         setLastUpdate(new Date());
 
@@ -130,11 +168,14 @@ const DeviceMapScreen = () => {
       }
     } catch (error) {
       console.error('Failed to fetch device locations:', error);
-      Snackbar.show({
-        text: t('device_map.errors.load_failed', { defaultValue: 'Failed to load device locations' }),
-        duration: 3000,
-        backgroundColor: '#FF6B6B',
-      });
+      // Only show error if not a 401 (already handled) and not auto-refresh
+      if (error.response?.status !== 401 && !isAutoRefresh) {
+        Snackbar.show({
+          text: t('device_map.errors.load_failed', { defaultValue: 'Failed to load device locations' }),
+          duration: 3000,
+          backgroundColor: '#FF6B6B',
+        });
+      }
     } finally {
       setLoading(false);
       setRefreshing(false);

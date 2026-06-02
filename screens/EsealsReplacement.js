@@ -21,11 +21,53 @@ import axios from 'axios';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import Snackbar from 'react-native-snackbar';
 import { useTranslation } from 'react-i18next';
+// ✅ Import global token refresh service
+import { refreshAccessToken, addTokenRefreshListener } from '../services/TokenService';
 
 const serverUrl = 'https://demo2.bsl.co.ke/api/v1';
 
+// ✅ Helper function to get language header
+const getLanguageHeader = async (i18n) => {
+  try {
+    const language = await AsyncStorage.getItem('userLanguage') || i18n?.language || 'en';
+    return language;
+  } catch (error) {
+    console.error('Error getting language:', error);
+    return 'en';
+  }
+};
+
+// ✅ Helper function to make authenticated axios request with retry on 401
+const authenticatedAxios = async (axiosInstance, config, i18n, retryCount = 0) => {
+  try {
+    const token = await AsyncStorage.getItem('accessToken');
+    const language = await getLanguageHeader(i18n);
+
+    const response = await axiosInstance({
+      ...config,
+      headers: {
+        ...config.headers,
+        'Authorization': `Bearer ${token}`,
+        'Accept-Language': language,
+      },
+    });
+
+    return response;
+  } catch (error) {
+    if (error.response?.status === 401 && retryCount === 0) {
+      console.log('🔐 Token expired, attempting refresh...');
+      const newToken = await refreshAccessToken();
+      if (newToken) {
+        console.log('✅ Token refreshed, retrying request...');
+        return authenticatedAxios(axiosInstance, config, i18n, 1);
+      }
+    }
+    throw error;
+  }
+};
+
 const EsealsReplacement = () => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const navigation = useNavigation();
   const [requests, setRequests] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -41,14 +83,22 @@ const EsealsReplacement = () => {
     oldDeviceConditionId: '',
   });
 
+  // ✅ Listen for token refresh events
+  React.useEffect(() => {
+    const removeListener = addTokenRefreshListener((newToken) => {
+      console.log('📡 Token refreshed in EsealsReplacement');
+    });
+    return () => removeListener();
+  }, []);
+
   const fetchRequests = async () => {
     try {
-      const token = await AsyncStorage.getItem('accessToken');
-      if (!token) throw new Error('No token');
-
-      const response = await axios.get(
-        `${serverUrl}/tickets/seal-replacement/my-requests`,
-        { headers: { Authorization: `Bearer ${token}` } }
+      const response = await authenticatedAxios(
+        axios.get,
+        {
+          url: `${serverUrl}/tickets/seal-replacement/my-requests`,
+        },
+        i18n
       );
 
       const data = response.data;
@@ -103,9 +153,6 @@ const EsealsReplacement = () => {
 
     setSubmitting(true);
     try {
-      const token = await AsyncStorage.getItem('accessToken');
-      if (!token) throw new Error('No token');
-
       const ticketId = parseInt(formData.ticketId);
       const payload = {
         ticketId: ticketId,
@@ -114,10 +161,14 @@ const EsealsReplacement = () => {
         oldDeviceConditionId: parseInt(formData.oldDeviceConditionId),
       };
 
-      const response = await axios.post(
-        `${serverUrl}/tickets/${ticketId}/seal-replacement/request`,
-        payload,
-        { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } }
+      const response = await authenticatedAxios(
+        axios.post,
+        {
+          url: `${serverUrl}/tickets/${ticketId}/seal-replacement/request`,
+          data: payload,
+          headers: { 'Content-Type': 'application/json' },
+        },
+        i18n
       );
 
       if (response.status === 200 || response.status === 201) {

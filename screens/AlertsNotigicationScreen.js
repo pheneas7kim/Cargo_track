@@ -24,8 +24,50 @@ import axios from 'axios';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import serverUrl from '../config';
 import { useTranslation } from 'react-i18next';
+// ✅ Import global token refresh service
+import { refreshAccessToken, addTokenRefreshListener } from '../services/TokenService';
 
 const { width } = Dimensions.get('window');
+
+// ✅ Helper function to get language header
+const getLanguageHeader = async (i18n) => {
+  try {
+    const language = await AsyncStorage.getItem('userLanguage') || i18n?.language || 'en';
+    return language;
+  } catch (error) {
+    console.error('Error getting language:', error);
+    return 'en';
+  }
+};
+
+// ✅ Helper function to make authenticated axios request with retry on 401
+const authenticatedAxios = async (axiosInstance, config, i18n, retryCount = 0) => {
+  try {
+    const token = await AsyncStorage.getItem('accessToken');
+    const language = await getLanguageHeader(i18n);
+
+    const response = await axiosInstance({
+      ...config,
+      headers: {
+        ...config.headers,
+        'Authorization': `Bearer ${token}`,
+        'Accept-Language': language,
+      },
+    });
+
+    return response;
+  } catch (error) {
+    if (error.response?.status === 401 && retryCount === 0) {
+      console.log('🔐 Token expired, attempting refresh...');
+      const newToken = await refreshAccessToken();
+      if (newToken) {
+        console.log('✅ Token refreshed, retrying request...');
+        return authenticatedAxios(axiosInstance, config, i18n, 1);
+      }
+    }
+    throw error;
+  }
+};
 
 // Helper to format time ago
 const formatTimeAgo = (dateString, t) => {
@@ -64,7 +106,7 @@ const getPriorityStyle = (priority, t) => {
 };
 
 const AlarmsNotigicationScreen = () => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const navigation = useNavigation();
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -85,6 +127,14 @@ const AlarmsNotigicationScreen = () => {
   const [attendNotificationId, setAttendNotificationId] = useState(null);
   const [attendComment, setAttendComment] = useState('');
 
+  // ✅ Listen for token refresh events
+  useEffect(() => {
+    const removeListener = addTokenRefreshListener((newToken) => {
+      console.log('📡 Token refreshed in AlarmsNotigicationScreen');
+    });
+    return () => removeListener();
+  }, []);
+
   useFocusEffect(
     useCallback(() => {
       fetchNotifications();      // load all notifications
@@ -96,30 +146,31 @@ const AlarmsNotigicationScreen = () => {
 
   const fetchUsers = async () => {
     try {
-      const token = await AsyncStorage.getItem('accessToken');
-      if (!token) return;
-      const response = await axios.get(`${serverUrl}/users/userList?pageNo=0&pageSize=1000`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const response = await authenticatedAxios(
+        axios.get,
+        {
+          url: `${serverUrl}/users/userList?pageNo=0&pageSize=1000`,
+        },
+        i18n
+      );
+
       if (response.data) setUsers(response.data);
     } catch (error) {
-    //   console.error('Failed to fetch users', error);
+      // console.error('Failed to fetch users', error);
     }
   };
 
   const fetchNotifications = async () => {
     try {
       setLoading(true);
-      const token = await AsyncStorage.getItem('accessToken');
-      if (!token) {
-        console.error('No token found');
-        return;
-      }
 
       // Use a very large page size to fetch all notifications at once
-      const response = await axios.get(
-        `${serverUrl}/notifications?page=0&size=10000&alarm=false&sort=createdAt,desc`,
-        { headers: { Authorization: `Bearer ${token}` } }
+      const response = await authenticatedAxios(
+        axios.get,
+        {
+          url: `${serverUrl}/notifications?page=0&size=10000&alarm=false&sort=createdAt,desc`,
+        },
+        i18n
       );
 
       if (response.data && response.data.content) {
@@ -155,10 +206,15 @@ const AlarmsNotigicationScreen = () => {
 
   const markAsRead = async (id) => {
     try {
-      const token = await AsyncStorage.getItem('accessToken');
-      await axios.post(`${serverUrl}/notifications/${id}/read`, {}, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      await authenticatedAxios(
+        axios.post,
+        {
+          url: `${serverUrl}/notifications/${id}/read`,
+          data: {},
+        },
+        i18n
+      );
+
       setNotifications(prev =>
         prev.map(n => (n.id === id ? { ...n, read: true } : n))
       );
@@ -176,12 +232,16 @@ const AlarmsNotigicationScreen = () => {
       return;
     }
     try {
-      const token = await AsyncStorage.getItem('accessToken');
       await Promise.all(
         unreadIds.map(id =>
-          axios.post(`${serverUrl}/notifications/${id}/read`, {}, {
-            headers: { Authorization: `Bearer ${token}` },
-          })
+          authenticatedAxios(
+            axios.post,
+            {
+              url: `${serverUrl}/notifications/${id}/read`,
+              data: {},
+            },
+            i18n
+          )
         )
       );
       setNotifications(prev => prev.map(n => ({ ...n, read: true })));
@@ -194,10 +254,15 @@ const AlarmsNotigicationScreen = () => {
 
   const markAsAttended = async (id, comments) => {
     try {
-      const token = await AsyncStorage.getItem('accessToken');
-      await axios.post(`${serverUrl}/notifications/${id}/attend`, { comments }, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      await authenticatedAxios(
+        axios.post,
+        {
+          url: `${serverUrl}/notifications/${id}/attend`,
+          data: { comments },
+        },
+        i18n
+      );
+
       setNotifications(prev =>
         prev.map(n => (n.id === id ? { ...n, attended: true } : n))
       );
@@ -214,12 +279,15 @@ const AlarmsNotigicationScreen = () => {
       return;
     }
     try {
-      const token = await AsyncStorage.getItem('accessToken');
-      await axios.post(
-        `${serverUrl}/notifications/${assignNotificationId}/assign`,
-        { assigneeId: parseInt(assignUserId), comments: assignComment },
-        { headers: { Authorization: `Bearer ${token}` } }
+      await authenticatedAxios(
+        axios.post,
+        {
+          url: `${serverUrl}/notifications/${assignNotificationId}/assign`,
+          data: { assigneeId: parseInt(assignUserId), comments: assignComment },
+        },
+        i18n
       );
+
       Snackbar.show({ text: t('alerts.success.assigned', { defaultValue: 'Notification assigned' }), duration: 2000, backgroundColor: '#4CAF50' });
       setAssignModalVisible(false);
       setAssignUserId('');

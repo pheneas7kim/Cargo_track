@@ -19,11 +19,23 @@ import serverUrl from '../config';
 import Snackbar from 'react-native-snackbar';
 import * as Animatable from 'react-native-animatable';
 import { useTranslation } from 'react-i18next';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const { width, height } = Dimensions.get('window');
 
+// ✅ Helper function to get language header
+const getLanguageHeader = async (i18n) => {
+  try {
+    const language = await AsyncStorage.getItem('userLanguage') || i18n?.language || 'en';
+    return language;
+  } catch (error) {
+    console.error('Error getting language:', error);
+    return 'en';
+  }
+};
+
 const ForgotPassword = () => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const navigation = useNavigation<NativeStackNavigationProp<any>>();
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
@@ -51,10 +63,17 @@ const ForgotPassword = () => {
 
     setLoading(true);
     try {
+      const language = await getLanguageHeader(i18n);
+
+      console.log('📤 Sending password reset request...');
+      console.log('Email:', email);
+      console.log('Accept-Language:', language);
+
       const response = await fetch(`${serverUrl}/api/auth/forgotpassword?userEmail=${encodeURIComponent(email)}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Accept-Language': language, // ✅ Add language header
         },
       });
 
@@ -297,7 +316,6 @@ const styles = StyleSheet.create({
     borderColor: '#E5E5E5',
     borderRadius: 8,
     backgroundColor: '#FAFAFA',
-    // transition: 'all 0.2s ease',
   },
   inputWrapperFocused: {
     borderColor: '#FFD700',
@@ -340,29 +358,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: 8,
     shadowColor: '#000',
-    // shadowOffset: {
-    //   width: 0,
-    //   height: 2,
-    // },
-    // shadowOpacity: 0.1,
-    // shadowRadius: 4,
-    // elevation: 3,
   },
   registerButtonActive: {
     backgroundColor: '#FFD700',
     shadowColor: '#FFD700',
-    // shadowOpacity: 0.3,
   },
   registerButtonDisabled: {
     backgroundColor: '#CCCCCC',
-    // shadowOpacity: 0,
-    // elevation: 0,
   },
   registerButtonText: {
     color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '600',
-    // letterSpacing: 0.5,
   },
   loadingContainer: {
     flexDirection: 'row',
@@ -396,14 +403,6 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     alignItems: 'center',
     marginTop: 8,
-    // shadowColor: '#000',
-    // shadowOffset: {
-    //   width: 0,
-    //   height: 2,
-    // },
-    // shadowOpacity: 0.1,
-    // shadowRadius: 4,
-    // elevation: 3,
   },
   loginButtonActive: {
     backgroundColor: '#FFD700',

@@ -26,6 +26,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
 import serverUrl from '../config';
 import { useTranslation } from 'react-i18next';
+// ✅ Import global token refresh service
+import { refreshAccessToken, addTokenRefreshListener } from '../services/TokenService';
 
 const { width } = Dimensions.get('window');
 
@@ -53,8 +55,79 @@ const getTicketStatusInfo = (status, t) => {
   }
 };
 
+// ✅ Helper function to get language header
+const getLanguageHeader = async (i18n) => {
+  try {
+    const language = await AsyncStorage.getItem('userLanguage') || i18n?.language || 'en';
+    return language;
+  } catch (error) {
+    console.error('Error getting language:', error);
+    return 'en';
+  }
+};
+
+// ✅ Helper function to make authenticated axios request with retry on 401
+const authenticatedAxios = async (axiosInstance, config, i18n, retryCount = 0) => {
+  try {
+    const token = await AsyncStorage.getItem('accessToken');
+    const language = await getLanguageHeader(i18n);
+
+    const response = await axiosInstance({
+      ...config,
+      headers: {
+        ...config.headers,
+        'Authorization': `Bearer ${token}`,
+        'Accept-Language': language,
+      },
+    });
+
+    return response;
+  } catch (error) {
+    if (error.response?.status === 401 && retryCount === 0) {
+      console.log('🔐 Token expired, attempting refresh...');
+      const newToken = await refreshAccessToken();
+      if (newToken) {
+        console.log('✅ Token refreshed, retrying request...');
+        return authenticatedAxios(axiosInstance, config, i18n, 1);
+      }
+    }
+    throw error;
+  }
+};
+
+// ✅ Helper function for fetch requests with retry on 401
+const authenticatedFetch = async (url, options, i18n, retryCount = 0) => {
+  try {
+    let token = await AsyncStorage.getItem('accessToken');
+    const language = await getLanguageHeader(i18n);
+
+    const response = await fetch(url, {
+      ...options,
+      headers: {
+        ...options.headers,
+        'Authorization': `Bearer ${token}`,
+        'Accept-Language': language,
+      },
+    });
+
+    if (response.status === 401 && retryCount === 0) {
+      console.log('🔐 Token expired, attempting refresh...');
+      const newToken = await refreshAccessToken();
+      if (newToken) {
+        console.log('✅ Token refreshed, retrying request...');
+        return authenticatedFetch(url, options, i18n, 1);
+      }
+    }
+
+    return response;
+  } catch (error) {
+    console.error('❌ Authenticated fetch error:', error);
+    throw error;
+  }
+};
+
 const TicketsScreen = () => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const navigation = useNavigation();
   const [tickets, setTickets] = useState([]);
   const [shipments, setShipments] = useState([]);
@@ -75,6 +148,14 @@ const TicketsScreen = () => {
   // Animation values
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(30)).current;
+
+  // ✅ Listen for token refresh events
+  useEffect(() => {
+    const removeListener = addTokenRefreshListener((newToken) => {
+      console.log('📡 Token refreshed in TicketsScreen');
+    });
+    return () => removeListener();
+  }, []);
 
   useEffect(() => {
     Animated.parallel([
@@ -107,12 +188,13 @@ const TicketsScreen = () => {
   // Fetch shipments for tracking
   const fetchShipments = async () => {
     try {
-      const token = await AsyncStorage.getItem('accessToken');
-      if (!token) return;
-
-      const response = await axios.get(`${serverUrl}/telemetry/latest-t1s`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
+      const response = await authenticatedAxios(
+        axios.get,
+        {
+          url: `${serverUrl}/telemetry/latest-t1s`,
+        },
+        i18n
+      );
 
       if (response.data) {
         setShipments(response.data);
@@ -124,31 +206,30 @@ const TicketsScreen = () => {
 
   // Acknowledge ticket function
   const acknowledgeTicket = async (ticketId) => {
-    const token = await AsyncStorage.getItem('accessToken');
-    const response = await axios.post(
-      `${serverUrl}/tickets/acknowledge`,
-      { ticketId: Number(ticketId), content: t('tickets.acknowledge_content', { defaultValue: 'Acknowledged from mobile app' }) },
-      { headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' } }
+    const response = await authenticatedAxios(
+      axios.post,
+      {
+        url: `${serverUrl}/tickets/acknowledge`,
+        data: { ticketId: Number(ticketId), content: t('tickets.acknowledge_content', { defaultValue: 'Acknowledged from mobile app' }) },
+        headers: { 'Content-Type': 'application/json' },
+      },
+      i18n
     );
     return response.data;
   };
 
   // Resolve ticket function
   const resolveTicket = async (ticketId) => {
-    const token = await AsyncStorage.getItem('accessToken');
-
     const formData = new FormData();
     formData.append('notes', t('tickets.resolve_notes', { defaultValue: 'Resolved from mobile app' }));
 
-    const response = await fetch(
+    const response = await authenticatedFetch(
       `${serverUrl}/tickets/${ticketId}/resolve`,
       {
         method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
         body: formData,
-      }
+      },
+      i18n
     );
 
     if (!response.ok) {
@@ -172,16 +253,14 @@ const TicketsScreen = () => {
 
     setSubmitting(true);
     try {
-      const token = await AsyncStorage.getItem('accessToken');
-      await axios.post(
-        `${serverUrl}/tickets/${selectedTicket.id}/comments`,
-        { content: commentText },
+      await authenticatedAxios(
+        axios.post,
         {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json',
-          },
-        }
+          url: `${serverUrl}/tickets/${selectedTicket.id}/comments`,
+          data: { content: commentText },
+          headers: { 'Content-Type': 'application/json' },
+        },
+        i18n
       );
 
       // Refresh tickets
@@ -215,23 +294,21 @@ const TicketsScreen = () => {
     try {
       if (!isRefresh) setLoading(true);
 
-      const token = await AsyncStorage.getItem('accessToken');
       const userObj = await AsyncStorage.getItem('user');
       const user = userObj ? JSON.parse(userObj) : null;
       const userId = user?.id || await AsyncStorage.getItem('id');
 
-      if (!token || !userId) {
-        console.error('No token or user ID found');
+      if (!userId) {
+        console.error('No user ID found');
         return;
       }
 
-      const response = await axios.get(
-        `${serverUrl}/tickets/assignee/${userId}?page=0&size=10000&sort=createdAt,desc`,
+      const response = await authenticatedAxios(
+        axios.get,
         {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-          },
-        }
+          url: `${serverUrl}/tickets/assignee/${userId}?page=0&size=10000&sort=createdAt,desc`,
+        },
+        i18n
       );
 
       if (response.data && response.data.content) {

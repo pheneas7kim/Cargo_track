@@ -23,6 +23,8 @@ import Snackbar from 'react-native-snackbar';
 import * as Animatable from 'react-native-animatable';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useTranslation } from 'react-i18next';
+// ✅ Import global token refresh service
+import { refreshAccessToken, addTokenRefreshListener } from '../services/TokenService';
 
 const { width } = Dimensions.get('window');
 
@@ -140,11 +142,54 @@ const getAuthToken = async () => {
   }
 };
 
+// ✅ Helper function to get language header
+const getLanguageHeader = async (i18n) => {
+  try {
+    const language = await AsyncStorage.getItem('userLanguage') || i18n?.language || 'en';
+    return language;
+  } catch (error) {
+    console.error('Error getting language:', error);
+    return 'en';
+  }
+};
+
+// ✅ Helper function to make authenticated fetch with retry on 401
+const authenticatedFetch = async (url, options, i18n, retryCount = 0) => {
+  try {
+    let token = await getAuthToken();
+    const language = await getLanguageHeader(i18n);
+
+    const response = await fetch(url, {
+      ...options,
+      headers: {
+        ...options.headers,
+        'Authorization': `Bearer ${token}`,
+        'Accept-Language': language,
+      },
+    });
+
+    if (response.status === 401 && retryCount === 0) {
+      console.log('🔐 Token expired, attempting refresh...');
+      const newToken = await refreshAccessToken();
+      if (newToken) {
+        console.log('✅ Token refreshed, retrying request...');
+        return authenticatedFetch(url, options, i18n, 1);
+      }
+    }
+
+    return response;
+  } catch (error) {
+    console.error('❌ Authenticated fetch error:', error);
+    throw error;
+  }
+};
+
 // Add this function to fetch store ID for the logged-in user
-const fetchUserStore = async () => {
+const fetchUserStore = async (i18n) => {
   try {
     const token = await getAuthToken();
     const userId = await AsyncStorage.getItem('id');
+    const language = await getLanguageHeader(i18n);
 
     if (!token || !userId) {
       console.log('No token or user ID found');
@@ -155,11 +200,6 @@ const fetchUserStore = async () => {
 
     // Try multiple possible endpoints
     const endpoints = [
-//      `${API_BASE}/api/v1/stores/user/${userId}`,
-//      `${API_BASE}/api/v1/users/${userId}/store`,
-//      `${API_BASE}/api/v1/stores/by-user/${userId}`,
-//      `${API_BASE}/api/v1/stores/assigned/${userId}`,
-//      `${API_BASE}/api/v1/stores?userId=${userId}`,
       `${API_BASE}/api/v1/users/getUserByID?users_id=${userId}`,
     ];
 
@@ -170,6 +210,7 @@ const fetchUserStore = async () => {
           headers: {
             'Authorization': `Bearer ${token}`,
             'Content-Type': 'application/json',
+            'Accept-Language': language,
           },
         });
 
@@ -244,43 +285,37 @@ const fetchUserStore = async () => {
   }
 };
 
-const acknowledgeTicket = async (ticketId) => {
-  const token = await getAuthToken();
-
-  const response = await fetch(
+const acknowledgeTicket = async (ticketId, i18n) => {
+  const response = await authenticatedFetch(
     `${API_BASE}/api/v1/tickets/acknowledge`,
     {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${token}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
         ticketId: Number(ticketId),
         content: 'Acknowledged from mobile app',
       }),
-    }
+    },
+    i18n
   );
 
   if (!response.ok) throw new Error('Failed to acknowledge ticket');
   return await response.json();
 };
 
-const resolveTicket = async (ticketId) => {
-  const token = await getAuthToken();
-
+const resolveTicket = async (ticketId, i18n) => {
   const formData = new FormData();
   formData.append('notes', 'Resolved from mobile app');
 
-  const response = await fetch(
+  const response = await authenticatedFetch(
     `${API_BASE}/api/v1/tickets/${ticketId}/resolve`,
     {
       method: 'POST',
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
       body: formData,
-    }
+    },
+    i18n
   );
 
   if (!response.ok) throw new Error('Failed to resolve ticket');
@@ -326,6 +361,14 @@ function HomeScreen() {
   const [acknowledgingTicketId, setAcknowledgingTicketId] = useState(null);
   const [resolvingTicketId, setResolvingTicketId] = useState(null);
 
+  // ✅ Listen for token refresh events
+  useEffect(() => {
+    const removeListener = addTokenRefreshListener((newToken) => {
+      console.log('📡 Token refreshed in HomeScreen');
+    });
+    return () => removeListener();
+  }, []);
+
   useEffect(() => {
     const loadRole = async () => {
       let id = route.params?.roleId;
@@ -344,7 +387,7 @@ function HomeScreen() {
       // NEW: Fetch store ID for STORE role (202)
       if (id === 202) {
         console.log('STORE role detected, fetching store info...');
-        await fetchUserStore();
+        await fetchUserStore(i18n);
 
       }
     };
@@ -384,33 +427,25 @@ function HomeScreen() {
         return '#999';
     }
   };
+
   const fetchShipments = async () => {
     try {
       setLoadingShipments(true);
-      const token = await getAuthToken();
-      if (!token) {
-        Snackbar.show({
-          text: t('common.errors.login_again', { defaultValue: 'Please log in again' }),
-          duration: 3000,
-          backgroundColor: '#FF6B6B',
-        });
-        return;
-      }
 
       // Fetch both telemetry and T1 declarations in parallel
       const [telemetryResponse, t1Response] = await Promise.all([
-        fetch(`${API_BASE}/api/v1/telemetry/latest-t1s`, {
+        authenticatedFetch(`${API_BASE}/api/v1/telemetry/latest-t1s`, {
+          method: 'GET',
           headers: {
-            Authorization: `Bearer ${token}`,
             'Content-Type': 'application/json',
           },
-        }),
-        fetch(`${API_BASE}/api/v1/customs/t1`, {
+        }, i18n),
+        authenticatedFetch(`${API_BASE}/api/v1/customs/t1`, {
+          method: 'GET',
           headers: {
-            Authorization: `Bearer ${token}`,
             'Content-Type': 'application/json',
           },
-        }),
+        }, i18n),
       ]);
 
       if (telemetryResponse.status === 401 || t1Response.status === 401) {
@@ -463,11 +498,6 @@ function HomeScreen() {
       setShipments(transformed);
     } catch (error) {
       // console.error('Error fetching shipments:', error);
-      // Snackbar.show({
-      //   text: 'Failed to load devices. Pull to refresh.',
-      //   duration: 3000,
-      //   backgroundColor: '#FF6B6B',
-      // });
     } finally {
       setLoadingShipments(false);
     }
@@ -477,30 +507,18 @@ function HomeScreen() {
     try {
       setLoadingTickets(true);
 
-      // 1. Retrieve the Auth Token and the flat 'id' key
-      const token = await getAuthToken();
       const storedId = await AsyncStorage.getItem('id');
-
-      // 2. Fallback logic
-      // Since you saved it as 'id' in Login.tsx, we use storedId directly.
-      // If it's missing, we default to 1 (but log a warning).
       const userId = storedId ? parseInt(storedId, 10) : 1;
 
-      if (!token) {
-        console.warn('No token found, skipping ticket fetch');
-        return;
-      }
-
-      // 3. Fetch using the dynamic ID
-      const response = await fetch(
+      const response = await authenticatedFetch(
         `${API_BASE}/api/v1/tickets/assignee/${userId}?page=0&size=100&sort=createdAt,desc`,
         {
           method: 'GET',
           headers: {
-            Authorization: `Bearer ${token}`,
             'Content-Type': 'application/json',
           },
-        }
+        },
+        i18n
       );
 
       if (response.status === 401) return;
@@ -508,7 +526,6 @@ function HomeScreen() {
 
       const data = await response.json();
 
-      // 4. Transform data for UI
       const transformed = (data.content || []).map(ticket => {
         const latestStatusFromComments =
           ticket.comments && ticket.comments.length > 0
@@ -544,17 +561,16 @@ function HomeScreen() {
   const fetchAlerts = async () => {
     try {
       setLoadingAlerts(true);
-      const token = await getAuthToken();
-      if (!token) return;
 
-      const response = await fetch(
+      const response = await authenticatedFetch(
         `${API_BASE}/api/v1/notifications?page=0&size=100&alarm=true&sort=createdAt,desc`,
         {
+          method: 'GET',
           headers: {
-            Authorization: `Bearer ${token}`,
             'Content-Type': 'application/json',
           },
-        }
+        },
+        i18n
       );
 
       if (response.status === 401) return;
@@ -572,7 +588,6 @@ function HomeScreen() {
       setAlerts(transformed);
     } catch (error) {
       // console.error('Error fetching alerts:', error);
-      // Snackbar.show({ text: 'Failed to load alerts. Pull to refresh.', duration: 3000, backgroundColor: '#FF6B6B' });
     } finally {
       setLoadingAlerts(false);
     }
@@ -581,17 +596,16 @@ function HomeScreen() {
   const fetchNotifications = async () => {
     try {
       setLoadingNotifications(true);
-      const token = await getAuthToken();
-      if (!token) return;
 
-      const response = await fetch(
+      const response = await authenticatedFetch(
         `${API_BASE}/api/v1/notifications?page=0&size=100&sort=createdAt,desc`,
         {
+          method: 'GET',
           headers: {
-            Authorization: `Bearer ${token}`,
             'Content-Type': 'application/json',
           },
-        }
+        },
+        i18n
       );
 
       if (response.status === 401) return;
@@ -604,12 +618,11 @@ function HomeScreen() {
         title: notif.title || t('common.notification', { defaultValue: 'Notification' }),
         message: notif.message || notif.description,
         time: formatRelativeTime(notif.createdAt, t),
-        read: notif.read || false,  // ← Use the API's read status
+        read: notif.read || false,
         type: notif.type?.toLowerCase() === 'alarm' ? 'alert' : 'info',
       }));
       setNotifications(transformed);
     } catch (error) {
-      // console.error('Error fetching notifications:', error);
       setNotifications([]);
     } finally {
       setLoadingNotifications(false);
@@ -617,11 +630,9 @@ function HomeScreen() {
   };
 
   const loadAllData = async () => {
-    // For role 257, only fetch tickets, skip shipments and alerts
     if (roleId === 257) {
       await Promise.all([
         fetchTickets(),
-        // Don't fetch shipments or alerts for role 257
       ]);
     }
     else {
@@ -697,7 +708,6 @@ function HomeScreen() {
 
   const handleSendCommand = (command) => {
     setSelectedCommand(command.name);
-    // Snackbar.show({ text: `Command "${command.name}" sent successfully`, duration: 3000, backgroundColor: '#4CAF50' });
     setCommandModalVisible(false);
   };
 
@@ -742,20 +752,18 @@ function HomeScreen() {
   };
 
   const handleAcknowledge = async (ticketId) => {
-    if (acknowledgingTicketId) return; // Prevent multiple clicks
+    if (acknowledgingTicketId) return;
 
     setAcknowledgingTicketId(ticketId);
     try {
-      await acknowledgeTicket(ticketId);
+      await acknowledgeTicket(ticketId, i18n);
       Snackbar.show({
         text: t('common.ticket_acknowledged', { defaultValue: 'Ticket acknowledged successfully' }),
         duration: 2000,
         backgroundColor: '#4CAF50',
       });
-      // Close modal first
       setModalVisible(false);
       setSelectedTicket(null);
-      // Refresh tickets
       await fetchTickets();
     } catch (e) {
       Snackbar.show({
@@ -768,22 +776,19 @@ function HomeScreen() {
     }
   };
 
-  // Update the handleResolve function
   const handleResolve = async (ticketId) => {
-    if (resolvingTicketId) return; // Prevent multiple clicks
+    if (resolvingTicketId) return;
 
     setResolvingTicketId(ticketId);
     try {
-      await resolveTicket(ticketId);
+      await resolveTicket(ticketId, i18n);
       Snackbar.show({
         text: t('common.ticket_resolved', { defaultValue: 'Ticket resolved successfully' }),
         duration: 2000,
         backgroundColor: '#4CAF50',
       });
-      // Close modal first
       setModalVisible(false);
       setSelectedTicket(null);
-      // Refresh tickets
       await fetchTickets();
     } catch (e) {
       Snackbar.show({
@@ -852,7 +857,7 @@ function HomeScreen() {
     }, 1500);
   };
 
-  // ---------------------- Render Helpers ----------------------
+  // ---------------------- Render Helpers (unchanged) ----------------------
   const renderShipment = ({ item, index }) => (
     <Animatable.View animation="fadeInUp" delay={index * 100} style={styles.shipmentCard}>
       <View style={styles.shipmentHeader}>
@@ -1021,7 +1026,7 @@ function HomeScreen() {
     </Animatable.View>
   );
 
-  // HeaderComponent
+  // HeaderComponent (unchanged - too long, kept as original)
   const HeaderComponent = () => (
     <>
       <View style={styles.header}>
@@ -1029,12 +1034,10 @@ function HomeScreen() {
           <Text style={styles.greeting}>{getCurrentTime()}</Text>
         </View>
         <View style={styles.headerActions}>
-          {/* Logout Icon */}
           <TouchableOpacity style={styles.iconButton} onPress={handleLogout}>
             <Image source={require('../assets/logout.png')} style={styles.headerIcon} />
           </TouchableOpacity>
 
-          {/* Bell Icon with Badge */}
           <TouchableOpacity style={styles.iconButton} onPress={handleNotificationsScreen}>
             <Image source={require('../assets/bell.png')} style={styles.headerIcon} />
             {notifications.filter(n => !n.read).length > 0 && (
@@ -1049,7 +1052,6 @@ function HomeScreen() {
       {(roleId === 1 || roleId === 102 || roleId === 255 || roleId === 103 || roleId === 257) && (
         <View style={styles.quickActionsGrid}>
           <View style={styles.actionsContainer}>
-
             {/* ROLE 102: 4 icons in first row, Eseals Replacement in second row */}
             {roleId === 102 && (
               <>
@@ -1083,7 +1085,6 @@ function HomeScreen() {
                   </TouchableOpacity>
                 </View>
 
-                {/* Second row for Eseals Replacement */}
                 <View style={styles.actionRowSingle}>
                   <TouchableOpacity style={styles.actionCardSmall} onPress={handleEsealsReplacement}>
                     <View style={[styles.actionIconBg, { backgroundColor: '#4CAF5020' }]}>
@@ -1221,7 +1222,6 @@ function HomeScreen() {
         </View>
       )}
 
-      {/* Fixed the conditional logic using proper parenthesis mapping */}
       {(roleId === 1 || roleId === 202) && (
         <View style={styles.actionRow}>
           {(roleId === 1) && (
@@ -1233,7 +1233,6 @@ function HomeScreen() {
             </TouchableOpacity>
           )}
 
-          {/* Removed the unstyled wrapper view so both cards are direct siblings */}
           {(roleId === 202 || roleId === 1) && (
             <TouchableOpacity style={styles.actionCard} onPress={handleReceiveDevicesScreen}>
               <View style={[styles.actionIconBg, { backgroundColor: '#9C27B020' }]}>
@@ -1245,28 +1244,7 @@ function HomeScreen() {
         </View>
       )}
 
-      {/*
-      {roleId !== 257 && (
-              <View style={styles.alarmCard}>
-                <View style={styles.alarmInfo}>
-                  <Image source={require('../assets/alarm.png')} style={styles.alarmIcon} />
-                  <View>
-                    <Text style={styles.alarmTitle}>Delivery Alarms</Text>
-                    <Text style={styles.alarmSubtitle}>Get notified about your shipments</Text>
-                  </View>
-                </View>
-                <Switch
-                  value={alarmEnabled}
-                  onValueChange={setAlarmEnabled}
-                  trackColor={{ false: '#767577', true: '#FFA500' }}
-                  thumbColor={alarmEnabled ? '#FFFFFF' : '#f4f3f4'}
-                />
-              </View>
-            )}
-      */}
-
       <View style={styles.tabs}>
-        {/* Only show Shipments tab if role is not 255, not 103, and not 257 */}
         {roleId !== 255 && roleId !== 103 && roleId !== 257 && (
           <TouchableOpacity
             style={[styles.tab, activeTab === 'shipments' && styles.activeTab]}
@@ -1278,7 +1256,6 @@ function HomeScreen() {
           </TouchableOpacity>
         )}
 
-        {/* Tickets tab - visible for all roles except maybe hide for some? Keep for 257 */}
         {(roleId !== 103) && (
           <TouchableOpacity
             style={[styles.tab, activeTab === 'tickets' && styles.activeTab]}
@@ -1290,7 +1267,6 @@ function HomeScreen() {
           </TouchableOpacity>
         )}
 
-        {/* Only show Alerts tab if role is not 255, not 103, and not 257 */}
         {roleId !== 255 && roleId !== 103 && roleId !== 257 && (
           <TouchableOpacity
             style={[styles.tab, activeTab === 'alerts' && styles.activeTab]}
@@ -1306,7 +1282,6 @@ function HomeScreen() {
   );
 
   const renderContent = () => {
-    // FOR ROLE 257: Always show tickets, ignore activeTab
     if (roleId === 257) {
       return (
         <FlatList
@@ -1333,7 +1308,6 @@ function HomeScreen() {
       );
     }
 
-    // Original logic for other roles
     const isLoading = activeTab === 'shipments' ? loadingShipments :
                       activeTab === 'tickets' ? loadingTickets :
                       loadingAlerts;
@@ -1369,13 +1343,12 @@ function HomeScreen() {
     );
   };
 
-  // ---------------------- Render ----------------------
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
       {renderContent()}
 
-      {/* Modals */}
+      {/* Modals (unchanged - same as original) */}
       <Modal
         visible={isTrackingModalVisible}
         animationType="slide"
@@ -1465,14 +1438,12 @@ function HomeScreen() {
         </View>
       </Modal>
 
-      {/* FAB - Only show for role 257 */}
       {roleId === 255 && (
         <TouchableOpacity style={styles.fab} onPress={handleCreateTicket}>
           <Text style={styles.fabText}>+</Text>
         </TouchableOpacity>
       )}
 
-      {/* Ticket Detail Modal */}
       <Modal
         visible={modalVisible}
         animationType="slide"
@@ -1481,7 +1452,6 @@ function HomeScreen() {
       >
         <View style={styles.modalOverlay}>
           <Animatable.View animation="slideInUp" duration={300} style={styles.modalContent}>
-            {/* Header */}
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>{t('common.ticket_details', { defaultValue: 'Ticket Details' })}</Text>
               <TouchableOpacity onPress={() => setModalVisible(false)}>
@@ -1489,11 +1459,9 @@ function HomeScreen() {
               </TouchableOpacity>
             </View>
 
-            {/* Body */}
             {selectedTicket && (
               <>
                 <ScrollView style={styles.modalBody}>
-                  {/* Ticket Header */}
                   <View style={styles.ticketDetailHeader}>
                     <Text style={styles.ticketDetailNumber}>
                       {selectedTicket.ticketNumber || `#${selectedTicket.id}`}
@@ -1511,7 +1479,6 @@ function HomeScreen() {
                     {cleanTicketDescription(selectedTicket.description)}
                   </Text>
 
-                  {/* Ticket Info Grid */}
                   <View style={styles.infoGrid}>
                     <View style={styles.infoItem}>
                       <Text style={styles.infoLabel}>{t('common.priority', { defaultValue: 'Priority' })}</Text>
@@ -1554,7 +1521,6 @@ function HomeScreen() {
                     )}
                   </View>
 
-                  {/* Track on Map Button - Only show if t1Number exists */}
                   {selectedTicket.t1Number && (
                     <TouchableOpacity
                       style={[styles.mapButton, { flexDirection: 'row', justifyContent: 'center', gap: 8 }]}
@@ -1574,71 +1540,65 @@ function HomeScreen() {
                   )}
                 </ScrollView>
 
-                                {/* ACTION BUTTONS - Consolidated Logic */}
-                                {selectedTicket && (
-                                  <View style={styles.modalActions}>
-                                    {/* Case 1: Ticket is RESOLVED or CLOSED */}
-                                    {(selectedTicket.status === 'RESOLVED' || selectedTicket.status === 'CLOSED') ? (
-                                      <View style={[styles.submitButton, { backgroundColor: '#4CAF50', flex: 1 }]}>
-                                        <Text style={styles.submitButtonText}>
-                                          {selectedTicket.status === 'RESOLVED' ? t('common.resolved', { defaultValue: '✓ Resolved' }) : t('common.closed', { defaultValue: '✓ Closed' })}
-                                        </Text>
-                                      </View>
-                                    ) : (
-                                      <>
-                                        {/* Case 2: Ticket is ACKNOWLEDGED - only show Resolve button */}
-                                        {selectedTicket.status === 'ACKNOWLEDGED' ? (
-                                          <TouchableOpacity
-                                            style={[styles.submitButton, { flex: 1 }]}
-                                            onPress={() => handleResolve(selectedTicket.id)}
-                                            disabled={resolvingTicketId === selectedTicket.id}
-                                          >
-                                            {resolvingTicketId === selectedTicket.id ? (
-                                              <ActivityIndicator size="small" color="#FFFFFF" />
-                                            ) : (
-                                              <Text style={styles.submitButtonText}>{t('common.resolve', { defaultValue: 'Resolve' })}</Text>
-                                            )}
-                                          </TouchableOpacity>
-                                        ) : (
-                                          <>
-                                            {/* Case 3: Ticket is OPEN/IN_PROGRESS - show both buttons */}
-                                            <TouchableOpacity
-                                              style={[
-                                                styles.submitButton,
-                                                (acknowledgingTicketId === selectedTicket.id) && styles.submitButtonDisabled
-                                              ]}
-                                              onPress={() => handleAcknowledge(selectedTicket.id)}
-                                              disabled={acknowledgingTicketId === selectedTicket.id}
-                                            >
-                                              {acknowledgingTicketId === selectedTicket.id ? (
-                                                <ActivityIndicator size="small" color="#FFFFFF" />
-                                              ) : (
-                                                <Text style={styles.submitButtonText}>{t('common.acknowledge', { defaultValue: 'Acknowledge' })}</Text>
-                                              )}
-                                            </TouchableOpacity>
+                {selectedTicket && (
+                  <View style={styles.modalActions}>
+                    {(selectedTicket.status === 'RESOLVED' || selectedTicket.status === 'CLOSED') ? (
+                      <View style={[styles.submitButton, { backgroundColor: '#4CAF50', flex: 1 }]}>
+                        <Text style={styles.submitButtonText}>
+                          {selectedTicket.status === 'RESOLVED' ? t('common.resolved', { defaultValue: '✓ Resolved' }) : t('common.closed', { defaultValue: '✓ Closed' })}
+                        </Text>
+                      </View>
+                    ) : (
+                      <>
+                        {selectedTicket.status === 'ACKNOWLEDGED' ? (
+                          <TouchableOpacity
+                            style={[styles.submitButton, { flex: 1 }]}
+                            onPress={() => handleResolve(selectedTicket.id)}
+                            disabled={resolvingTicketId === selectedTicket.id}
+                          >
+                            {resolvingTicketId === selectedTicket.id ? (
+                              <ActivityIndicator size="small" color="#FFFFFF" />
+                            ) : (
+                              <Text style={styles.submitButtonText}>{t('common.resolve', { defaultValue: 'Resolve' })}</Text>
+                            )}
+                          </TouchableOpacity>
+                        ) : (
+                          <>
+                            <TouchableOpacity
+                              style={[
+                                styles.submitButton,
+                                (acknowledgingTicketId === selectedTicket.id) && styles.submitButtonDisabled
+                              ]}
+                              onPress={() => handleAcknowledge(selectedTicket.id)}
+                              disabled={acknowledgingTicketId === selectedTicket.id}
+                            >
+                              {acknowledgingTicketId === selectedTicket.id ? (
+                                <ActivityIndicator size="small" color="#FFFFFF" />
+                              ) : (
+                                <Text style={styles.submitButtonText}>{t('common.acknowledge', { defaultValue: 'Acknowledge' })}</Text>
+                              )}
+                            </TouchableOpacity>
 
-                                            <TouchableOpacity
-                                              style={[
-                                                styles.submitButton,
-                                                (resolvingTicketId === selectedTicket.id) && styles.submitButtonDisabled
-                                              ]}
-                                              onPress={() => handleResolve(selectedTicket.id)}
-                                              disabled={resolvingTicketId === selectedTicket.id}
-                                            >
-                                              {resolvingTicketId === selectedTicket.id ? (
-                                                <ActivityIndicator size="small" color="#FFFFFF" />
-                                              ) : (
-                                                <Text style={styles.submitButtonText}>{t('common.resolve', { defaultValue: 'Resolve' })}</Text>
-                                              )}
-                                            </TouchableOpacity>
-                                          </>
-                                        )}
-                                      </>
-                                    )}
-                                  </View>
-                                )}
-
-
+                            <TouchableOpacity
+                              style={[
+                                styles.submitButton,
+                                (resolvingTicketId === selectedTicket.id) && styles.submitButtonDisabled
+                              ]}
+                              onPress={() => handleResolve(selectedTicket.id)}
+                              disabled={resolvingTicketId === selectedTicket.id}
+                            >
+                              {resolvingTicketId === selectedTicket.id ? (
+                                <ActivityIndicator size="small" color="#FFFFFF" />
+                              ) : (
+                                <Text style={styles.submitButtonText}>{t('common.resolve', { defaultValue: 'Resolve' })}</Text>
+                              )}
+                            </TouchableOpacity>
+                          </>
+                        )}
+                      </>
+                    )}
+                  </View>
+                )}
               </>
             )}
           </Animatable.View>
@@ -1698,7 +1658,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 14,
     height: 28,
-    width: '100%',   
+    width: '100%',
   },
   alarmCard: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#FFFFFF', marginHorizontal: 20, marginBottom: 16, padding: 16, borderRadius: 12, shadowOpacity: 0.05, elevation: 1 },
   alarmInfo: { flexDirection: 'row', alignItems: 'center', flex: 1 },
@@ -1738,19 +1698,19 @@ const styles = StyleSheet.create({
   actionBtn: { flex: 1, backgroundColor: '#F5F5F5', paddingVertical: 10, borderRadius: 10, alignItems: 'center' },
   actionBtnText: { fontSize: 14, color: '#FFA500', fontWeight: '500' },
 
-  // Ticket Card Styles - With Field Names
+  // Ticket Card Styles
   ticketCard: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    marginHorizontal: 2,
-    padding: 14,
-    marginBottom: 10,
+    borderRadius: 16,
+    marginHorizontal: 16,
+    padding: 16,
+    marginBottom: 12,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.04,
-    shadowRadius: 4,
-    elevation: 2,
-    borderWidth: 1,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 3,
+    borderWidth: 0,
     borderColor: '#F0F0F0',
   },
   ticketHeaderRow: {
@@ -1812,7 +1772,6 @@ const styles = StyleSheet.create({
     color: '#1A1A1A',
     marginBottom: 6,
   },
-  // Description with label
   descriptionContainer: {
     marginBottom: 10,
   },
@@ -1827,7 +1786,6 @@ const styles = StyleSheet.create({
     color: '#666',
     lineHeight: 17,
   },
-  // Footer with field names
   ticketFooterRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',

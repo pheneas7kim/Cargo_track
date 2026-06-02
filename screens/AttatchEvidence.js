@@ -8,12 +8,62 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
 import serverUrl from '../config';
 import { useTranslation } from 'react-i18next';
+// ✅ Import global token refresh service
+import { refreshAccessToken, addTokenRefreshListener } from '../services/TokenService';
+
+// ✅ Helper function to get language header
+const getLanguageHeader = async (i18n) => {
+  try {
+    const language = await AsyncStorage.getItem('userLanguage') || i18n?.language || 'en';
+    return language;
+  } catch (error) {
+    console.error('Error getting language:', error);
+    return 'en';
+  }
+};
+
+// ✅ Helper function to make authenticated axios request with retry on 401
+const authenticatedAxios = async (axiosInstance, config, i18n, retryCount = 0) => {
+  try {
+    const token = await AsyncStorage.getItem('accessToken');
+    const language = await getLanguageHeader(i18n);
+
+    const response = await axiosInstance({
+      ...config,
+      headers: {
+        ...config.headers,
+        'Authorization': `Bearer ${token}`,
+        'Accept-Language': language,
+      },
+    });
+
+    return response;
+  } catch (error) {
+    if (error.response?.status === 401 && retryCount === 0) {
+      console.log('🔐 Token expired, attempting refresh...');
+      const newToken = await refreshAccessToken();
+      if (newToken) {
+        console.log('✅ Token refreshed, retrying request...');
+        return authenticatedAxios(axiosInstance, config, i18n, 1);
+      }
+    }
+    throw error;
+  }
+};
 
 const AttachEvidence = ({ route, navigation }) => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { ticketId } = route.params;
   const [photos, setPhotos] = useState([]); // Changed to Array
   const [uploading, setUploading] = useState(false);
+
+  // ✅ Listen for token refresh events
+  React.useEffect(() => {
+    const removeListener = addTokenRefreshListener((newToken) => {
+      console.log('📡 Token refreshed in AttachEvidence');
+    });
+    return () => removeListener();
+  }, []);
 
   const handleTakePhoto = () => {
     launchCamera({ mediaType: 'photo', quality: 0.7 }, (response) => {
@@ -43,13 +93,9 @@ const AttachEvidence = ({ route, navigation }) => {
 
       setUploading(true);
       try {
-        // 2. Retrieve Auth Token
-        const token = await AsyncStorage.getItem('accessToken');
         const formData = new FormData();
 
-        // 3. Loop through photos
-        // Note: If your backend is PHP/Laravel/Spring, you might need to change
-        // 'files' to 'files[]' below.
+        // 2. Loop through photos
         photos.forEach((photo, index) => {
           const cleanUri = Platform.OS === 'android'
             ? photo.uri
@@ -62,26 +108,24 @@ const AttachEvidence = ({ route, navigation }) => {
           });
         });
 
-        // 4. Sanitize the URL
-        // Removes trailing slashes from config and builds a clean path
+        // 3. Sanitize the URL
         const baseUrl = serverUrl.replace(/\/+$/, '');
         const uploadUrl = `${baseUrl}/tickets/${ticketId}/evidence`;
 
-        // 5. Execute the Request
-        // We use the object config to ensure headers and data are handled correctly
-        const response = await axios({
-          method: 'post',
-          url: uploadUrl,
-          data: formData,
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'multipart/form-data',
+        // 4. Execute the Request using authenticatedAxios
+        const response = await authenticatedAxios(
+          axios.post,
+          {
+            url: uploadUrl,
+            data: formData,
+            headers: {
+              'Content-Type': 'multipart/form-data',
+            },
           },
-          // IMPORTANT: Removed transformRequest.
-          // Manual transformation often breaks the boundary for single-file uploads.
-        });
+          i18n
+        );
 
-        // 6. Handle Success
+        // 5. Handle Success
         if (response.status === 200 || response.data.success) {
           Alert.alert(
             t('attach_evidence.success.title', { defaultValue: 'Success' }),
@@ -95,7 +139,7 @@ const AttachEvidence = ({ route, navigation }) => {
           );
         }
       } catch (error) {
-        // 7. Enhanced Error Logging
+        // 6. Enhanced Error Logging
         console.log('Upload Error Details:', error.response?.data || error.message);
 
         const errorMsg = error.response?.data?.message || t('attach_evidence.errors.check_network', { defaultValue: 'Check network or server logs' });

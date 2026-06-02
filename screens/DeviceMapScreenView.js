@@ -27,11 +27,24 @@ import MapView, { Marker, Callout, PROVIDER_GOOGLE, Polyline, Circle } from 'rea
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import serverUrl from '../config';
 import { useTranslation } from 'react-i18next';
+// ✅ Import global token refresh service (for future API calls if needed)
+import { addTokenRefreshListener } from '../services/TokenService';
 
 const { width, height } = Dimensions.get('window');
 
+// ✅ Helper function to get language header (for potential future API calls)
+const getLanguageHeader = async (i18n) => {
+  try {
+    const language = await AsyncStorage.getItem('userLanguage') || i18n?.language || 'en';
+    return language;
+  } catch (error) {
+    console.error('Error getting language:', error);
+    return 'en';
+  }
+};
+
 const DeviceMapScreenView = () => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const navigation = useNavigation();
   const route = useRoute();
   const { geofence, hotspot, station, route: routeData } = route.params || {};
@@ -50,6 +63,14 @@ const DeviceMapScreenView = () => {
   const [polygonPoints, setPolygonPoints] = useState([]);
 
   const mapRef = useRef(null);
+
+  // ✅ Listen for token refresh events (for future API calls)
+  useEffect(() => {
+    const removeListener = addTokenRefreshListener((newToken) => {
+      console.log('📡 Token refreshed in DeviceMapScreenView');
+    });
+    return () => removeListener();
+  }, []);
 
   useEffect(() => {
     processGeofenceData();

@@ -21,13 +21,57 @@ import Snackbar from 'react-native-snackbar';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import serverURL from '../config';
 import { useTranslation } from 'react-i18next';
+// ✅ Import global token refresh service
+import { refreshAccessToken, addTokenRefreshListener } from '../services/TokenService';
 
 const { width } = Dimensions.get('window');
 const SCAN_SIZE = width * 0.7;
 const STORAGE_KEY = '@inventory_devices';
 
+// ✅ Helper function to get language header
+const getLanguageHeader = async (i18n) => {
+  try {
+    const language = await AsyncStorage.getItem('userLanguage') || i18n?.language || 'en';
+    return language;
+  } catch (error) {
+    console.error('Error getting language:', error);
+    return 'en';
+  }
+};
+
+// ✅ Helper function to make authenticated fetch with retry on 401
+const authenticatedFetch = async (url, options, i18n, retryCount = 0) => {
+  try {
+    let token = await AsyncStorage.getItem('accessToken');
+    const language = await getLanguageHeader(i18n);
+
+    const response = await fetch(url, {
+      ...options,
+      headers: {
+        ...options.headers,
+        'Authorization': `Bearer ${token}`,
+        'Accept-Language': language,
+      },
+    });
+
+    if (response.status === 401 && retryCount === 0) {
+      console.log('🔐 Token expired, attempting refresh...');
+      const newToken = await refreshAccessToken();
+      if (newToken) {
+        console.log('✅ Token refreshed, retrying request...');
+        return authenticatedFetch(url, options, i18n, 1);
+      }
+    }
+
+    return response;
+  } catch (error) {
+    console.error('❌ Authenticated fetch error:', error);
+    throw error;
+  }
+};
+
 const InventoryScan = ({ navigation }) => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [devices, setDevices] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -38,6 +82,15 @@ const InventoryScan = ({ navigation }) => {
   const [resultMessage, setResultMessage] = useState(null);
   const [errorDetails, setErrorDetails] = useState(null);
   const [authToken, setAuthToken] = useState(null);
+
+  // ✅ Listen for token refresh events
+  useEffect(() => {
+    const removeListener = addTokenRefreshListener((newToken) => {
+      console.log('📡 Token refreshed in InventoryScan');
+      setAuthToken(newToken);
+    });
+    return () => removeListener();
+  }, []);
 
   // Save devices to AsyncStorage
   const saveDevicesToStorage = async (devicesList) => {
@@ -81,7 +134,7 @@ const InventoryScan = ({ navigation }) => {
 
         // Then try to fetch from API (with valid token)
         if (token) {
-          await fetchDevices(token);
+          await fetchDevices();
         } else {
           setLoading(false);
         }
@@ -93,15 +146,19 @@ const InventoryScan = ({ navigation }) => {
     loadAuthAndDevices();
   }, []);
 
-  // Fetch devices from API - accepts token param
-  const fetchDevices = async (token) => {
+  // Fetch devices from API - uses authenticatedFetch for token refresh
+  const fetchDevices = async () => {
     try {
-      const headers = {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
-      };
-
-      const response = await fetch(`${serverURL}devices`, { headers });
+      const response = await authenticatedFetch(
+        `${serverURL}devices`,
+        {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        },
+        i18n
+      );
 
       if (response.status === 401) {
         console.warn('⚠️ API 401 - token may be expired, using stored devices only');
@@ -137,7 +194,7 @@ const InventoryScan = ({ navigation }) => {
   const onRefresh = useCallback(() => {
     setRefreshing(true);
     if (authToken) {
-      fetchDevices(authToken);
+      fetchDevices();
     } else {
       setRefreshing(false);
     }
@@ -309,14 +366,17 @@ const InventoryScan = ({ navigation }) => {
 
       console.log('📤 API Payload:', { name: deviceData.name, serialNo: deviceData.serialNo });
 
-      const response = await fetch(`${serverURL}devices`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${authToken}`, // 🔐 Critical for auth
+      const response = await authenticatedFetch(
+        `${serverURL}devices`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(deviceData),
         },
-        body: JSON.stringify(deviceData),
-      });
+        i18n
+      );
 
       console.log('📡 API Response Status:', response.status);
 
@@ -324,7 +384,7 @@ const InventoryScan = ({ navigation }) => {
         console.log('✅ API sync successful');
         setResultMessage(t('inventory_scan.status.synced_to_server', { defaultValue: 'Synced to server' }));
         if (authToken) {
-          await fetchDevices(authToken); // Refresh list with real server data
+          await fetchDevices(); // Refresh list with real server data
         }
       } else if (response.status === 401) {
         console.warn('⚠️ API 401 - token expired');

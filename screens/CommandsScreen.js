@@ -26,11 +26,53 @@ import axios from 'axios';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import serverUrl from '../config';
 import { useTranslation } from 'react-i18next';
+// ✅ Import global token refresh service
+import { refreshAccessToken, addTokenRefreshListener } from '../services/TokenService';
 
 const { width } = Dimensions.get('window');
 
+// ✅ Helper function to get language header
+const getLanguageHeader = async (i18n) => {
+  try {
+    const language = await AsyncStorage.getItem('userLanguage') || i18n?.language || 'en';
+    return language;
+  } catch (error) {
+    console.error('Error getting language:', error);
+    return 'en';
+  }
+};
+
+// ✅ Helper function to make authenticated axios request with retry on 401
+const authenticatedAxios = async (axiosInstance, config, i18n, retryCount = 0) => {
+  try {
+    const token = await AsyncStorage.getItem('accessToken');
+    const language = await getLanguageHeader(i18n);
+
+    const response = await axiosInstance({
+      ...config,
+      headers: {
+        ...config.headers,
+        'Authorization': `Bearer ${token}`,
+        'Accept-Language': language,
+      },
+    });
+
+    return response;
+  } catch (error) {
+    if (error.response?.status === 401 && retryCount === 0) {
+      console.log('🔐 Token expired, attempting refresh...');
+      const newToken = await refreshAccessToken();
+      if (newToken) {
+        console.log('✅ Token refreshed, retrying request...');
+        return authenticatedAxios(axiosInstance, config, i18n, 1);
+      }
+    }
+    throw error;
+  }
+};
+
 const CommandsScreen = () => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const navigation = useNavigation();
   const [devices, setDevices] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -48,6 +90,14 @@ const CommandsScreen = () => {
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(30)).current;
+
+  // ✅ Listen for token refresh events
+  useEffect(() => {
+    const removeListener = addTokenRefreshListener((newToken) => {
+      console.log('📡 Token refreshed in CommandsScreen');
+    });
+    return () => removeListener();
+  }, []);
 
   // Command definitions with translations
   const commands = [
@@ -101,19 +151,12 @@ const CommandsScreen = () => {
     try {
       if (!isRefresh) setLoading(true);
 
-      const token = await AsyncStorage.getItem('accessToken');
-      if (!token) {
-        console.error('No token found');
-        return;
-      }
-
-      const response = await axios.get(
-        `${serverUrl}/devices/all`,
+      const response = await authenticatedAxios(
+        axios.get,
         {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-          },
-        }
+          url: `${serverUrl}/devices/all`,
+        },
+        i18n
       );
 
       if (response.data && Array.isArray(response.data)) {
@@ -180,29 +223,24 @@ const CommandsScreen = () => {
 
   const sendCommand = async (deviceSn, command, params = null) => {
     try {
-      const token = await AsyncStorage.getItem('accessToken');
-      if (!token) {
-        console.error('No token found');
-        return false;
-      }
-
       let finalCommand = command;
       if (params) {
         finalCommand = command.replace(/{}/g, params);
       }
 
-      const response = await axios.post(
-        `${serverUrl}/devices/command/set`,
+      const response = await authenticatedAxios(
+        axios.post,
         {
-          deviceSn: deviceSn,
-          command: finalCommand
-        },
-        {
+          url: `${serverUrl}/devices/command/set`,
+          data: {
+            deviceSn: deviceSn,
+            command: finalCommand
+          },
           headers: {
-            'Authorization': `Bearer ${token}`,
             'Content-Type': 'application/json',
           },
-        }
+        },
+        i18n
       );
 
       if (response.data && response.data.resultCode === 0) {
@@ -221,7 +259,6 @@ const CommandsScreen = () => {
         return false;
       }
     } catch (error) {
-      // console.error('Failed to send command:', error);
       Snackbar.show({
         text: t('commands.errors.command_failed', { defaultValue: 'Failed to send command' }),
         duration: 3000,
@@ -233,19 +270,19 @@ const CommandsScreen = () => {
 
   const queryDeviceInfo = async (deviceSn) => {
     try {
-      const token = await AsyncStorage.getItem('accessToken');
-      const response = await axios.post(
-        `${serverUrl}/devices/command/query`,
+      const response = await authenticatedAxios(
+        axios.post,
         {
-          deviceSn: deviceSn,
-          command: "*269#C"
-        },
-        {
+          url: `${serverUrl}/devices/command/query`,
+          data: {
+            deviceSn: deviceSn,
+            command: "*269#C"
+          },
           headers: {
-            'Authorization': `Bearer ${token}`,
             'Content-Type': 'application/json',
           },
-        }
+        },
+        i18n
       );
 
       if (response.data && response.data.resultCode === 0) {
@@ -271,19 +308,19 @@ const CommandsScreen = () => {
 
   const queryDeviceStatus = async (deviceSn) => {
     try {
-      const token = await AsyncStorage.getItem('accessToken');
-      const response = await axios.post(
-        `${serverUrl}/devices/command/query`,
+      const response = await authenticatedAxios(
+        axios.post,
         {
-          deviceSn: deviceSn,
-          command: "*269#R"
-        },
-        {
+          url: `${serverUrl}/devices/command/query`,
+          data: {
+            deviceSn: deviceSn,
+            command: "*269#R"
+          },
           headers: {
-            'Authorization': `Bearer ${token}`,
             'Content-Type': 'application/json',
           },
-        }
+        },
+        i18n
       );
 
       if (response.data && response.data.resultCode === 0) {
@@ -411,6 +448,10 @@ const CommandsScreen = () => {
         const newPassword = commandValues.newPassword;
         if (!newPassword || newPassword.length !== 6) {
           Alert.alert(t('commands.error.title', { defaultValue: 'Error' }), t('commands.error.password_6_digits', { defaultValue: 'New password must be 6 digits' }));
+          return;
+        }
+        if (commandValues.newPassword !== commandValues.confirmPassword) {
+          Alert.alert(t('commands.error.title', { defaultValue: 'Error' }), t('commands.error.password_mismatch', { defaultValue: 'Passwords do not match' }));
           return;
         }
         command = `*269#4,${oldPassword},${newPassword},`;

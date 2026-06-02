@@ -26,13 +26,55 @@ import MapView, { Marker, Callout, PROVIDER_GOOGLE, Polyline, Circle } from 'rea
 import serverUrl from '../config';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useTranslation } from 'react-i18next';
+// ✅ Import global token refresh service
+import { refreshAccessToken, addTokenRefreshListener } from '../services/TokenService';
 
 const { width, height } = Dimensions.get('window');
 const BOTTOM_SHEET_MIN_HEIGHT = 70;
 const BOTTOM_SHEET_MAX_HEIGHT = height * 0.6;
 
+// ✅ Helper function to get language header
+const getLanguageHeader = async (i18n) => {
+  try {
+    const language = await AsyncStorage.getItem('userLanguage') || i18n?.language || 'en';
+    return language;
+  } catch (error) {
+    console.error('Error getting language:', error);
+    return 'en';
+  }
+};
+
+// ✅ Helper function to make authenticated axios request with retry on 401
+const authenticatedAxios = async (axiosInstance, config, i18n, retryCount = 0) => {
+  try {
+    const token = await AsyncStorage.getItem('accessToken');
+    const language = await getLanguageHeader(i18n);
+
+    const response = await axiosInstance({
+      ...config,
+      headers: {
+        ...config.headers,
+        'Authorization': `Bearer ${token}`,
+        'Accept-Language': language,
+      },
+    });
+
+    return response;
+  } catch (error) {
+    if (error.response?.status === 401 && retryCount === 0) {
+      console.log('🔐 Token expired, attempting refresh...');
+      const newToken = await refreshAccessToken();
+      if (newToken) {
+        console.log('✅ Token refreshed, retrying request...');
+        return authenticatedAxios(axiosInstance, config, i18n, 1);
+      }
+    }
+    throw error;
+  }
+};
+
 const DeviceMapScreen = () => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const navigation = useNavigation();
   const [devices, setDevices] = useState([]);
   const [geofences, setGeofences] = useState([]);
@@ -58,6 +100,14 @@ const DeviceMapScreen = () => {
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(0)).current;
   const panelHeight = useRef(new Animated.Value(BOTTOM_SHEET_MIN_HEIGHT)).current;
+
+  // ✅ Listen for token refresh events
+  useEffect(() => {
+    const removeListener = addTokenRefreshListener((newToken) => {
+      console.log('📡 Token refreshed in DeviceMapScreen');
+    });
+    return () => removeListener();
+  }, []);
 
   useEffect(() => {
     Animated.parallel([
@@ -87,20 +137,22 @@ const DeviceMapScreen = () => {
   const fetchAllData = async (isRefresh = false) => {
     if (!isRefresh) setLoading(true);
     try {
-      const token = await AsyncStorage.getItem('accessToken');
-      if (!token) {
-        console.error('No token found');
-        return;
-      }
-
-      // Fetch both devices and geofences in parallel
+      // Fetch both devices and geofences in parallel using authenticatedAxios
       const [devicesRes, geofencesRes] = await Promise.all([
-        axios.get(`${serverUrl}/telemetry/latest-t1s`, {
-          headers: { Authorization: `Bearer ${token}` },
-        }),
-        axios.get(`${serverUrl}/geofences?size=1000`, {
-          headers: { Authorization: `Bearer ${token}` },
-        })
+        authenticatedAxios(
+          axios.get,
+          {
+            url: `${serverUrl}/telemetry/latest-t1s`,
+          },
+          i18n
+        ),
+        authenticatedAxios(
+          axios.get,
+          {
+            url: `${serverUrl}/geofences?size=1000`,
+          },
+          i18n
+        )
       ]);
 
       if (devicesRes.data && Array.isArray(devicesRes.data)) {

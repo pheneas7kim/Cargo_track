@@ -40,6 +40,7 @@ export const refreshAccessToken = async () => {
     const userId = await AsyncStorage.getItem('id');
     const userEmail = await AsyncStorage.getItem('email');
     const userName = await AsyncStorage.getItem('name');
+    const currentLanguage = await AsyncStorage.getItem('userLanguage') || 'en';
 
     if (!userId || !userEmail) {
       console.log('❌ No user data found, cannot refresh token');
@@ -64,6 +65,7 @@ export const refreshAccessToken = async () => {
         'Content-Type': 'application/json',
         'Accept': 'application/json',
         'Authorization': `Bearer ${currentToken}`,
+        'Accept-Language': currentLanguage, // ✅ Add language header
       },
       body: JSON.stringify(refreshPayload),
     });
@@ -78,6 +80,10 @@ export const refreshAccessToken = async () => {
         // Save the new token
         await AsyncStorage.setItem('accessToken', data.accessToken);
         console.log('💾 New access token saved to AsyncStorage');
+
+        // Reset the 55-minute expiry timer
+        const tokenExpiryTime = Date.now() + (55 * 60 * 1000); // 55 minutes from now
+        await AsyncStorage.setItem('tokenExpiry', tokenExpiryTime.toString());
 
         // Also update any other user data if returned
         if (data.name) await AsyncStorage.setItem('name', data.name);
@@ -101,15 +107,67 @@ export const refreshAccessToken = async () => {
   }
 };
 
+// ========== 60-SECOND AUTO REFRESH TIMER SETUP ==========
+let refreshTimer = null;
+
+export const startAutoTokenRefresh = () => {
+  // Clear any existing timer
+  if (refreshTimer) {
+    clearInterval(refreshTimer);
+    refreshTimer = null;
+  }
+
+  // Start new timer that runs every 60 seconds (60,000 ms)
+  refreshTimer = setInterval(async () => {
+    console.log('⏰ 60-second auto-refresh check triggered');
+
+    try {
+      const token = await AsyncStorage.getItem('accessToken');
+      const userId = await AsyncStorage.getItem('id');
+
+      if (token && userId) {
+        console.log('🔄 Auto-refreshing token...');
+        const newToken = await refreshAccessToken();
+        if (newToken) {
+          console.log('✅ Auto-refresh successful');
+        } else {
+          console.log('⚠️ Auto-refresh failed - token may be invalid');
+        }
+      } else {
+        console.log('ℹ️ No user logged in, stopping auto-refresh');
+        stopAutoTokenRefresh();
+      }
+    } catch (error) {
+      console.error('❌ Auto-refresh error:', error);
+    }
+  }, 60000); // 60 seconds = 60,000 milliseconds
+
+  console.log('✅ 60-second auto token refresh timer started');
+  return refreshTimer;
+};
+
+export const stopAutoTokenRefresh = () => {
+  if (refreshTimer) {
+    clearInterval(refreshTimer);
+    refreshTimer = null;
+    console.log('🛑 Auto token refresh timer stopped');
+  }
+};
+
 // ========== AXIOS INTERCEPTOR SETUP (To be called once in App) ==========
 export const setupAxiosInterceptors = (axiosInstance) => {
-  // Request interceptor to add token
+  // Request interceptor to add token and language
   axiosInstance.interceptors.request.use(
     async (config) => {
       const token = await AsyncStorage.getItem('accessToken');
+      const language = await AsyncStorage.getItem('userLanguage') || 'en';
+
       if (token) {
         config.headers.Authorization = `Bearer ${token}`;
       }
+      // ✅ Add Accept-Language header to all axios requests
+      config.headers['Accept-Language'] = language;
+
       return config;
     },
     (error) => {
@@ -135,11 +193,15 @@ export const setupAxiosInterceptors = (axiosInstance) => {
         if (newToken) {
           console.log('✅ Token refreshed, retrying original request');
           originalRequest.headers.Authorization = `Bearer ${newToken}`;
+          // ✅ Update language header on retry
+          const language = await AsyncStorage.getItem('userLanguage') || 'en';
+          originalRequest.headers['Accept-Language'] = language;
           return axiosInstance(originalRequest);
         } else {
           console.log('❌ Token refresh failed, redirecting to login');
           // Clear storage and redirect to login
           await AsyncStorage.multiRemove(['accessToken', 'id', 'name', 'email', 'roleId', 'roleName']);
+          stopAutoTokenRefresh(); // Stop auto-refresh on logout
           // You'll need to trigger navigation here - can use a navigation ref or event emitter
           return Promise.reject(error);
         }
@@ -207,6 +269,13 @@ const Login = () => {
     requestPermission();
   }, []);
 
+  // ✅ Clean up auto-refresh timer on component unmount
+  useEffect(() => {
+    return () => {
+      stopAutoTokenRefresh();
+    };
+  }, []);
+
   const handleForgotPassword = () => {
     setIsVisible(false);
     setTimeout(() => {
@@ -250,6 +319,9 @@ const Login = () => {
 
     setLoading(true);
 
+    // ✅ Get current language for the request header
+    const currentLanguage = i18n.language || 'en';
+
     const payload = {
       username: email,
       password: password,
@@ -257,6 +329,7 @@ const Login = () => {
 
     console.log('DEBUG: Attempting login to:', `${serverUrl}auth/signin`);
     console.log('DEBUG: Request Payload:', JSON.stringify(payload));
+    console.log('DEBUG: Accept-Language:', currentLanguage);
 
     try {
       const response = await fetch(`${serverUrl}auth/signin`, {
@@ -264,6 +337,7 @@ const Login = () => {
         headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json',
+          'Accept-Language': currentLanguage, // ✅ Add language header
         },
         body: JSON.stringify(payload),
       });
@@ -305,7 +379,6 @@ const Login = () => {
         await AsyncStorage.setItem('tokenExpiry', tokenExpiryTime.toString());
 
         // ✅ SAVE CURRENT LANGUAGE PREFERENCE ON LOGIN
-        const currentLanguage = i18n.language; // 'en' or 'fr'
         await AsyncStorage.setItem('userLanguage', currentLanguage);
         console.log('💾 Saved language preference on login:', currentLanguage);
 
@@ -313,6 +386,9 @@ const Login = () => {
 
         await requestPermissionAndToken(data.id, data.accessToken);
         setupNotificationListeners();
+
+        // ✅ START 60-SECOND AUTO TOKEN REFRESH TIMER AFTER SUCCESSFUL LOGIN
+        startAutoTokenRefresh();
 
         setLoading(false);
 

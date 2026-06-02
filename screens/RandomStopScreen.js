@@ -24,11 +24,53 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
 import serverUrl from '../config';
 import { useTranslation } from 'react-i18next';
+// ✅ Import global token refresh service
+import { refreshAccessToken, addTokenRefreshListener } from '../services/TokenService';
 
 const { width } = Dimensions.get('window');
 
+// ✅ Helper function to get language header
+const getLanguageHeader = async (i18n) => {
+  try {
+    const language = await AsyncStorage.getItem('userLanguage') || i18n?.language || 'en';
+    return language;
+  } catch (error) {
+    console.error('Error getting language:', error);
+    return 'en';
+  }
+};
+
+// ✅ Helper function to make authenticated axios request with retry on 401
+const authenticatedAxios = async (axiosInstance, config, i18n, retryCount = 0) => {
+  try {
+    const token = await AsyncStorage.getItem('accessToken');
+    const language = await getLanguageHeader(i18n);
+
+    const response = await axiosInstance({
+      ...config,
+      headers: {
+        ...config.headers,
+        'Authorization': `Bearer ${token}`,
+        'Accept-Language': language,
+      },
+    });
+
+    return response;
+  } catch (error) {
+    if (error.response?.status === 401 && retryCount === 0) {
+      console.log('🔐 Token expired, attempting refresh...');
+      const newToken = await refreshAccessToken();
+      if (newToken) {
+        console.log('✅ Token refreshed, retrying request...');
+        return authenticatedAxios(axiosInstance, config, i18n, 1);
+      }
+    }
+    throw error;
+  }
+};
+
 const RandomStopScreen = () => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const navigation = useNavigation();
   const [stops, setStops] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -51,6 +93,14 @@ const RandomStopScreen = () => {
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(30)).current;
+
+  // ✅ Listen for token refresh events
+  useEffect(() => {
+    const removeListener = addTokenRefreshListener((newToken) => {
+      console.log('📡 Token refreshed in RandomStopScreen');
+    });
+    return () => removeListener();
+  }, []);
 
   // Memoized filtered stops to prevent unnecessary re-renders
   const filteredStops = useMemo(() => {
@@ -80,15 +130,13 @@ const RandomStopScreen = () => {
     setLoadingIncidentTypes(true);
 
     try {
-      const token = await AsyncStorage.getItem('accessToken');
-      console.log('Token retrieved:', token ? `Token exists (length: ${token.length})` : '❌ NO TOKEN FOUND');
-
-      const url = `${serverUrl}incident-types`;
-      console.log('Request URL:', url);
-
-      const response = await axios.get(url, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const response = await authenticatedAxios(
+        axios.get,
+        {
+          url: `${serverUrl}incident-types`,
+        },
+        i18n
+      );
 
       console.log('✅ Incident Types Response Status:', response.status);
 
@@ -134,9 +182,6 @@ const RandomStopScreen = () => {
     try {
       if (!isRefresh) setLoading(true);
 
-      const token = await AsyncStorage.getItem('accessToken');
-      console.log('Token retrieved:', token ? `Token exists (length: ${token.length})` : '❌ NO TOKEN FOUND');
-
       const userId = await AsyncStorage.getItem('id');
       const userName = await AsyncStorage.getItem('name');
       console.log('User ID:', userId || 'Not found');
@@ -146,9 +191,13 @@ const RandomStopScreen = () => {
       console.log('Request URL:', url);
 
       const startTime = Date.now();
-      const response = await axios.get(url, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const response = await authenticatedAxios(
+        axios.get,
+        {
+          url: url,
+        },
+        i18n
+      );
       const endTime = Date.now();
 
       console.log(`✅ Request completed in ${endTime - startTime}ms`);
@@ -239,8 +288,6 @@ const RandomStopScreen = () => {
     setSubmitting(true);
 
     try {
-      const token = await AsyncStorage.getItem('accessToken');
-
       const postData = {
         plateNumber: normalizedPlateNumber,
         reason: newStop.reason,
@@ -250,9 +297,15 @@ const RandomStopScreen = () => {
       console.log('POST URL:', `${serverUrl}random-stops`);
       console.log('POST Data:', postData);
 
-      const response = await axios.post(`${serverUrl}random-stops`, postData, {
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      });
+      const response = await authenticatedAxios(
+        axios.post,
+        {
+          url: `${serverUrl}random-stops`,
+          data: postData,
+          headers: { 'Content-Type': 'application/json' },
+        },
+        i18n
+      );
 
       console.log('✅ Response Status:', response.status);
 

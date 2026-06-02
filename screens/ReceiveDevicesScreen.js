@@ -20,13 +20,57 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import Snackbar from 'react-native-snackbar';
 import * as Animatable from 'react-native-animatable';
 import { useTranslation } from 'react-i18next';
+// ✅ Import global token refresh service
+import { refreshAccessToken, addTokenRefreshListener } from '../services/TokenService';
 
 const { width } = Dimensions.get('window');
 const SCAN_SIZE = width * 0.7;
 const API_BASE = 'https://demo2.bsl.co.ke';
 
+// ✅ Helper function to get language header
+const getLanguageHeader = async (i18n) => {
+  try {
+    const language = await AsyncStorage.getItem('userLanguage') || i18n?.language || 'en';
+    return language;
+  } catch (error) {
+    console.error('Error getting language:', error);
+    return 'en';
+  }
+};
+
+// ✅ Helper function to make authenticated fetch with retry on 401
+const authenticatedFetch = async (url, options, i18n, retryCount = 0) => {
+  try {
+    let token = await AsyncStorage.getItem('accessToken');
+    const language = await getLanguageHeader(i18n);
+
+    const response = await fetch(url, {
+      ...options,
+      headers: {
+        ...options.headers,
+        'Authorization': `Bearer ${token}`,
+        'Accept-Language': language,
+      },
+    });
+
+    if (response.status === 401 && retryCount === 0) {
+      console.log('🔐 Token expired, attempting refresh...');
+      const newToken = await refreshAccessToken();
+      if (newToken) {
+        console.log('✅ Token refreshed, retrying request...');
+        return authenticatedFetch(url, options, i18n, 1);
+      }
+    }
+
+    return response;
+  } catch (error) {
+    console.error('❌ Authenticated fetch error:', error);
+    throw error;
+  }
+};
+
 const ReceiveDevicesScreen = () => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const navigation = useNavigation();
   const route = useRoute();
 
@@ -58,6 +102,14 @@ const ReceiveDevicesScreen = () => {
     { id: 8, label: t('receive_devices.conditions.under_repair', { defaultValue: 'Under Repair' }) },
     { id: 9, label: t('receive_devices.conditions.decommissioned', { defaultValue: 'Decommissioned' }) }
   ];
+
+  // ✅ Listen for token refresh events
+  useEffect(() => {
+    const removeListener = addTokenRefreshListener((newToken) => {
+      console.log('📡 Token refreshed in ReceiveDevicesScreen');
+    });
+    return () => removeListener();
+  }, []);
 
   useEffect(() => {
     loadStoreData(); // Changed from loadStoreId to loadStoreData
@@ -249,11 +301,6 @@ const ReceiveDevicesScreen = () => {
     setSubmitting(true);
 
     try {
-      const authToken = await AsyncStorage.getItem('accessToken');
-      if (!authToken) {
-        throw new Error(t('receive_devices.errors.no_token', { defaultValue: 'No authentication token found' }));
-      }
-
       const requestBody = {
         storeId: parseInt(storeId, 10),
         devices: devicesList
@@ -261,14 +308,17 @@ const ReceiveDevicesScreen = () => {
 
       console.log('📤 Submitting devices:', JSON.stringify(requestBody, null, 2));
 
-      const response = await fetch(`${API_BASE}/api/v1/store-stock/receive-devices`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${authToken}`,
-          'Content-Type': 'application/json',
+      const response = await authenticatedFetch(
+        `${API_BASE}/api/v1/store-stock/receive-devices`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(requestBody),
         },
-        body: JSON.stringify(requestBody),
-      });
+        i18n
+      );
 
       if (response.status === 401) {
         Snackbar.show({
