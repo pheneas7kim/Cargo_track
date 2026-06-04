@@ -24,12 +24,11 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
 import serverUrl from '../config';
 import { useTranslation } from 'react-i18next';
-// ✅ Import global token refresh service
 import { refreshAccessToken, addTokenRefreshListener } from '../services/TokenService';
 
 const { width } = Dimensions.get('window');
 
-// ✅ Helper function to get language header
+// Helper function to get language header
 const getLanguageHeader = async (i18n) => {
   try {
     const language = await AsyncStorage.getItem('userLanguage') || i18n?.language || 'en';
@@ -40,13 +39,17 @@ const getLanguageHeader = async (i18n) => {
   }
 };
 
-// ✅ Helper function to make authenticated axios request with retry on 401
-const authenticatedAxios = async (axiosInstance, config, i18n, retryCount = 0) => {
+// FIXED: Helper function to make authenticated axios request with retry on 401
+const authenticatedAxios = async (method, config, i18n, retryCount = 0) => {
   try {
     const token = await AsyncStorage.getItem('accessToken');
     const language = await getLanguageHeader(i18n);
 
+    // Create axios instance for each request
+    const axiosInstance = axios.create();
+
     const response = await axiosInstance({
+      method: method, // 'get', 'post', 'put', 'delete', etc.
       ...config,
       headers: {
         ...config.headers,
@@ -57,12 +60,19 @@ const authenticatedAxios = async (axiosInstance, config, i18n, retryCount = 0) =
 
     return response;
   } catch (error) {
+    console.error('❌ API Error details:', {
+      status: error.response?.status,
+      statusText: error.response?.statusText,
+      data: error.response?.data,
+      dataType: typeof error.response?.data
+    });
+
     if (error.response?.status === 401 && retryCount === 0) {
       console.log('🔐 Token expired, attempting refresh...');
       const newToken = await refreshAccessToken();
       if (newToken) {
         console.log('✅ Token refreshed, retrying request...');
-        return authenticatedAxios(axiosInstance, config, i18n, 1);
+        return authenticatedAxios(method, config, i18n, 1);
       }
     }
     throw error;
@@ -94,7 +104,7 @@ const RandomStopScreen = () => {
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(30)).current;
 
-  // ✅ Listen for token refresh events
+  // Listen for token refresh events
   useEffect(() => {
     const removeListener = addTokenRefreshListener((newToken) => {
       console.log('📡 Token refreshed in RandomStopScreen');
@@ -130,8 +140,9 @@ const RandomStopScreen = () => {
     setLoadingIncidentTypes(true);
 
     try {
+      // FIXED: Changed from axios.get to 'get' string method
       const response = await authenticatedAxios(
-        axios.get,
+        'get',  // <-- FIXED: Use string method name instead of axios.get
         {
           url: `${serverUrl}incident-types`,
         },
@@ -139,24 +150,118 @@ const RandomStopScreen = () => {
       );
 
       console.log('✅ Incident Types Response Status:', response.status);
+      console.log('✅ Response data type:', typeof response.data);
+      console.log('✅ Response data:', JSON.stringify(response.data).substring(0, 500));
 
-      if (response.data && Array.isArray(response.data)) {
-        console.log(`✅ Found ${response.data.length} incident types (array format)`);
-        setIncidentTypes(response.data);
-      } else if (response.data && response.data.content) {
-        console.log(`✅ Found ${response.data.content.length} incident types (paginated format)`);
-        setIncidentTypes(response.data.content);
-      } else {
-        console.log('⚠️ No incident types found in response');
+      // Check if response is actually an error
+      if (response.data && response.data.statusCode && response.data.statusCode !== 200) {
+        console.error('❌ API returned error:', response.data);
         setIncidentTypes([]);
+        return;
       }
+
+      // Try to parse incident types from various response formats
+      let incidentTypesData = [];
+
+      if (response.data) {
+        // Check for error response
+        if (response.data.error || response.data.message) {
+          console.error('❌ Error response from server:', response.data);
+          Snackbar.show({
+            text: `Error: ${response.data.message || 'Failed to load incident types'}`,
+            backgroundColor: '#FF6B6B',
+            duration: 3000,
+          });
+          setIncidentTypes([]);
+          return;
+        }
+
+        // Try different response structures
+        if (Array.isArray(response.data)) {
+          incidentTypesData = response.data;
+          console.log(`✅ Found ${incidentTypesData.length} incident types (direct array)`);
+        }
+        else if (response.data.content && Array.isArray(response.data.content)) {
+          incidentTypesData = response.data.content;
+          console.log(`✅ Found ${incidentTypesData.length} incident types (paginated format)`);
+        }
+        else if (response.data.data && Array.isArray(response.data.data)) {
+          incidentTypesData = response.data.data;
+          console.log(`✅ Found ${incidentTypesData.length} incident types (nested data)`);
+        }
+        else if (response.data.incidentTypes && Array.isArray(response.data.incidentTypes)) {
+          incidentTypesData = response.data.incidentTypes;
+          console.log(`✅ Found ${incidentTypesData.length} incident types (incidentTypes field)`);
+        }
+        else if (response.data.incidentTypeList && Array.isArray(response.data.incidentTypeList)) {
+          incidentTypesData = response.data.incidentTypeList;
+          console.log(`✅ Found ${incidentTypesData.length} incident types (incidentTypeList field)`);
+        }
+        else if (typeof response.data === 'object') {
+          // If it's an object but not an array, try to extract any array property
+          console.log('Response is an object with keys:', Object.keys(response.data));
+          for (let key in response.data) {
+            if (Array.isArray(response.data[key])) {
+              incidentTypesData = response.data[key];
+              console.log(`✅ Found array in property "${key}" with ${incidentTypesData.length} items`);
+              break;
+            }
+          }
+        }
+
+        if (incidentTypesData.length === 0) {
+          console.warn('⚠️ No incident types array found in response');
+          console.warn('Response structure:', Object.keys(response.data));
+          incidentTypesData = [];
+        }
+      } else {
+        console.warn('⚠️ No data received from incident types endpoint');
+        incidentTypesData = [];
+      }
+
+      setIncidentTypes(incidentTypesData);
+
     } catch (error) {
       console.error('❌ Error fetching incident types:', error.message);
-      Snackbar.show({
-        text: t('random_stop.errors.load_incident_types', { defaultValue: 'Failed to load incident types' }),
-        backgroundColor: '#FF6B6B',
-        duration: 3000,
-      });
+
+      // Detailed error logging
+      if (error.response) {
+        console.error('Response status:', error.response.status);
+        console.error('Response headers:', error.response.headers);
+        console.error('Response data:', JSON.stringify(error.response.data, null, 2));
+
+        // Check if error response is a map/object
+        if (typeof error.response.data === 'object') {
+          console.error('Error data is an object with keys:', Object.keys(error.response.data));
+          const errorMessage = error.response.data.message ||
+                              error.response.data.error ||
+                              error.response.data.msg ||
+                              'Failed to load incident types';
+
+          Snackbar.show({
+            text: errorMessage,
+            backgroundColor: '#FF6B6B',
+            duration: 3000,
+          });
+        } else {
+          Snackbar.show({
+            text: `Failed to load incident types: ${error.message}`,
+            backgroundColor: '#FF6B6B',
+            duration: 3000,
+          });
+        }
+      } else if (error.request) {
+        console.error('No response received:', error.request);
+        Snackbar.show({
+          text: 'Network error - Could not connect to server',
+          backgroundColor: '#FF6B6B',
+          duration: 3000,
+        });
+      } else {
+        console.error('Error:', error.message);
+      }
+
+      setIncidentTypes([]);
     } finally {
       setLoadingIncidentTypes(false);
       console.log('Incident types fetch completed\n');
@@ -191,8 +296,9 @@ const RandomStopScreen = () => {
       console.log('Request URL:', url);
 
       const startTime = Date.now();
+      // FIXED: Changed from axios.get to 'get' string method
       const response = await authenticatedAxios(
-        axios.get,
+        'get',  // <-- FIXED: Use string method name instead of axios.get
         {
           url: url,
         },
@@ -202,49 +308,77 @@ const RandomStopScreen = () => {
 
       console.log(`✅ Request completed in ${endTime - startTime}ms`);
       console.log('Response Status:', response.status);
+      console.log('Response data type:', typeof response.data);
 
-      if (response.data && response.data.content) {
-        console.log(`✅ Found ${response.data.content.length} stops (paginated response)`);
-        console.log('Pagination info:', {
-          totalElements: response.data.totalElements,
-          totalPages: response.data.totalPages
-        });
+      // Parse response with better error handling
+      let stopsData = [];
 
-        if (response.data.content.length > 0) {
-          // Count items with and without plate numbers
-          const withPlate = response.data.content.filter(s => s.vehiclePlateNumber).length;
-          const withoutPlate = response.data.content.filter(s => !s.vehiclePlateNumber).length;
-          console.log(`📊 Stops with plate numbers: ${withPlate}, without: ${withoutPlate}`);
-
-          // Log status distribution
-          const statuses = [...new Set(response.data.content.map(s => s.status))];
-          console.log('📊 Status distribution:', statuses);
+      if (response.data) {
+        if (response.data.content && Array.isArray(response.data.content)) {
+          stopsData = response.data.content;
+          console.log(`✅ Found ${stopsData.length} stops (paginated response)`);
+          console.log('Pagination info:', {
+            totalElements: response.data.totalElements,
+            totalPages: response.data.totalPages
+          });
+        } else if (Array.isArray(response.data)) {
+          stopsData = response.data;
+          console.log(`✅ Found ${stopsData.length} stops (array response)`);
+        } else if (response.data.data && Array.isArray(response.data.data)) {
+          stopsData = response.data.data;
+          console.log(`✅ Found ${stopsData.length} stops (nested data format)`);
+        } else {
+          console.warn('⚠️ Unexpected response format for stops:', typeof response.data);
+          if (response.data && typeof response.data === 'object') {
+            console.warn('Response keys:', Object.keys(response.data));
+          }
+          stopsData = [];
         }
-
-        setStops(response.data.content);
-      } else if (Array.isArray(response.data)) {
-        console.log(`✅ Found ${response.data.length} stops (array response)`);
-        setStops(response.data);
       } else {
-        console.log('⚠️ Unexpected response format');
-        setStops([]);
+        console.warn('⚠️ No data received from stops endpoint');
+        stopsData = [];
       }
+
+      if (stopsData.length > 0) {
+        // Count items with and without plate numbers
+        const withPlate = stopsData.filter(s => s.vehiclePlateNumber).length;
+        const withoutPlate = stopsData.filter(s => !s.vehiclePlateNumber).length;
+        console.log(`📊 Stops with plate numbers: ${withPlate}, without: ${withoutPlate}`);
+
+        // Log status distribution
+        const statuses = [...new Set(stopsData.map(s => s.status))];
+        console.log('📊 Status distribution:', statuses);
+      }
+
+      setStops(stopsData);
     } catch (error) {
       console.error('❌ ERROR FETCHING STOPS:', error.message);
 
-      if (error.response?.status === 401) {
-        console.error('🔐 Authentication failed - token may be expired');
-      } else if (error.response?.status === 403) {
-        console.error('🚫 Forbidden - insufficient permissions');
-      } else if (error.response?.status === 404) {
-        console.error('🔍 Endpoint not found - check server URL');
+      if (error.response) {
+        console.error('Response status:', error.response.status);
+        console.error('Response data:', error.response.data);
+
+        if (error.response.status === 401) {
+          console.error('🔐 Authentication failed - token may be expired');
+        } else if (error.response.status === 403) {
+          console.error('🚫 Forbidden - insufficient permissions');
+        } else if (error.response.status === 404) {
+          console.error('🔍 Endpoint not found - check server URL');
+        }
+      } else if (error.request) {
+        console.error('No response received from server');
+      } else {
+        console.error('Error setting up request:', error.message);
       }
 
       Snackbar.show({
-        text: t('random_stop.errors.load_stops', { defaultValue: 'Failed to load stops: {{message}}', message: error.response?.data?.message || error.message }).replace('{{message}}', error.response?.data?.message || error.message),
+        text: t('random_stop.errors.load_stops', { defaultValue: 'Failed to load stops' }),
         duration: 3000,
         backgroundColor: '#FF6B6B'
       });
+
+      // Set empty array to avoid rendering errors
+      setStops([]);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -297,8 +431,9 @@ const RandomStopScreen = () => {
       console.log('POST URL:', `${serverUrl}random-stops`);
       console.log('POST Data:', postData);
 
+      // FIXED: Changed from axios.post to 'post' string method
       const response = await authenticatedAxios(
-        axios.post,
+        'post',  // <-- FIXED: Use string method name instead of axios.post
         {
           url: `${serverUrl}random-stops`,
           data: postData,
@@ -308,10 +443,11 @@ const RandomStopScreen = () => {
       );
 
       console.log('✅ Response Status:', response.status);
+      console.log('Response data:', response.data);
 
-      if (response.data.vehiclePlateNumber === null) {
+      if (response.data && response.data.vehiclePlateNumber === null) {
         Snackbar.show({
-          text: t('random_stop.errors.vehicle_not_found', { defaultValue: '⚠️ Stop created but vehicle "{{plate}}" not found in system', plate: normalizedPlateNumber }).replace('{{plate}}', normalizedPlateNumber),
+          text: t('random_stop.errors.vehicle_not_found', { defaultValue: '⚠️ Stop created but vehicle not found in system' }),
           duration: 5000,
           backgroundColor: '#FFA500'
         });
@@ -332,12 +468,18 @@ const RandomStopScreen = () => {
       console.error('❌ ERROR SUBMITTING STOP:', error.message);
 
       let errorMessage = t('random_stop.errors.submission_failed', { defaultValue: 'Submission failed' });
-      if (error.response?.status === 404) {
-        errorMessage = t('random_stop.errors.vehicle_not_found_message', { defaultValue: 'Vehicle plate number not found in system' });
-      } else if (error.response?.status === 401) {
-        errorMessage = t('random_stop.errors.auth_failed', { defaultValue: 'Authentication failed - please login again' });
-      } else if (error.response?.data?.message) {
-        errorMessage = error.response.data.message;
+
+      if (error.response) {
+        console.error('Response status:', error.response.status);
+        console.error('Response data:', error.response.data);
+
+        if (error.response.status === 404) {
+          errorMessage = t('random_stop.errors.vehicle_not_found_message', { defaultValue: 'Vehicle plate number not found in system' });
+        } else if (error.response.status === 401) {
+          errorMessage = t('random_stop.errors.auth_failed', { defaultValue: 'Authentication failed - please login again' });
+        } else if (error.response.data && error.response.data.message) {
+          errorMessage = error.response.data.message;
+        }
       }
 
       Snackbar.show({ text: errorMessage, duration: 3000, backgroundColor: '#FF6B6B' });

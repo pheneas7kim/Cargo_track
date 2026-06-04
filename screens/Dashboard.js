@@ -22,6 +22,7 @@ import { BackHandler } from 'react-native';
 import Snackbar from 'react-native-snackbar';
 import * as Animatable from 'react-native-animatable';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import axios from 'axios';
 import { useTranslation } from 'react-i18next';
 // ✅ Import global token refresh service
 import { refreshAccessToken, addTokenRefreshListener } from '../services/TokenService';
@@ -153,132 +154,98 @@ const getLanguageHeader = async (i18n) => {
   }
 };
 
-// ✅ Helper function to make authenticated fetch with retry on 401
-const authenticatedFetch = async (url, options, i18n, retryCount = 0) => {
+// ✅ FIXED: Helper function to make authenticated axios request with retry on 401
+const authenticatedAxios = async (method, config, i18n, retryCount = 0) => {
   try {
-    let token = await getAuthToken();
+    const token = await AsyncStorage.getItem('accessToken');
     const language = await getLanguageHeader(i18n);
 
-    const response = await fetch(url, {
-      ...options,
+    // Create a new axios instance for each request
+    const axiosInstance = axios.create();
+
+    const response = await axiosInstance({
+      method: method, // 'get', 'post', 'put', 'delete', etc.
+      ...config,
       headers: {
-        ...options.headers,
+        ...config.headers,
         'Authorization': `Bearer ${token}`,
         'Accept-Language': language,
       },
     });
 
-    if (response.status === 401 && retryCount === 0) {
+    return response;
+  } catch (error) {
+    console.error('❌ API Error details:', {
+      status: error.response?.status,
+      statusText: error.response?.statusText,
+      data: error.response?.data,
+    });
+
+    if (error.response?.status === 401 && retryCount === 0) {
       console.log('🔐 Token expired, attempting refresh...');
       const newToken = await refreshAccessToken();
       if (newToken) {
         console.log('✅ Token refreshed, retrying request...');
-        return authenticatedFetch(url, options, i18n, 1);
+        return authenticatedAxios(method, config, i18n, 1);
       }
     }
-
-    return response;
-  } catch (error) {
-    console.error('❌ Authenticated fetch error:', error);
     throw error;
   }
 };
 
 // Add this function to fetch store ID for the logged-in user
+// ✅ FIXED: fetchUserStore using authenticatedAxios
 const fetchUserStore = async (i18n) => {
   try {
-    const token = await getAuthToken();
     const userId = await AsyncStorage.getItem('id');
-    const language = await getLanguageHeader(i18n);
 
-    if (!token || !userId) {
-      console.log('No token or user ID found');
+    if (!userId) {
+      console.log('No user ID found');
       return null;
     }
 
     console.log('Fetching store for user:', userId);
 
-    // Try multiple possible endpoints
-    const endpoints = [
-      `${API_BASE}/api/v1/users/getUserByID?users_id=${userId}`,
-    ];
+    try {
+      const response = await authenticatedAxios(
+        'get',
+        {
+          url: `${API_BASE}/api/v1/users/getUserByID?users_id=${userId}`,
+        },
+        i18n
+      );
 
-    for (const url of endpoints) {
-      try {
-        console.log('Trying endpoint:', url);
-        const response = await fetch(url, {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json',
-            'Accept-Language': language,
-          },
-        });
+      const data = response.data;
+      console.log('Store data:', data);
 
-        if (response.ok) {
-          const data = await response.json();
-          console.log('Store data found at', url, ':', data);
+      // Extract store ID based on response structure
+      let storeId = null;
+      let storeName = null;
 
-          // Extract store ID based on response structure
-          let storeId = null;
-          let storeName = null;
-
-          // Check for stores array (your actual API response structure)
-          if (data.stores && Array.isArray(data.stores) && data.stores.length > 0) {
-            storeId = data.stores[0].id;
-            storeName = data.stores[0].name;
-            console.log('Found store in stores array:', { storeId, storeName });
-          }
-          // Check for direct id property
-          else if (data.id) {
-            storeId = data.id;
-            storeName = data.name;
-            console.log('Found store with direct id:', { storeId, storeName });
-          }
-          // Check for storeId property
-          else if (data.storeId) {
-            storeId = data.storeId;
-            storeName = data.storeName;
-            console.log('Found store with storeId property:', { storeId, storeName });
-          }
-          // Check if response is an array
-          else if (Array.isArray(data) && data.length > 0) {
-            storeId = data[0].id;
-            storeName = data[0].name;
-            console.log('Found store in array response:', { storeId, storeName });
-          }
-          // Check for nested store object
-          else if (data.store && data.store.id) {
-            storeId = data.store.id;
-            storeName = data.store.name;
-            console.log('Found store in nested store object:', { storeId, storeName });
-          }
-
-          if (storeId) {
-            // Save to AsyncStorage
-            await AsyncStorage.setItem('storeId', storeId.toString());
-            if (storeName) {
-              await AsyncStorage.setItem('storeName', storeName);
-            }
-            console.log('Store saved successfully to AsyncStorage:', { storeId, storeName });
-
-            // Verify the save
-            const verifiedStoreId = await AsyncStorage.getItem('storeId');
-            console.log('Verified storeId in AsyncStorage:', verifiedStoreId);
-
-            return { storeId, storeName };
-          } else {
-            console.log('No store ID found in response structure');
-          }
-        } else {
-          console.log(`Endpoint ${url} returned status:`, response.status);
-        }
-      } catch (err) {
-        console.log(`Error with endpoint ${url}:`, err.message);
+      if (data.stores && Array.isArray(data.stores) && data.stores.length > 0) {
+        storeId = data.stores[0].id;
+        storeName = data.stores[0].name;
+      } else if (data.id) {
+        storeId = data.id;
+        storeName = data.name;
+      } else if (data.storeId) {
+        storeId = data.storeId;
+        storeName = data.storeName;
       }
-    }
 
-    console.log('No store endpoint found for user');
-    return null;
+      if (storeId) {
+        await AsyncStorage.setItem('storeId', storeId.toString());
+        if (storeName) {
+          await AsyncStorage.setItem('storeName', storeName);
+        }
+        console.log('Store saved:', { storeId, storeName });
+        return { storeId, storeName };
+      }
+      return null;
+    } catch (err) {
+      console.log('Error fetching store:', err.message);
+      return null;
+    }
   } catch (error) {
     console.error('Error fetching store:', error);
     return null;
@@ -286,39 +253,53 @@ const fetchUserStore = async (i18n) => {
 };
 
 const acknowledgeTicket = async (ticketId, i18n) => {
-  const response = await authenticatedFetch(
-    `${API_BASE}/api/v1/tickets/acknowledge`,
+  const response = await authenticatedAxios(
+    'post',
     {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
+      url: `${API_BASE}/api/v1/tickets/acknowledge`,
+      data: {
         ticketId: Number(ticketId),
         content: 'Acknowledged from mobile app',
-      }),
+      },
     },
     i18n
   );
 
-  if (!response.ok) throw new Error('Failed to acknowledge ticket');
-  return await response.json();
+  return response.data;
 };
 
-const resolveTicket = async (ticketId, i18n) => {
+// Updated resolveTicket function to accept notes and files
+const resolveTicket = async (ticketId, notes, files, i18n) => {
   const formData = new FormData();
-  formData.append('notes', 'Resolved from mobile app');
+  formData.append('notes', notes || 'Resolved from mobile app');
 
-  const response = await authenticatedFetch(
-    `${API_BASE}/api/v1/tickets/${ticketId}/resolve`,
-    {
-      method: 'POST',
-      body: formData,
+  // Append each file
+  if (files && files.length > 0) {
+    files.forEach((file, index) => {
+      formData.append('files', {
+        uri: file.uri,
+        type: file.type || 'image/jpeg',
+        name: file.fileName || `evidence_${Date.now()}_${index}.jpg`,
+      });
+    });
+  }
+
+  const token = await AsyncStorage.getItem('accessToken');
+  const language = await getLanguageHeader(i18n);
+
+  const response = await fetch(`${API_BASE}/api/v1/tickets/${ticketId}/resolve`, {
+    method: 'POST',
+    body: formData,
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Accept-Language': language,
     },
-    i18n
-  );
+  });
 
-  if (!response.ok) throw new Error('Failed to resolve ticket');
+  if (!response.ok) {
+    const errorData = await response.text();
+    throw new Error(`Failed to resolve ticket: ${errorData}`);
+  }
   return await response.json();
 };
 
@@ -384,11 +365,10 @@ function HomeScreen() {
         setActiveTab('tickets');
       }
 
-      // NEW: Fetch store ID for STORE role (202)
-      if (id === 202) {
-        console.log('STORE role detected, fetching store info...');
+      // ✅ FIXED: Fetch store ID for STORE role (202) AND ADMIN role (1)
+      if (id === 202 || id === 1) {
+        console.log(`${id === 202 ? 'STORE' : 'ADMIN'} role detected, fetching store info...`);
         await fetchUserStore(i18n);
-
       }
     };
     loadRole();
@@ -428,40 +408,19 @@ function HomeScreen() {
     }
   };
 
+  // ✅ FIXED: fetchShipments using authenticatedAxios
   const fetchShipments = async () => {
     try {
       setLoadingShipments(true);
 
       // Fetch both telemetry and T1 declarations in parallel
       const [telemetryResponse, t1Response] = await Promise.all([
-        authenticatedFetch(`${API_BASE}/api/v1/telemetry/latest-t1s`, {
-          method: 'GET',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-        }, i18n),
-        authenticatedFetch(`${API_BASE}/api/v1/customs/t1`, {
-          method: 'GET',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-        }, i18n),
+        authenticatedAxios('get', { url: `${API_BASE}/api/v1/telemetry/latest-t1s` }, i18n),
+        authenticatedAxios('get', { url: `${API_BASE}/api/v1/customs/t1` }, i18n),
       ]);
 
-      if (telemetryResponse.status === 401 || t1Response.status === 401) {
-        Snackbar.show({
-          text: t('common.errors.session_expired', { defaultValue: 'Session expired. Please log in again.' }),
-          duration: 3000,
-          backgroundColor: '#FF6B6B',
-        });
-        return;
-      }
-
-      if (!telemetryResponse.ok) throw new Error('Failed to fetch telemetry');
-      if (!t1Response.ok) throw new Error('Failed to fetch T1 declarations');
-
-      const telemetryData = await telemetryResponse.json();
-      const t1Data = await t1Response.json();
+      const telemetryData = telemetryResponse.data;
+      const t1Data = t1Response.data;
 
       // Create a map of t1Number to T1 declaration for easy lookup
       const t1Map = {};
@@ -497,12 +456,13 @@ function HomeScreen() {
 
       setShipments(transformed);
     } catch (error) {
-      // console.error('Error fetching shipments:', error);
+      console.error('Error fetching shipments:', error);
     } finally {
       setLoadingShipments(false);
     }
   };
 
+  // ✅ FIXED: fetchTickets using authenticatedAxios
   const fetchTickets = async () => {
     try {
       setLoadingTickets(true);
@@ -510,21 +470,15 @@ function HomeScreen() {
       const storedId = await AsyncStorage.getItem('id');
       const userId = storedId ? parseInt(storedId, 10) : 1;
 
-      const response = await authenticatedFetch(
-        `${API_BASE}/api/v1/tickets/assignee/${userId}?page=0&size=100&sort=createdAt,desc`,
+      const response = await authenticatedAxios(
+        'get',
         {
-          method: 'GET',
-          headers: {
-            'Content-Type': 'application/json',
-          },
+          url: `${API_BASE}/api/v1/tickets/assignee/${userId}?page=0&size=100&sort=createdAt,desc`,
         },
         i18n
       );
 
-      if (response.status === 401) return;
-      if (!response.ok) throw new Error(`HTTP Error: ${response.status}`);
-
-      const data = await response.json();
+      const data = response.data;
 
       const transformed = (data.content || []).map(ticket => {
         const latestStatusFromComments =
@@ -558,25 +512,20 @@ function HomeScreen() {
     }
   };
 
+  // ✅ FIXED: fetchAlerts using authenticatedAxios
   const fetchAlerts = async () => {
     try {
       setLoadingAlerts(true);
 
-      const response = await authenticatedFetch(
-        `${API_BASE}/api/v1/notifications?page=0&size=100&alarm=true&sort=createdAt,desc`,
+      const response = await authenticatedAxios(
+        'get',
         {
-          method: 'GET',
-          headers: {
-            'Content-Type': 'application/json',
-          },
+          url: `${API_BASE}/api/v1/notifications?page=0&size=100&alarm=true&sort=createdAt,desc`,
         },
         i18n
       );
 
-      if (response.status === 401) return;
-      if (!response.ok) throw new Error('Failed to fetch alerts');
-      const data = await response.json();
-
+      const data = response.data;
       const notificationsArray = data.content || data;
       const transformed = (Array.isArray(notificationsArray) ? notificationsArray : []).map(alert => ({
         id: alert.id.toString(),
@@ -587,31 +536,26 @@ function HomeScreen() {
       }));
       setAlerts(transformed);
     } catch (error) {
-      // console.error('Error fetching alerts:', error);
+      console.error('Error fetching alerts:', error);
     } finally {
       setLoadingAlerts(false);
     }
   };
 
+  // ✅ FIXED: fetchNotifications using authenticatedAxios
   const fetchNotifications = async () => {
     try {
       setLoadingNotifications(true);
 
-      const response = await authenticatedFetch(
-        `${API_BASE}/api/v1/notifications?page=0&size=100&sort=createdAt,desc`,
+      const response = await authenticatedAxios(
+        'get',
         {
-          method: 'GET',
-          headers: {
-            'Content-Type': 'application/json',
-          },
+          url: `${API_BASE}/api/v1/notifications?page=0&size=100&sort=createdAt,desc`,
         },
         i18n
       );
 
-      if (response.status === 401) return;
-      if (!response.ok) throw new Error('Failed to fetch notifications');
-      const data = await response.json();
-
+      const data = response.data;
       const notificationsArray = data.content || data;
       const transformed = (Array.isArray(notificationsArray) ? notificationsArray : []).map(notif => ({
         id: notif.id.toString(),
@@ -623,6 +567,7 @@ function HomeScreen() {
       }));
       setNotifications(transformed);
     } catch (error) {
+      console.error('Error fetching notifications:', error);
       setNotifications([]);
     } finally {
       setLoadingNotifications(false);
@@ -733,7 +678,29 @@ function HomeScreen() {
   const handleRequestEsealsList = () => navigation.navigate('RequestEsealsList');
   const handleAssignedEseals = () => navigation.navigate('AssignedEseals');
   const handleInventoryScan = () => navigation.navigate('InventoryScan');
-  const handleReceiveDevicesScreen = () => navigation.navigate('ReceiveDevicesScreen');
+
+  // ✅ FIXED: Updated to pass storeId and storeName to ReceiveDevicesScreen
+  const handleReceiveDevicesScreen = () => {
+    const getStoreInfoAndNavigate = async () => {
+      try {
+        const storeId = await AsyncStorage.getItem('storeId');
+        const storeName = await AsyncStorage.getItem('storeName');
+
+        console.log('Navigating to ReceiveDevicesScreen with store:', { storeId, storeName });
+
+        navigation.navigate('ReceiveDevicesScreen', {
+          storeId: storeId ? parseInt(storeId, 10) : null,
+          storeName: storeName || null
+        });
+      } catch (error) {
+        console.error('Error getting store info:', error);
+        navigation.navigate('ReceiveDevicesScreen');
+      }
+    };
+
+    getStoreInfoAndNavigate();
+  };
+
   const handleEsealsReplacement = () => navigation.navigate('EsealsReplacement');
   const handleSensorList = () => navigation.navigate('SensorList');
   const TopUpModal = () => setIsModalVisible(true);
@@ -776,21 +743,34 @@ function HomeScreen() {
     }
   };
 
-  const handleResolve = async (ticketId) => {
-    if (resolvingTicketId) return;
+  // Updated handleResolve to navigate to AttachEvidence screen with proper params
+  const handleResolve = (ticket) => {
+    // Navigate to AttachEvidence screen with only serializable data
+    navigation.navigate('AttatchEvidence', {
+      ticketId: ticket.id,
+      ticketNumber: ticket.ticketNumber,
+      onResolveComplete: (notes, files) => {
+        // This callback will be called from AttachEvidence after successful upload
+        resolveTicketWithEvidence(ticket.id, notes, files);
+      }
+    });
+  };
 
+  // Separate function to handle the resolve API call
+  const resolveTicketWithEvidence = async (ticketId, notes, files) => {
     setResolvingTicketId(ticketId);
     try {
-      await resolveTicket(ticketId, i18n);
+      await resolveTicket(ticketId, notes, files, i18n);
       Snackbar.show({
-        text: t('common.ticket_resolved', { defaultValue: 'Ticket resolved successfully' }),
-        duration: 2000,
+        text: t('common.ticket_resolved', { defaultValue: 'Ticket resolved successfully with evidence' }),
+        duration: 3000,
         backgroundColor: '#4CAF50',
       });
       setModalVisible(false);
       setSelectedTicket(null);
       await fetchTickets();
     } catch (e) {
+      console.error('Resolve error:', e);
       Snackbar.show({
         text: t('common.ticket_resolve_failed', { defaultValue: 'Failed to resolve ticket' }),
         duration: 3000,
@@ -857,7 +837,7 @@ function HomeScreen() {
     }, 1500);
   };
 
-  // ---------------------- Render Helpers (unchanged) ----------------------
+  // ---------------------- Render Helpers ----------------------
   const renderShipment = ({ item, index }) => (
     <Animatable.View animation="fadeInUp" delay={index * 100} style={styles.shipmentCard}>
       <View style={styles.shipmentHeader}>
@@ -1000,14 +980,6 @@ function HomeScreen() {
                 </View>
               )}
             </View>
-
-            {/* Comments Count */}
-            {item.comments && item.comments.length > 0 && (
-              <View style={styles.commentsCount}>
-                <Text style={styles.commentsIcon}>💬</Text>
-                <Text style={styles.commentsText}>{item.comments.length} comments</Text>
-              </View>
-            )}
           </View>
         </TouchableOpacity>
       </Animatable.View>
@@ -1026,7 +998,7 @@ function HomeScreen() {
     </Animatable.View>
   );
 
-  // HeaderComponent (unchanged - too long, kept as original)
+  // HeaderComponent
   const HeaderComponent = () => (
     <>
       <View style={styles.header}>
@@ -1348,7 +1320,7 @@ function HomeScreen() {
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
       {renderContent()}
 
-      {/* Modals (unchanged - same as original) */}
+      {/* Tracking Modal */}
       <Modal
         visible={isTrackingModalVisible}
         animationType="slide"
@@ -1406,6 +1378,7 @@ function HomeScreen() {
         </View>
       </Modal>
 
+      {/* Command Modal */}
       <Modal
         visible={commandModalVisible}
         animationType="slide"
@@ -1444,6 +1417,7 @@ function HomeScreen() {
         </TouchableOpacity>
       )}
 
+      {/* Ticket Details Modal */}
       <Modal
         visible={modalVisible}
         animationType="slide"
@@ -1553,7 +1527,7 @@ function HomeScreen() {
                         {selectedTicket.status === 'ACKNOWLEDGED' ? (
                           <TouchableOpacity
                             style={[styles.submitButton, { flex: 1 }]}
-                            onPress={() => handleResolve(selectedTicket.id)}
+                            onPress={() => handleResolve(selectedTicket)}
                             disabled={resolvingTicketId === selectedTicket.id}
                           >
                             {resolvingTicketId === selectedTicket.id ? (
@@ -1584,7 +1558,7 @@ function HomeScreen() {
                                 styles.submitButton,
                                 (resolvingTicketId === selectedTicket.id) && styles.submitButtonDisabled
                               ]}
-                              onPress={() => handleResolve(selectedTicket.id)}
+                              onPress={() => handleResolve(selectedTicket)}
                               disabled={resolvingTicketId === selectedTicket.id}
                             >
                               {resolvingTicketId === selectedTicket.id ? (
@@ -1608,7 +1582,7 @@ function HomeScreen() {
   );
 }
 
-// Styles (unchanged - preserved exactly as original)
+// Styles
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F8F9FA' },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingTop: 60, paddingBottom: 20 },

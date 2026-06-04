@@ -98,7 +98,6 @@ To learn more about React Native, take a look at the following resources:
 
 
 <!-- Install -->
-npm install
 npm install react-native-swiper
 npm install @react-navigation/native @react-navigation/native-stack react-native-swiper react-native-gesture-handler react-native-reanimated react-native-screens react-native-safe-area-context
 

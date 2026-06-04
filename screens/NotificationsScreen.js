@@ -23,10 +23,64 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
 import serverUrl from '../config';
 import Icon from 'react-native-vector-icons/MaterialIcons';
+import { useTranslation } from 'react-i18next';
+// ✅ Import global token refresh service
+import { refreshAccessToken, addTokenRefreshListener } from '../services/TokenService';
 
 const { width } = Dimensions.get('window');
 
+// ✅ Helper function to get language header
+const getLanguageHeader = async (i18n) => {
+  try {
+    const language = await AsyncStorage.getItem('userLanguage') || i18n?.language || 'en';
+    return language;
+  } catch (error) {
+    console.error('Error getting language:', error);
+    return 'en';
+  }
+};
+
+// ✅ Helper function to make authenticated axios request with retry on 401
+const authenticatedAxios = async (method, config, i18n, retryCount = 0) => {
+  try {
+    const token = await AsyncStorage.getItem('accessToken');
+    const language = await getLanguageHeader(i18n);
+
+    // Create a new axios instance for each request
+    const axiosInstance = axios.create();
+
+    const response = await axiosInstance({
+      method: method, // 'get', 'post', 'put', 'delete', etc.
+      ...config,
+      headers: {
+        ...config.headers,
+        'Authorization': `Bearer ${token}`,
+        'Accept-Language': language,
+      },
+    });
+
+    return response;
+  } catch (error) {
+    console.error('❌ API Error details:', {
+      status: error.response?.status,
+      statusText: error.response?.statusText,
+      data: error.response?.data,
+    });
+
+    if (error.response?.status === 401 && retryCount === 0) {
+      console.log('🔐 Token expired, attempting refresh...');
+      const newToken = await refreshAccessToken();
+      if (newToken) {
+        console.log('✅ Token refreshed, retrying request...');
+        return authenticatedAxios(method, config, i18n, 1);
+      }
+    }
+    throw error;
+  }
+};
+
 const NotificationsScreen = () => {
+  const { t, i18n } = useTranslation();
   const navigation = useNavigation();
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -38,10 +92,18 @@ const NotificationsScreen = () => {
   const [unreadCount, setUnreadCount] = useState(0);
   const [criticalCount, setCriticalCount] = useState(0);
   const [expandedId, setExpandedId] = useState(null);
-  
+
   // Animation values
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const scaleAnim = useRef(new Animated.Value(0.95)).current;
+
+  // ✅ Listen for token refresh events
+  useEffect(() => {
+    const removeListener = addTokenRefreshListener((newToken) => {
+      console.log('📡 Token refreshed in NotificationsScreen');
+    });
+    return () => removeListener();
+  }, []);
 
   useEffect(() => {
     Animated.parallel([
@@ -61,7 +123,7 @@ const NotificationsScreen = () => {
   useFocusEffect(
     React.useCallback(() => {
       fetchNotifications();
-      
+
       const backAction = () => {
         return false;
       };
@@ -73,27 +135,20 @@ const NotificationsScreen = () => {
   const fetchNotifications = async (isRefresh = false) => {
     try {
       if (!isRefresh) setLoading(true);
-      
-      const token = await AsyncStorage.getItem('accessToken');
-      if (!token) {
-        console.error('No token found');
-        return;
-      }
 
-      const response = await axios.get(
-        `${serverUrl}/notifications?page=0&size=1000000000&alarm=false&sort=createdAt,desc`,
+      // ✅ FIXED: Changed to use authenticatedAxios
+      const response = await authenticatedAxios(
+        'get',  // <-- Use string method name
         {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-          },
-        }
-        
+          url: `${serverUrl}/notifications?page=0&size=1000000000&alarm=false&sort=createdAt,desc`,
+        },
+        i18n
       );
 
       if (response.data && response.data.content) {
         setNotifications(response.data.content);
         setTotalElements(response.data.totalElements);
-        
+
         const unread = response.data.content.filter(n => !n.read).length;
         const critical = response.data.content.filter(n => n.priority === 'CRITICAL').length;
         setUnreadCount(unread);
@@ -102,7 +157,7 @@ const NotificationsScreen = () => {
     } catch (error) {
       console.error('Failed to fetch notifications:', error);
       Snackbar.show({
-        text: 'Failed to load notifications',
+        text: t('notifications.errors.load_failed', { defaultValue: 'Failed to load notifications' }),
         duration: 3000,
         backgroundColor: '#FF6B6B',
       });
@@ -119,27 +174,26 @@ const NotificationsScreen = () => {
 
   const markAsRead = async (notificationId) => {
     try {
-      const token = await AsyncStorage.getItem('accessToken');
-      await axios.put(
-        `${serverUrl}/notifications/${notificationId}/read`,
-        {},
+      // ✅ FIXED: Changed to use authenticatedAxios
+      await authenticatedAxios(
+        'put',  // <-- Use string method name
         {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-          },
-        }
+          url: `${serverUrl}/notifications/${notificationId}/read`,
+          data: {},
+        },
+        i18n
       );
-      
+
       setNotifications(prev =>
         prev.map(notif =>
           notif.id === notificationId ? { ...notif, read: true } : notif
         )
       );
-      
+
       setUnreadCount(prev => Math.max(0, prev - 1));
-      
+
       Snackbar.show({
-        text: 'Marked as read',
+        text: t('notifications.success.marked_read', { defaultValue: 'Marked as read' }),
         duration: 2000,
         backgroundColor: '#4CAF50',
       });
@@ -151,7 +205,7 @@ const NotificationsScreen = () => {
   const markAllAsRead = async () => {
     if (unreadCount === 0) {
       Snackbar.show({
-        text: 'No unread notifications',
+        text: t('notifications.info.no_unread', { defaultValue: 'No unread notifications' }),
         duration: 2000,
         backgroundColor: '#FFA500',
       });
@@ -159,35 +213,33 @@ const NotificationsScreen = () => {
     }
 
     try {
-      const token = await AsyncStorage.getItem('accessToken');
       const unreadNotifications = notifications.filter(n => !n.read);
-      
+
       for (const notification of unreadNotifications) {
-        await axios.put(
-          `${serverUrl}/notifications/${notification.id}/read`,
-          {},
+        await authenticatedAxios(
+          'put',
           {
-            headers: {
-              'Authorization': `Bearer ${token}`,
-            },
-          }
+            url: `${serverUrl}/notifications/${notification.id}/read`,
+            data: {},
+          },
+          i18n
         );
       }
-      
+
       setNotifications(prev =>
         prev.map(notif => ({ ...notif, read: true }))
       );
       setUnreadCount(0);
-      
+
       Snackbar.show({
-        text: 'All notifications marked as read',
+        text: t('notifications.success.all_marked_read', { defaultValue: 'All notifications marked as read' }),
         duration: 3000,
         backgroundColor: '#4CAF50',
       });
     } catch (error) {
       console.error('Failed to mark all as read:', error);
       Snackbar.show({
-        text: 'Failed to mark all as read',
+        text: t('notifications.errors.mark_all_failed', { defaultValue: 'Failed to mark all as read' }),
         duration: 3000,
         backgroundColor: '#FF6B6B',
       });
@@ -219,10 +271,10 @@ const NotificationsScreen = () => {
     const diffHours = Math.floor(diffMins / 60);
     const diffDays = Math.floor(diffHours / 24);
 
-    if (diffMins < 1) return 'Just now';
-    if (diffMins < 60) return `${diffMins}m ago`;
-    if (diffHours < 24) return `${diffHours}h ago`;
-    if (diffDays < 7) return `${diffDays}d ago`;
+    if (diffMins < 1) return t('notifications.time.just_now', { defaultValue: 'Just now' });
+    if (diffMins < 60) return t('notifications.time.minutes_ago', { defaultValue: '{{count}}m ago' }).replace('{{count}}', diffMins.toString());
+    if (diffHours < 24) return t('notifications.time.hours_ago', { defaultValue: '{{count}}h ago' }).replace('{{count}}', diffHours.toString());
+    if (diffDays < 7) return t('notifications.time.days_ago', { defaultValue: '{{count}}d ago' }).replace('{{count}}', diffDays.toString());
     return date.toLocaleDateString();
   };
 
@@ -243,10 +295,10 @@ const NotificationsScreen = () => {
 
   const renderNotification = ({ item, index }) => {
     const isExpanded = expandedId === item.id;
-    
+
     return (
-      <Animatable.View 
-        animation="fadeInUp" 
+      <Animatable.View
+        animation="fadeInUp"
         delay={index * 80}
         duration={400}
         style={styles.animationWrapper}
@@ -275,15 +327,15 @@ const NotificationsScreen = () => {
                   </Text>
                   {item.priority === 'CRITICAL' && (
                     <View style={styles.criticalBadge}>
-                      <Text style={styles.criticalText}>CRITICAL</Text>
+                      <Text style={styles.criticalText}>{t('notifications.critical', { defaultValue: 'CRITICAL' })}</Text>
                     </View>
                   )}
                 </View>
                 {!item.read && <View style={styles.unreadDot} />}
               </View>
 
-              <Text 
-                style={styles.notificationMessage} 
+              <Text
+                style={styles.notificationMessage}
                 numberOfLines={isExpanded ? undefined : 2}
               >
                 {item.message}
@@ -308,10 +360,10 @@ const NotificationsScreen = () => {
                   {isExpanded ? '▲' : '▼'}
                 </Text>
               </View>
-              
+
               {isExpanded && item.alarm && (
                 <Animatable.View animation="pulse" iterationCount={1} style={styles.alarmWarning}>
-                  <Text style={styles.alarmText}>⚠️ Alarm Triggered</Text>
+                  <Text style={styles.alarmText}>⚠️ {t('notifications.alarm_triggered', { defaultValue: 'Alarm Triggered' })}</Text>
                 </Animatable.View>
               )}
             </View>
@@ -325,13 +377,13 @@ const NotificationsScreen = () => {
     <Animated.View style={{ opacity: fadeAnim, transform: [{ scale: scaleAnim }] }}>
       <View style={styles.header}>
         <View style={styles.headerTop}>
-           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-                                  <Icon name="arrow-back" size={24} color="#1A1A1A" />
-                                 </TouchableOpacity>
-          <Text style={styles.headerTitle}>Notifications</Text>
+          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+            <Icon name="arrow-back" size={24} color="#1A1A1A" />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>{t('notifications.title', { defaultValue: 'Notifications' })}</Text>
           {unreadCount > 0 && (
             <TouchableOpacity onPress={markAllAsRead} style={styles.markAllButton}>
-              <Text style={styles.markAllText}>Mark all read</Text>
+              <Text style={styles.markAllText}>{t('notifications.mark_all_read', { defaultValue: 'Mark all read' })}</Text>
             </TouchableOpacity>
           )}
         </View>
@@ -339,15 +391,15 @@ const NotificationsScreen = () => {
         <View style={styles.statsContainer}>
           <View style={styles.statCard}>
             <Text style={styles.statNumber}>{totalElements}</Text>
-            <Text style={styles.statLabel}>Total</Text>
+            <Text style={styles.statLabel}>{t('notifications.stats.total', { defaultValue: 'Total' })}</Text>
           </View>
           <View style={[styles.statCard, styles.statCardMiddle]}>
             <Text style={[styles.statNumber, styles.unreadStat]}>{unreadCount}</Text>
-            <Text style={styles.statLabel}>Unread</Text>
+            <Text style={styles.statLabel}>{t('notifications.stats.unread', { defaultValue: 'Unread' })}</Text>
           </View>
           <View style={styles.statCard}>
             <Text style={[styles.statNumber, styles.criticalStat]}>{criticalCount}</Text>
-            <Text style={styles.statLabel}>Critical</Text>
+            <Text style={styles.statLabel}>{t('notifications.stats.critical', { defaultValue: 'Critical' })}</Text>
           </View>
         </View>
 
@@ -357,7 +409,7 @@ const NotificationsScreen = () => {
             onPress={() => setFilter('all')}
           >
             <Text style={[styles.filterText, filter === 'all' && styles.activeFilterText]}>
-              All
+              {t('notifications.filters.all', { defaultValue: 'All' })}
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
@@ -365,7 +417,7 @@ const NotificationsScreen = () => {
             onPress={() => setFilter('unread')}
           >
             <Text style={[styles.filterText, filter === 'unread' && styles.activeFilterText]}>
-              Unread
+              {t('notifications.filters.unread', { defaultValue: 'Unread' })}
             </Text>
             {unreadCount > 0 && (
               <View style={styles.filterBadge}>
@@ -378,7 +430,7 @@ const NotificationsScreen = () => {
             onPress={() => setFilter('critical')}
           >
             <Text style={[styles.filterText, filter === 'critical' && styles.activeFilterText]}>
-              Critical
+              {t('notifications.filters.critical', { defaultValue: 'Critical' })}
             </Text>
             {criticalCount > 0 && (
               <View style={[styles.filterBadge, styles.criticalBadgeSmall]}>
@@ -397,7 +449,7 @@ const NotificationsScreen = () => {
         <StatusBar barStyle="dark-content" backgroundColor="#F8F9FA" />
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#FFA500" />
-          <Text style={styles.loadingText}>Loading notifications...</Text>
+          <Text style={styles.loadingText}>{t('notifications.loading', { defaultValue: 'Loading notifications...' })}</Text>
         </View>
       </SafeAreaView>
     );
@@ -406,15 +458,15 @@ const NotificationsScreen = () => {
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#F8F9FA" />
-      
+
       <FlatList
         data={getFilteredNotifications()}
         keyExtractor={item => item.id.toString()}
         renderItem={renderNotification}
         ListHeaderComponent={renderHeader}
         refreshControl={
-          <RefreshControl 
-            refreshing={refreshing} 
+          <RefreshControl
+            refreshing={refreshing}
             onRefresh={onRefresh}
             tintColor="#FFA500"
             colors={['#FFA500']}
@@ -425,13 +477,13 @@ const NotificationsScreen = () => {
         ListEmptyComponent={
           <Animatable.View animation="fadeIn" duration={500} style={styles.emptyContainer}>
             <Text style={styles.emptyIcon}>🔔</Text>
-            <Text style={styles.emptyTitle}>No notifications</Text>
+            <Text style={styles.emptyTitle}>{t('notifications.empty.title', { defaultValue: 'No notifications' })}</Text>
             <Text style={styles.emptyText}>
-              {filter === 'unread' 
-                ? 'You have no unread notifications' 
+              {filter === 'unread'
+                ? t('notifications.empty.no_unread', { defaultValue: 'You have no unread notifications' })
                 : filter === 'critical'
-                ? 'No critical notifications'
-                : 'You\'re all caught up!'}
+                ? t('notifications.empty.no_critical', { defaultValue: 'No critical notifications' })
+                : t('notifications.empty.all_caught_up', { defaultValue: 'You\'re all caught up!' })}
             </Text>
           </Animatable.View>
         }
@@ -447,29 +499,29 @@ const NotificationsScreen = () => {
         <View style={styles.modalOverlay}>
           <Animatable.View animation="slideInUp" duration={300} style={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Notification Details</Text>
+              <Text style={styles.modalTitle}>{t('notifications.modal.title', { defaultValue: 'Notification Details' })}</Text>
               <TouchableOpacity onPress={() => setModalVisible(false)} style={styles.closeButton}>
                 <Text style={styles.closeButtonText}>✕</Text>
               </TouchableOpacity>
             </View>
-            
+
             {selectedNotification && (
               <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
                 <View style={styles.detailSection}>
-                  <Text style={styles.detailLabel}>Title</Text>
+                  <Text style={styles.detailLabel}>{t('notifications.modal.title_label', { defaultValue: 'Title' })}</Text>
                   <Text style={styles.detailValue}>{selectedNotification.title}</Text>
                 </View>
 
                 <View style={styles.detailSection}>
-                  <Text style={styles.detailLabel}>Message</Text>
+                  <Text style={styles.detailLabel}>{t('notifications.modal.message_label', { defaultValue: 'Message' })}</Text>
                   <Text style={styles.detailValue}>{selectedNotification.message}</Text>
                 </View>
 
                 <View style={styles.detailSection}>
-                  <Text style={styles.detailLabel}>Priority</Text>
-                  <View style={[styles.priorityBadge, 
+                  <Text style={styles.detailLabel}>{t('notifications.modal.priority_label', { defaultValue: 'Priority' })}</Text>
+                  <View style={[styles.priorityBadge,
                     { backgroundColor: selectedNotification.priority === 'CRITICAL' ? '#FF6B6B20' : '#FFA50020' }]}>
-                    <Text style={[styles.priorityText, 
+                    <Text style={[styles.priorityText,
                       { color: selectedNotification.priority === 'CRITICAL' ? '#FF6B6B' : '#FFA500' }]}>
                       {selectedNotification.priority}
                     </Text>
@@ -478,50 +530,52 @@ const NotificationsScreen = () => {
 
                 {selectedNotification.type && (
                   <View style={styles.detailSection}>
-                    <Text style={styles.detailLabel}>Type</Text>
+                    <Text style={styles.detailLabel}>{t('notifications.modal.type_label', { defaultValue: 'Type' })}</Text>
                     <Text style={styles.detailValue}>{selectedNotification.type}</Text>
                   </View>
                 )}
 
                 {selectedNotification.deviceSerialNumber && (
                   <View style={styles.detailSection}>
-                    <Text style={styles.detailLabel}>Device Serial</Text>
+                    <Text style={styles.detailLabel}>{t('notifications.modal.device_serial_label', { defaultValue: 'Device Serial' })}</Text>
                     <Text style={styles.detailValue}>{selectedNotification.deviceSerialNumber}</Text>
                   </View>
                 )}
 
                 {selectedNotification.geofenceName && (
                   <View style={styles.detailSection}>
-                    <Text style={styles.detailLabel}>Geofence</Text>
+                    <Text style={styles.detailLabel}>{t('notifications.modal.geofence_label', { defaultValue: 'Geofence' })}</Text>
                     <Text style={styles.detailValue}>{selectedNotification.geofenceName}</Text>
                   </View>
                 )}
 
                 <View style={styles.detailSection}>
-                  <Text style={styles.detailLabel}>Date & Time</Text>
+                  <Text style={styles.detailLabel}>{t('notifications.modal.datetime_label', { defaultValue: 'Date & Time' })}</Text>
                   <Text style={styles.detailValue}>
                     {new Date(selectedNotification.createdAt).toLocaleString()}
                   </Text>
                 </View>
 
                 <View style={styles.detailSection}>
-                  <Text style={styles.detailLabel}>Status</Text>
+                  <Text style={styles.detailLabel}>{t('notifications.modal.status_label', { defaultValue: 'Status' })}</Text>
                   <Text style={[styles.detailValue, selectedNotification.read && styles.readStatus]}>
-                    {selectedNotification.read ? '✓ Read' : '○ Unread'}
+                    {selectedNotification.read
+                      ? t('notifications.status.read', { defaultValue: '✓ Read' })
+                      : t('notifications.status.unread', { defaultValue: '○ Unread' })}
                   </Text>
                 </View>
 
                 {selectedNotification.alarm && (
                   <Animatable.View animation="shake" iterationCount={2} style={styles.alarmIndicator}>
-                    <Text style={styles.alarmText}>⚠️ Alarm Triggered</Text>
+                    <Text style={styles.alarmText}>⚠️ {t('notifications.alarm_triggered', { defaultValue: 'Alarm Triggered' })}</Text>
                   </Animatable.View>
                 )}
 
-                <TouchableOpacity 
+                <TouchableOpacity
                   style={styles.closeModalButton}
                   onPress={() => setModalVisible(false)}
                 >
-                  <Text style={styles.closeModalButtonText}>Close</Text>
+                  <Text style={styles.closeModalButtonText}>{t('notifications.modal.close', { defaultValue: 'Close' })}</Text>
                 </TouchableOpacity>
               </ScrollView>
             )}

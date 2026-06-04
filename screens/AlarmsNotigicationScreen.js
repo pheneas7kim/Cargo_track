@@ -40,13 +40,17 @@ const getLanguageHeader = async (i18n) => {
   }
 };
 
-// ✅ Helper function to make authenticated axios request with retry on 401
-const authenticatedAxios = async (axiosInstance, config, i18n, retryCount = 0) => {
+// ✅ FIXED: Helper function to make authenticated axios request with retry on 401
+const authenticatedAxios = async (method, config, i18n, retryCount = 0) => {
   try {
     const token = await AsyncStorage.getItem('accessToken');
     const language = await getLanguageHeader(i18n);
 
+    // Create a new axios instance for each request
+    const axiosInstance = axios.create();
+
     const response = await axiosInstance({
+      method: method, // 'get', 'post', 'put', 'delete', etc.
       ...config,
       headers: {
         ...config.headers,
@@ -57,12 +61,18 @@ const authenticatedAxios = async (axiosInstance, config, i18n, retryCount = 0) =
 
     return response;
   } catch (error) {
+    console.error('❌ API Error details:', {
+      status: error.response?.status,
+      statusText: error.response?.statusText,
+      data: error.response?.data,
+    });
+
     if (error.response?.status === 401 && retryCount === 0) {
       console.log('🔐 Token expired, attempting refresh...');
       const newToken = await refreshAccessToken();
       if (newToken) {
         console.log('✅ Token refreshed, retrying request...');
-        return authenticatedAxios(axiosInstance, config, i18n, 1);
+        return authenticatedAxios(method, config, i18n, 1);
       }
     }
     throw error;
@@ -146,8 +156,9 @@ const AlarmsNotigicationScreen = () => {
 
   const fetchUsers = async () => {
     try {
+      // ✅ FIXED: Changed from axios.get to 'get' string method
       const response = await authenticatedAxios(
-        axios.get,
+        'get',  // <-- FIXED: Use string method name
         {
           url: `${serverUrl}/users/userList?pageNo=0&pageSize=1000`,
         },
@@ -163,8 +174,9 @@ const AlarmsNotigicationScreen = () => {
     try {
       setLoading(true);
 
+      // ✅ FIXED: Changed from axios.get to 'get' string method
       const response = await authenticatedAxios(
-        axios.get,
+        'get',  // <-- FIXED: Use string method name
         {
           url: `${serverUrl}/notifications?page=0&size=10000&alarm=true&sort=createdAt,desc`,
         },
@@ -203,8 +215,9 @@ const AlarmsNotigicationScreen = () => {
 
   const markAsRead = async (id) => {
     try {
+      // ✅ FIXED: Changed from axios.post to 'post' string method
       await authenticatedAxios(
-        axios.post,
+        'post',  // <-- FIXED: Use string method name
         {
           url: `${serverUrl}/notifications/${id}/read`,
           data: {},
@@ -231,7 +244,7 @@ const AlarmsNotigicationScreen = () => {
       await Promise.all(
         unreadIds.map(id =>
           authenticatedAxios(
-            axios.post,
+            'post',  // <-- FIXED: Use string method name
             {
               url: `${serverUrl}/notifications/${id}/read`,
               data: {},
@@ -250,8 +263,9 @@ const AlarmsNotigicationScreen = () => {
 
   const markAsAttended = async (id, comments) => {
     try {
+      // ✅ FIXED: Changed from axios.post to 'post' string method
       await authenticatedAxios(
-        axios.post,
+        'post',  // <-- FIXED: Use string method name
         {
           url: `${serverUrl}/notifications/${id}/attend`,
           data: { comments },
@@ -274,8 +288,9 @@ const AlarmsNotigicationScreen = () => {
       return;
     }
     try {
+      // ✅ FIXED: Changed from axios.post to 'post' string method
       await authenticatedAxios(
-        axios.post,
+        'post',  // <-- FIXED: Use string method name
         {
           url: `${serverUrl}/notifications/${assignNotificationId}/assign`,
           data: { assigneeId: parseInt(assignUserId), comments: assignComment },

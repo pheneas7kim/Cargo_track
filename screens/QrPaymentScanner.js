@@ -12,8 +12,11 @@ import {
 import { Camera } from 'react-native-camera-kit';
 import Snackbar from 'react-native-snackbar';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import axios from 'axios';
 import serverURL from '../config';
 import { useTranslation } from 'react-i18next';
+// ✅ Import global token refresh service
+import { refreshAccessToken, addTokenRefreshListener } from '../services/TokenService';
 
 const { width } = Dimensions.get('window');
 const SCAN_SIZE = width * 0.7;
@@ -22,7 +25,57 @@ const SCAN_SIZE = width * 0.7;
 const FIXED_COMMAND = '(P43,888888)'; // Joint Tech command (NO parentheses - matches Postman)
 const TELEMATICS_COMMAND = '*269#8,888888'; // Telematics command
 
-// Helper: Get stored authentication token
+// ✅ Helper function to get language header
+const getLanguageHeader = async (i18n) => {
+  try {
+    const language = await AsyncStorage.getItem('userLanguage') || i18n?.language || 'en';
+    return language;
+  } catch (error) {
+    console.error('Error getting language:', error);
+    return 'en';
+  }
+};
+
+// ✅ Helper function to make authenticated axios request with retry on 401
+const authenticatedAxios = async (method, config, i18n, retryCount = 0) => {
+  try {
+    const token = await AsyncStorage.getItem('accessToken');
+    const language = await getLanguageHeader(i18n);
+
+    // Create a new axios instance for each request
+    const axiosInstance = axios.create();
+
+    const response = await axiosInstance({
+      method: method, // 'get', 'post', 'put', 'delete', etc.
+      ...config,
+      headers: {
+        ...config.headers,
+        'Authorization': `Bearer ${token}`,
+        'Accept-Language': language,
+      },
+    });
+
+    return response;
+  } catch (error) {
+    console.error('❌ API Error details:', {
+      status: error.response?.status,
+      statusText: error.response?.statusText,
+      data: error.response?.data,
+    });
+
+    if (error.response?.status === 401 && retryCount === 0) {
+      console.log('🔐 Token expired, attempting refresh...');
+      const newToken = await refreshAccessToken();
+      if (newToken) {
+        console.log('✅ Token refreshed, retrying request...');
+        return authenticatedAxios(method, config, i18n, 1);
+      }
+    }
+    throw error;
+  }
+};
+
+// Helper: Get stored authentication token (kept for backward compatibility)
 const getAuthToken = async () => {
   try {
     const token = await AsyncStorage.getItem('accessToken');
@@ -48,21 +101,24 @@ const extractTelematicsSN = (scannedValue) => {
 };
 
 const QrPaymentScanner = () => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [scannedData, setScannedData] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [resultMessage, setResultMessage] = useState(null);
   const [deviceType, setDeviceType] = useState(null);
   const [isCommandSuccess, setIsCommandSuccess] = useState(null);
 
-  // Send command to Telematics device (10 digits - POST request)
+  // ✅ Listen for token refresh events
+  React.useEffect(() => {
+    const removeListener = addTokenRefreshListener((newToken) => {
+      console.log('📡 Token refreshed in QrPaymentScanner');
+    });
+    return () => removeListener();
+  }, []);
+
+  // Send command to Telematics device (10 digits - POST request) - UPDATED to use authenticatedAxios
   const sendTelematicsCommand = async (deviceSn, command) => {
     try {
-      const token = await getAuthToken();
-      if (!token) {
-        return { success: false, message: t('qr_scanner.errors.auth_required', { defaultValue: 'Authentication required. Please login again.' }) };
-      }
-
       const url = `${serverURL}devices/command/set`;
       const formJson = {
         deviceSn: deviceSn,
@@ -70,53 +126,62 @@ const QrPaymentScanner = () => {
       };
 
       console.log('==============================');
-      console.log('🚀 SENDING TELEMATICS COMMAND (10 digits)');
+      console.log('🚀 SENDING TELEMATICS COMMAND (8 digits)');
       console.log('Device SN:', deviceSn);
       console.log('Command:', command || TELEMATICS_COMMAND);
       console.log('URL:', url);
       console.log('Request Body:', formJson);
       console.log('==============================');
 
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
+      // ✅ Use authenticatedAxios instead of raw fetch
+      const response = await authenticatedAxios(
+        'post',
+        {
+          url: url,
+          data: formJson,
+          headers: { 'Content-Type': 'application/json' },
         },
-        body: JSON.stringify(formJson),
-      });
+        i18n
+      );
 
       console.log('📡 Response Status:', response.status);
-
-      const data = await response.json();
-
-      console.log('📦 Response Data:', data);
+      console.log('📦 Response Data:', response.data);
       console.log('==============================');
 
-      if (response.status === 200 && data && data.status === 200) {
-        return { success: true, message: data.message || t('qr_scanner.success.command_sent', { defaultValue: 'Command sent successfully' }) };
-      } else if (response.status === 401) {
-        return { success: false, message: t('qr_scanner.errors.session_expired', { defaultValue: 'Session expired. Please login again.' }) };
+      if (response.status === 200 && response.data && response.data.status === 200) {
+        return {
+          success: true,
+          message: response.data.message || t('qr_scanner.success.command_sent', { defaultValue: 'Command sent successfully' })
+        };
       } else {
-        return { success: false, message: data?.message || t('qr_scanner.errors.command_failed', { defaultValue: 'Failed to send command' }) };
+        return {
+          success: false,
+          message: response.data?.message || t('qr_scanner.errors.command_failed', { defaultValue: 'Failed to send command' })
+        };
       }
     } catch (error) {
       console.log('❌ TELEMATICS REQUEST FAILED:', error);
-      return { success: false, message: error.message || t('qr_scanner.errors.network_error', { defaultValue: 'Network error' }) };
+
+      if (error.response?.status === 401) {
+        return {
+          success: false,
+          message: t('qr_scanner.errors.session_expired', { defaultValue: 'Session expired. Please login again.' })
+        };
+      }
+
+      return {
+        success: false,
+        message: error.response?.data?.message || error.message || t('qr_scanner.errors.network_error', { defaultValue: 'Network error' })
+      };
     }
   };
 
-  // Send command to Joint Tech device (10 digits - GET request)
-  // FIXED: No encodeURIComponent needed for this format
+  // Send command to Joint Tech device (10 digits - GET request) - UPDATED to use authenticatedAxios
   const sendJointTechCommand = async (deviceSn) => {
     try {
-      const token = await getAuthToken();
-      if (!token) {
-        return { success: false, message: t('qr_scanner.errors.auth_required', { defaultValue: 'Authentication required. Please login again.' }) };
-      }
-
-      // FIXED: Don't encode the command - send as plain text
+      // Don't encode the command - send as plain text
       const url = `${serverURL}joint-tech/command/${deviceSn}?command=${FIXED_COMMAND}`;
+
       console.log('==============================');
       console.log('🚀 SENDING JOINT TECH COMMAND (10 digits)');
       console.log('Device SN:', deviceSn);
@@ -124,93 +189,86 @@ const QrPaymentScanner = () => {
       console.log('URL:', url);
       console.log('==============================');
 
-      const response = await fetch(url, {
-        method: 'GET',
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': `Bearer ${token}`,
+      // ✅ Use authenticatedAxios instead of raw fetch
+      const response = await authenticatedAxios(
+        'get',
+        {
+          url: url,
         },
-      });
+        i18n
+      );
 
       console.log('📡 Response Status:', response.status);
-
-      const contentType = response.headers.get('content-type');
-      let data;
-
-      if (contentType && contentType.includes('application/json')) {
-        data = await response.json();
-        console.log('📦 Response JSON:', data);
-      } else {
-        const text = await response.text();
-        console.log('📦 Response Text:', text);
-        try {
-          data = JSON.parse(text);
-        } catch (e) {
-          data = { message: text };
-        }
-      }
-
+      console.log('📦 Response Data:', response.data);
       console.log('==============================');
 
-      if (response.status === 401) {
+      if (response.status === 200 && response.data && (response.data.status === 200 || response.data.message)) {
+        return {
+          success: true,
+          message: response.data.message || t('qr_scanner.success.command_sent', { defaultValue: 'Command sent successfully' })
+        };
+      } else {
+        return {
+          success: false,
+          message: response.data?.message || t('qr_scanner.errors.command_failed_status', { defaultValue: 'Failed to send command' }) + ` (Status: ${response.status})`
+        };
+      }
+    } catch (error) {
+      console.log('❌ JOINT TECH REQUEST FAILED:', error);
+
+      if (error.response?.status === 401) {
         return {
           success: false,
           message: t('qr_scanner.errors.session_expired', { defaultValue: 'Session expired. Please login again.' })
         };
       }
 
-      if (response.status === 200 && data && (data.status === 200 || data.message)) {
-        return {
-          success: true,
-          message: data.message || t('qr_scanner.success.command_sent', { defaultValue: 'Command sent successfully' })
-        };
-      } else {
-        return {
-          success: false,
-          message: data?.message || t('qr_scanner.errors.command_failed_status', { defaultValue: 'Failed to send command' }) + ` (Status: ${response.status})`
-        };
-      }
-    } catch (error) {
-      console.log('❌ JOINT TECH REQUEST FAILED:', error);
-      return { success: false, message: error.message || t('qr_scanner.errors.network_error', { defaultValue: 'Network error' }) };
+      return {
+        success: false,
+        message: error.response?.data?.message || error.message || t('qr_scanner.errors.network_error', { defaultValue: 'Network error' })
+      };
     }
   };
 
   // Process device based on barcode length
   const processDevice = async (rawDeviceSn) => {
-      setIsLoading(true);
-      setResultMessage(null);
-      setIsCommandSuccess(null);
+    setIsLoading(true);
+    setResultMessage(null);
+    setIsCommandSuccess(null);
 
-      try {
-        const deviceSn = extractTelematicsSN(rawDeviceSn);
-        let response;
+    try {
+      const deviceSn = extractTelematicsSN(rawDeviceSn);
+      let response;
 
-        // 1. Change Telematics check to 8 digits
-        if (deviceSn.length === 8) {
-          setDeviceType('TELEMATICS');
-          console.log('✅ Detected Telematics device (8 digits)');
-          response = await sendTelematicsCommand(deviceSn, TELEMATICS_COMMAND);
-        }
-        // 2. Change Joint Tech check to 10 digits
-        else if (deviceSn.length === 10) {
-          setDeviceType('JOINT_TECH');
-          console.log('✅ Detected Joint Tech device (10 digits)');
-          response = await sendJointTechCommand(deviceSn);
-        }
-        else {
-          // Updated error message to reflect new requirements
-          const errorMsg = t('qr_scanner.errors.invalid_barcode', { defaultValue: 'Invalid barcode: Got {{digits}} digits. (Expected 8 for Telematics or 10 for Joint Tech)', digits: deviceSn.length }).replace('{{digits}}', deviceSn.length.toString());
-          Snackbar.show({
-            text: errorMsg,
-            duration: 4000,
-            backgroundColor: '#FF6B6B',
-          });
-          setResultMessage(errorMsg);
-          setIsCommandSuccess(false);
-          setIsLoading(false);
-          return;
-        }
+      // Telematics check - 8 digits
+      if (deviceSn.length === 8) {
+        setDeviceType('TELEMATICS');
+        console.log('✅ Detected Telematics device (8 digits)');
+        response = await sendTelematicsCommand(deviceSn, TELEMATICS_COMMAND);
+      }
+      // Joint Tech check - 10 digits
+      else if (deviceSn.length === 10) {
+        setDeviceType('JOINT_TECH');
+        console.log('✅ Detected Joint Tech device (10 digits)');
+        response = await sendJointTechCommand(deviceSn);
+      }
+      else {
+        // Updated error message to reflect new requirements
+        const errorMsg = t('qr_scanner.errors.invalid_barcode', {
+          defaultValue: 'Invalid barcode: Got {{digits}} digits. (Expected 8 for Telematics or 10 for Joint Tech)',
+          digits: deviceSn.length
+        }).replace('{{digits}}', deviceSn.length.toString());
+
+        Snackbar.show({
+          text: errorMsg,
+          duration: 4000,
+          backgroundColor: '#FF6B6B',
+        });
+        setResultMessage(errorMsg);
+        setIsCommandSuccess(false);
+        setIsLoading(false);
+        return;
+      }
 
       if (response.success) {
         console.log('✅ COMMAND SUCCESSFUL');
@@ -313,7 +371,7 @@ const QrPaymentScanner = () => {
               {t('qr_scanner.instructions.align', { defaultValue: 'Align QR code or barcode inside the frame' })}
             </Text>
             <View style={styles.deviceTypesContainer}>
-
+              {/* Device type badges can be added here */}
             </View>
             <Text style={styles.noteText}>
               {t('qr_scanner.instructions.supported', { defaultValue: 'Both QR codes and barcodes supported' })}

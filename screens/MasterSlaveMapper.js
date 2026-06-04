@@ -16,6 +16,7 @@ import { Camera } from 'react-native-camera-kit';
 import Snackbar from 'react-native-snackbar';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import axios from 'axios';
 import serverURL from '../config';
 import { useTranslation } from 'react-i18next';
 // ✅ Import global token refresh service
@@ -28,7 +29,7 @@ const SCAN_SIZE = width * 0.7;
 const JOINT_TECH_FIXED_COMMAND = '(P43,888888)';
 const TELEMATICS_COMMAND = '*269#8,888888';
 
-// Helper: Get stored authentication token
+// Helper: Get stored authentication token (kept for backward compatibility)
 const getAuthToken = async () => {
   try {
     const token = await AsyncStorage.getItem('accessToken');
@@ -51,33 +52,41 @@ const getLanguageHeader = async (i18n) => {
   }
 };
 
-// ✅ Helper function to make authenticated fetch with retry on 401
-const authenticatedFetch = async (url, options, i18n, retryCount = 0) => {
+// ✅ FIXED: Helper function to make authenticated axios request with retry on 401
+const authenticatedAxios = async (method, config, i18n, retryCount = 0) => {
   try {
-    let token = await getAuthToken();
+    const token = await AsyncStorage.getItem('accessToken');
     const language = await getLanguageHeader(i18n);
 
-    const response = await fetch(url, {
-      ...options,
+    // Create a new axios instance for each request
+    const axiosInstance = axios.create();
+
+    const response = await axiosInstance({
+      method: method, // 'get', 'post', 'put', 'delete', etc.
+      ...config,
       headers: {
-        ...options.headers,
+        ...config.headers,
         'Authorization': `Bearer ${token}`,
         'Accept-Language': language,
       },
     });
 
-    if (response.status === 401 && retryCount === 0) {
+    return response;
+  } catch (error) {
+    console.error('❌ API Error details:', {
+      status: error.response?.status,
+      statusText: error.response?.statusText,
+      data: error.response?.data,
+    });
+
+    if (error.response?.status === 401 && retryCount === 0) {
       console.log('🔐 Token expired, attempting refresh...');
       const newToken = await refreshAccessToken();
       if (newToken) {
         console.log('✅ Token refreshed, retrying request...');
-        return authenticatedFetch(url, options, i18n, 1);
+        return authenticatedAxios(method, config, i18n, 1);
       }
     }
-
-    return response;
-  } catch (error) {
-    console.error('❌ Authenticated fetch error:', error);
     throw error;
   }
 };
@@ -183,7 +192,7 @@ const MasterSlaveMapper = ({ navigation }) => {
     return null;
   };
 
-  // Send command to Telematics device (8 digits - POST request)
+  // Send command to Telematics device (8 digits - POST request) - UPDATED to use authenticatedAxios
   const sendTelematicsCommand = async (deviceSn, command) => {
     try {
       const url = `${serverURL}devices/command/set`;
@@ -199,36 +208,36 @@ const MasterSlaveMapper = ({ navigation }) => {
       console.log('URL:', url);
       console.log('==============================');
 
-      const response = await authenticatedFetch(
-        url,
+      // ✅ Use authenticatedAxios instead of fetch
+      const response = await authenticatedAxios(
+        'post',
         {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(formJson),
+          url: url,
+          data: formJson,
+          headers: { 'Content-Type': 'application/json' },
         },
         i18n
       );
 
-      const data = await response.json();
+      console.log('📦 Response Data:', response.data);
 
-      console.log('📦 Response Data:', data);
-
-      if (response.status === 200 && data && data.status === 200) {
-        return { success: true, message: data.message || t('master_slave.success.command_sent', { defaultValue: 'Command sent successfully' }) };
-      } else if (response.status === 401) {
-        return { success: false, message: t('master_slave.errors.session_expired', { defaultValue: 'Session expired. Please login again.' }) };
+      if (response.status === 200 && response.data && response.data.status === 200) {
+        return { success: true, message: response.data.message || t('master_slave.success.command_sent', { defaultValue: 'Command sent successfully' }) };
       } else {
-        return { success: false, message: data?.message || t('master_slave.errors.command_failed', { defaultValue: 'Failed to send command' }) };
+        return { success: false, message: response.data?.message || t('master_slave.errors.command_failed', { defaultValue: 'Failed to send command' }) };
       }
     } catch (error) {
       console.error('❌ TELEMATICS REQUEST FAILED:', error);
-      return { success: false, message: error.message || t('master_slave.errors.network_error', { defaultValue: 'Network error' }) };
+
+      if (error.response?.status === 401) {
+        return { success: false, message: t('master_slave.errors.session_expired', { defaultValue: 'Session expired. Please login again.' }) };
+      }
+
+      return { success: false, message: error.response?.data?.message || error.message || t('master_slave.errors.network_error', { defaultValue: 'Network error' }) };
     }
   };
 
-  // Send command to Joint Tech device (10 digits - GET request with fixed command)
+  // Send command to Joint Tech device (10 digits - GET request with fixed command) - UPDATED to use authenticatedAxios
   const sendJointTechCommand = async (deviceSn) => {
     try {
       const url = `${serverURL}joint-tech/command/${deviceSn}?command=${encodeURIComponent(
@@ -242,33 +251,32 @@ const MasterSlaveMapper = ({ navigation }) => {
       console.log('URL:', url);
       console.log('==============================');
 
-      const response = await authenticatedFetch(
-        url,
+      // ✅ Use authenticatedAxios instead of fetch
+      const response = await authenticatedAxios(
+        'get',
         {
-          method: 'GET',
-          headers: {
-            'Accept': 'application/json',
-          },
+          url: url,
+          headers: { 'Accept': 'application/json' },
         },
         i18n
       );
 
-      const data = await response.text();
+      console.log('📦 Response Status:', response.status);
+      console.log('📦 Response Data:', response.data);
 
-      console.log('📦 Raw Response Body:', data);
+      if (response.status === 200) {
+        return { success: true, message: t('master_slave.success.command_sent_format', { defaultValue: 'Command sent: {{command}}', command: JOINT_TECH_FIXED_COMMAND }).replace('{{command}}', JOINT_TECH_FIXED_COMMAND) };
+      } else {
+        throw new Error(`HTTP ${response.status}`);
+      }
+    } catch (error) {
+      console.error('❌ JOINT TECH REQUEST FAILED:', error);
 
-      if (response.status === 401) {
+      if (error.response?.status === 401) {
         return { success: false, message: t('master_slave.errors.session_expired', { defaultValue: 'Session expired. Please login again.' }) };
       }
 
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-
-      return { success: true, message: t('master_slave.success.command_sent_format', { defaultValue: 'Command sent: {{command}}', command: JOINT_TECH_FIXED_COMMAND }).replace('{{command}}', JOINT_TECH_FIXED_COMMAND) };
-    } catch (error) {
-      console.error('❌ JOINT TECH REQUEST FAILED:', error);
-      return { success: false, message: error.message || t('master_slave.errors.command_failed', { defaultValue: 'Failed to send command' }) };
+      return { success: false, message: error.response?.data?.message || error.message || t('master_slave.errors.command_failed', { defaultValue: 'Failed to send command' }) };
     }
   };
 
@@ -318,7 +326,7 @@ const MasterSlaveMapper = ({ navigation }) => {
     }
   };
 
-  // Send mapping with proper command format and authentication
+  // Send mapping with proper command format and authentication - UPDATED to use authenticatedAxios
   const sendMapping = async (slaveList) => {
     console.log('--- INITIATING SEND MAPPING ---');
     console.log('Master SN:', master);
@@ -342,7 +350,7 @@ const MasterSlaveMapper = ({ navigation }) => {
       // Example: (8052558332,1,001,WLNET,1,1,2,E170BG789,E03B5904FF)
       const command = `(${master},1,001,WLNET,1,1,${count},${slaveString})`;
 
-      // Build URL without encoding the command (or encode properly)
+      // Build URL with encoded command
       const url = `${serverURL}joint-tech/command/${master}?command=${encodeURIComponent(command)}`;
 
       console.log('==============================');
@@ -354,29 +362,28 @@ const MasterSlaveMapper = ({ navigation }) => {
       console.log('URL:', url);
       console.log('==============================');
 
-      const response = await authenticatedFetch(
-        url,
+      // ✅ Use authenticatedAxios instead of fetch
+      const response = await authenticatedAxios(
+        'get',
         {
-          method: 'GET',
-          headers: {},
+          url: url,
+          headers: { 'Accept': 'application/json' },
         },
         i18n
       );
 
-      const responseText = await response.text();
-
       console.log('📦 Mapping Response Status:', response.status);
-      console.log('📦 Mapping Response Body:', responseText);
+      console.log('📦 Mapping Response Data:', response.data);
 
       if (response.status === 401) {
         throw new Error(t('master_slave.errors.session_expired', { defaultValue: 'Session expired. Please login again.' }));
       }
 
-      if (!response.ok) {
+      if (!response.ok && response.status !== 200) {
         throw new Error(t('master_slave.errors.server_error', { defaultValue: 'Server responded with status {{status}}', status: response.status }).replace('{{status}}', response.status.toString()));
       }
 
-      return responseText;
+      return response.data;
     } catch (error) {
       console.error('--- MAPPING FETCH ERROR ---', error);
       throw error;

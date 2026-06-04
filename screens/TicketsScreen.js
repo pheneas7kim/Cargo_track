@@ -66,13 +66,17 @@ const getLanguageHeader = async (i18n) => {
   }
 };
 
-// ✅ Helper function to make authenticated axios request with retry on 401
-const authenticatedAxios = async (axiosInstance, config, i18n, retryCount = 0) => {
+// ✅ FIXED: Helper function to make authenticated axios request with retry on 401
+const authenticatedAxios = async (method, config, i18n, retryCount = 0) => {
   try {
     const token = await AsyncStorage.getItem('accessToken');
     const language = await getLanguageHeader(i18n);
 
+    // Create a new axios instance for each request
+    const axiosInstance = axios.create();
+
     const response = await axiosInstance({
+      method: method, // 'get', 'post', 'put', 'delete', etc.
       ...config,
       headers: {
         ...config.headers,
@@ -83,19 +87,25 @@ const authenticatedAxios = async (axiosInstance, config, i18n, retryCount = 0) =
 
     return response;
   } catch (error) {
+    console.error('❌ API Error details:', {
+      status: error.response?.status,
+      statusText: error.response?.statusText,
+      data: error.response?.data,
+    });
+
     if (error.response?.status === 401 && retryCount === 0) {
       console.log('🔐 Token expired, attempting refresh...');
       const newToken = await refreshAccessToken();
       if (newToken) {
         console.log('✅ Token refreshed, retrying request...');
-        return authenticatedAxios(axiosInstance, config, i18n, 1);
+        return authenticatedAxios(method, config, i18n, 1);
       }
     }
     throw error;
   }
 };
 
-// ✅ Helper function for fetch requests with retry on 401
+// ✅ Helper function for fetch requests with retry on 401 (kept for form data)
 const authenticatedFetch = async (url, options, i18n, retryCount = 0) => {
   try {
     let token = await AsyncStorage.getItem('accessToken');
@@ -188,8 +198,9 @@ const TicketsScreen = () => {
   // Fetch shipments for tracking
   const fetchShipments = async () => {
     try {
+      // ✅ FIXED: Changed from axios.get to 'get' string method
       const response = await authenticatedAxios(
-        axios.get,
+        'get',  // <-- FIXED: Use string method name
         {
           url: `${serverUrl}/telemetry/latest-t1s`,
         },
@@ -204,10 +215,10 @@ const TicketsScreen = () => {
     }
   };
 
-  // Acknowledge ticket function
+  // Acknowledge ticket function - FIXED
   const acknowledgeTicket = async (ticketId) => {
     const response = await authenticatedAxios(
-      axios.post,
+      'post',  // <-- FIXED: Use string method name
       {
         url: `${serverUrl}/tickets/acknowledge`,
         data: { ticketId: Number(ticketId), content: t('tickets.acknowledge_content', { defaultValue: 'Acknowledged from mobile app' }) },
@@ -218,7 +229,7 @@ const TicketsScreen = () => {
     return response.data;
   };
 
-  // Resolve ticket function
+  // Resolve ticket function - uses fetch for form data
   const resolveTicket = async (ticketId) => {
     const formData = new FormData();
     formData.append('notes', t('tickets.resolve_notes', { defaultValue: 'Resolved from mobile app' }));
@@ -240,7 +251,7 @@ const TicketsScreen = () => {
     return await response.json();
   };
 
-  // Add comment function
+  // Add comment function - FIXED
   const addComment = async () => {
     if (!commentText.trim()) {
       Snackbar.show({
@@ -254,7 +265,7 @@ const TicketsScreen = () => {
     setSubmitting(true);
     try {
       await authenticatedAxios(
-        axios.post,
+        'post',  // <-- FIXED: Use string method name
         {
           url: `${serverUrl}/tickets/${selectedTicket.id}/comments`,
           data: { content: commentText },
@@ -303,8 +314,9 @@ const TicketsScreen = () => {
         return;
       }
 
+      // ✅ FIXED: Changed from axios.get to 'get' string method
       const response = await authenticatedAxios(
-        axios.get,
+        'get',  // <-- FIXED: Use string method name
         {
           url: `${serverUrl}/tickets/assignee/${userId}?page=0&size=10000&sort=createdAt,desc`,
         },

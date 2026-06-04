@@ -19,6 +19,7 @@ import { Camera } from 'react-native-camera-kit';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Snackbar from 'react-native-snackbar';
 import * as Animatable from 'react-native-animatable';
+import axios from 'axios';
 import { useTranslation } from 'react-i18next';
 // ✅ Import global token refresh service
 import { refreshAccessToken, addTokenRefreshListener } from '../services/TokenService';
@@ -38,33 +39,40 @@ const getLanguageHeader = async (i18n) => {
   }
 };
 
-// ✅ Helper function to make authenticated fetch with retry on 401
-const authenticatedFetch = async (url, options, i18n, retryCount = 0) => {
+// ✅ FIXED: Helper function to make authenticated axios request with retry on 401
+const authenticatedAxios = async (method, config, i18n, retryCount = 0) => {
   try {
-    let token = await AsyncStorage.getItem('accessToken');
+    const token = await AsyncStorage.getItem('accessToken');
     const language = await getLanguageHeader(i18n);
 
-    const response = await fetch(url, {
-      ...options,
+    const axiosInstance = axios.create();
+
+    const response = await axiosInstance({
+      method: method,
+      ...config,
       headers: {
-        ...options.headers,
+        ...config.headers,
         'Authorization': `Bearer ${token}`,
         'Accept-Language': language,
       },
     });
 
-    if (response.status === 401 && retryCount === 0) {
+    return response;
+  } catch (error) {
+    console.error('❌ API Error details:', {
+      status: error.response?.status,
+      statusText: error.response?.statusText,
+      data: error.response?.data,
+    });
+
+    if (error.response?.status === 401 && retryCount === 0) {
       console.log('🔐 Token expired, attempting refresh...');
       const newToken = await refreshAccessToken();
       if (newToken) {
         console.log('✅ Token refreshed, retrying request...');
-        return authenticatedFetch(url, options, i18n, 1);
+        return authenticatedAxios(method, config, i18n, 1);
       }
     }
-
-    return response;
-  } catch (error) {
-    console.error('❌ Authenticated fetch error:', error);
     throw error;
   }
 };
@@ -76,7 +84,7 @@ const ReceiveDevicesScreen = () => {
 
   // State for form
   const [storeId, setStoreId] = useState(null);
-  const [storeName, setStoreName] = useState(null); // Added store name state
+  const [storeName, setStoreName] = useState(null);
   const [devicesList, setDevicesList] = useState([]);
   const [submitting, setSubmitting] = useState(false);
 
@@ -112,12 +120,11 @@ const ReceiveDevicesScreen = () => {
   }, []);
 
   useEffect(() => {
-    loadStoreData(); // Changed from loadStoreId to loadStoreData
+    loadStoreData();
   }, []);
 
   const loadStoreData = async () => {
     try {
-      // Check if storeId was passed from navigation
       const paramsStoreId = route.params?.storeId;
       const paramsStoreName = route.params?.storeName;
 
@@ -128,7 +135,6 @@ const ReceiveDevicesScreen = () => {
         }
         console.log('Store received from navigation:', { storeId: paramsStoreId, storeName: paramsStoreName });
       } else {
-        // Fallback: check AsyncStorage
         const storedStoreId = await AsyncStorage.getItem('storeId');
         const storedStoreName = await AsyncStorage.getItem('storeName');
 
@@ -150,16 +156,13 @@ const ReceiveDevicesScreen = () => {
     }
   };
 
-  // Helper: Extract serial number from QR code
   const extractSerialNumber = (scannedValue) => {
-    // Check if the value contains '&' separator (combined format)
     if (scannedValue && scannedValue.includes('&')) {
       const parts = scannedValue.split('&');
       const serialNumber = parts[parts.length - 1];
       console.log('📋 Extracted Serial Number:', serialNumber);
       return serialNumber;
     }
-    // If no separator, return the original value
     return scannedValue;
   };
 
@@ -174,7 +177,6 @@ const ReceiveDevicesScreen = () => {
     const deviceCode = value.trim();
     const serialNumber = extractSerialNumber(deviceCode);
 
-    // Validate serial number is numeric
     if (!/^\d+$/.test(serialNumber)) {
       console.log('❌ Invalid: Serial number contains non-numeric characters');
       Snackbar.show({
@@ -185,7 +187,6 @@ const ReceiveDevicesScreen = () => {
       return;
     }
 
-    // Check for duplicate serial numbers
     if (devicesList.some(device => device.serialNumber === serialNumber)) {
       Snackbar.show({
         text: t('receive_devices.errors.duplicate_serial', { defaultValue: 'Serial number {{serialNumber}} is already in the list', serialNumber: serialNumber }).replace('{{serialNumber}}', serialNumber),
@@ -195,7 +196,6 @@ const ReceiveDevicesScreen = () => {
       return;
     }
 
-    // Show dropdown to select condition
     setPendingSerialNumber(serialNumber);
     setShowDropdown(true);
     setShowScanner(false);
@@ -228,7 +228,6 @@ const ReceiveDevicesScreen = () => {
       backgroundColor: '#4CAF50',
     });
 
-    // Reset states and show scanner again
     setShowDropdown(false);
     setPendingSerialNumber(null);
     setSelectedCondition(null);
@@ -308,35 +307,21 @@ const ReceiveDevicesScreen = () => {
 
       console.log('📤 Submitting devices:', JSON.stringify(requestBody, null, 2));
 
-      const response = await authenticatedFetch(
-        `${API_BASE}/api/v1/store-stock/receive-devices`,
+      // ✅ FIXED: Use authenticatedAxios instead of authenticatedFetch
+      const response = await authenticatedAxios(
+        'post',
         {
-          method: 'POST',
+          url: `${API_BASE}/api/v1/store-stock/receive-devices`,
+          data: requestBody,
           headers: {
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify(requestBody),
         },
         i18n
       );
 
-      if (response.status === 401) {
-        Snackbar.show({
-          text: t('receive_devices.errors.session_expired', { defaultValue: 'Session expired. Please log in again.' }),
-          duration: 3000,
-          backgroundColor: '#FF6B6B',
-        });
-        navigation.replace('Login');
-        return;
-      }
+      const data = response.data;
 
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.message || t('receive_devices.errors.submit_failed', { defaultValue: 'Failed to submit devices' }));
-      }
-
-      // Show success message with details
       const successCount = data.successfulDeviceIds?.length || 0;
       const errorCount = data.errors?.length || 0;
 
@@ -351,7 +336,6 @@ const ReceiveDevicesScreen = () => {
         backgroundColor: errorCount > 0 ? '#FF9800' : '#4CAF50',
       });
 
-      // Log errors if any
       if (data.errors && data.errors.length > 0) {
         console.error('Submission errors:', data.errors);
         Alert.alert(
@@ -360,15 +344,25 @@ const ReceiveDevicesScreen = () => {
         );
       }
 
-      // Reset form on success
       if (successCount > 0) {
         setDevicesList([]);
       }
 
     } catch (error) {
       console.error('Error submitting devices:', error);
+
+      if (error.response?.status === 401) {
+        Snackbar.show({
+          text: t('receive_devices.errors.session_expired', { defaultValue: 'Session expired. Please log in again.' }),
+          duration: 3000,
+          backgroundColor: '#FF6B6B',
+        });
+        navigation.replace('Login');
+        return;
+      }
+
       Snackbar.show({
-        text: error.message || t('receive_devices.errors.submit_failed', { defaultValue: 'Failed to submit devices. Please try again.' }),
+        text: error.response?.data?.message || error.message || t('receive_devices.errors.submit_failed', { defaultValue: 'Failed to submit devices. Please try again.' }),
         duration: 3000,
         backgroundColor: '#FF6B6B',
       });
@@ -397,7 +391,6 @@ const ReceiveDevicesScreen = () => {
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#0B0C10" />
 
-      {/* Header with Store Name */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
           <Text style={styles.backButtonText}>←</Text>
@@ -411,7 +404,6 @@ const ReceiveDevicesScreen = () => {
         <View style={{ width: 40 }} />
       </View>
 
-      {/* Scanner View - Greeted immediately */}
       <View style={styles.scannerContainer}>
         <Text style={styles.scannerTitle}>{t('receive_devices.scan_title', { defaultValue: 'Scan Device QR Code' })}</Text>
         <Text style={styles.scannerSubtitle}>{t('receive_devices.scan_subtitle', { defaultValue: 'Align QR code inside the frame' })}</Text>
@@ -433,7 +425,6 @@ const ReceiveDevicesScreen = () => {
         </Text>
       </View>
 
-      {/* Devices List Section - Shows after scanning devices */}
       {devicesList.length > 0 && (
         <View style={styles.devicesSection}>
           <View style={styles.devicesHeader}>
@@ -455,7 +446,6 @@ const ReceiveDevicesScreen = () => {
         </View>
       )}
 
-      {/* Submit Button */}
       {devicesList.length > 0 && (
         <TouchableOpacity
           style={[
@@ -475,7 +465,6 @@ const ReceiveDevicesScreen = () => {
         </TouchableOpacity>
       )}
 
-      {/* Condition Selection Modal (Dropup) */}
       <Modal
         visible={showDropdown}
         transparent={true}
