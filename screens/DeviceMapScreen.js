@@ -39,6 +39,13 @@ const { width, height } = Dimensions.get('window');
 const BOTTOM_SHEET_MIN_HEIGHT = 70;
 const BOTTOM_SHEET_MAX_HEIGHT = height * 0.6;
 
+const DEFAULT_REGION = {
+  latitude: -1.286389,
+  longitude: 36.817223,
+  latitudeDelta: 0.05,
+  longitudeDelta: 0.05,
+};
+
 // ✅ Helper function to get language header
 const getLanguageHeader = async (i18n) => {
   try {
@@ -99,12 +106,7 @@ const DeviceMapScreen = () => {
   const [selectedDevice, setSelectedDevice] = useState(null);
   const [modalVisible, setModalVisible] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [mapRegion, setMapRegion] = useState({
-    latitude: -1.286389,
-    longitude: 36.817223,
-    latitudeDelta: 0.5,
-    longitudeDelta: 0.5,
-  });
+  const [mapRegion, setMapRegion] = useState(DEFAULT_REGION);
   const [selectedDeviceMarker, setSelectedDeviceMarker] = useState(null);
   const [mapReady, setMapReady] = useState(false);
   const [mapError, setMapError] = useState(false);
@@ -301,18 +303,17 @@ const DeviceMapScreen = () => {
     // ========== END OFFLINE CHECK ==========
 
     try {
-      // ✅ FIXED: Changed from axios.get to 'get' string method
       // Fetch both devices and geofences in parallel using authenticatedAxios
       const [devicesRes, geofencesRes] = await Promise.all([
         authenticatedAxios(
-          'get',  // <-- FIXED: Use string method name
+          'get',
           {
             url: `${serverUrl}/telemetry/latest-t1s`,
           },
           i18n
         ),
         authenticatedAxios(
-          'get',  // <-- FIXED: Use string method name
+          'get',
           {
             url: `${serverUrl}/geofences?size=1000`,
           },
@@ -333,7 +334,9 @@ const DeviceMapScreen = () => {
 
       // Fit map to all markers and geofences after both are loaded
       if (!selectedDeviceMarker && (devicesRes.data.length > 0 || geofencesRes.data.content.length > 0)) {
-        fitMapToAllFeatures(devicesRes.data, geofencesRes.data.content);
+        setTimeout(() => {
+          fitMapToAllFeatures(devicesRes.data, geofencesRes.data.content);
+        }, 500);
       }
     } catch (error) {
       console.error('Failed to fetch data:', error);
@@ -357,67 +360,124 @@ const DeviceMapScreen = () => {
     fetchAllData(true);
   };
 
+  /*
+    FIXED VERSION - robust map fitting
+    Main fixes:
+    1. Strict coordinate validation
+    2. Prevent NaN regions
+    3. Prevent invalid deltas
+    4. Better native map compatibility
+    5. Handles malformed geofence data safely
+  */
   const fitMapToAllFeatures = (deviceList, geofenceList) => {
-    const allLatLngs = [];
+    try {
+      const allLatLngs = [];
 
-    // Add device coordinates
-    deviceList.forEach(d => {
-      if (d.latitude && d.longitude) {
-        allLatLngs.push({ lat: parseFloat(d.latitude), lng: parseFloat(d.longitude) });
+      // DEVICE COORDINATES
+      deviceList.forEach((device) => {
+        const lat = parseFloat(device.latitude);
+        const lng = parseFloat(device.longitude);
+        const isValid = !isNaN(lat) && !isNaN(lng) && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180;
+        if (isValid) {
+          allLatLngs.push({ lat, lng });
+        }
+      });
+
+      // GEOFENCE COORDINATES
+      geofenceList.forEach((geofence) => {
+        // LINE / ROUTE GEOFENCES
+        if (geofence.fenceType === 'LINE' && geofence.coordinatesJson) {
+          try {
+            const points = JSON.parse(geofence.coordinatesJson);
+            if (Array.isArray(points)) {
+              points.forEach((point) => {
+                const lat = parseFloat(point.lat);
+                const lng = parseFloat(point.lng);
+                const isValid = !isNaN(lat) && !isNaN(lng) && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180;
+                if (isValid) {
+                  allLatLngs.push({ lat, lng });
+                }
+              });
+            }
+          } catch (e) {
+            console.warn('Failed to parse geofence coordinates', geofence.id);
+          }
+        }
+        // CIRCLE GEOFENCES
+        else if (geofence.fenceType === 'CIRCLE') {
+          const lat = parseFloat(geofence.centerLat);
+          const lng = parseFloat(geofence.centerLng);
+          const isValid = !isNaN(lat) && !isNaN(lng) && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180;
+          if (isValid) {
+            allLatLngs.push({ lat, lng });
+          }
+        }
+      });
+
+      if (allLatLngs.length === 0) {
+        console.warn('No valid coordinates found');
+        if (mapRef.current && mapReady) {
+          mapRef.current.animateToRegion(DEFAULT_REGION, 1000);
+        }
+        return;
       }
-    });
 
-    // Add geofence coordinates
-    geofenceList.forEach(g => {
-      if (g.fenceType === 'LINE' && g.coordinatesJson) {
-        try {
-          const points = JSON.parse(g.coordinatesJson);
-          points.forEach(p => allLatLngs.push({ lat: p.lat, lng: p.lng }));
-        } catch (e) {}
-      } else if (g.fenceType === 'CIRCLE' && g.centerLat && g.centerLng) {
-        allLatLngs.push({ lat: g.centerLat, lng: g.centerLng });
+      const lats = allLatLngs.map(point => point.lat);
+      const lngs = allLatLngs.map(point => point.lng);
+      const minLat = Math.min(...lats);
+      const maxLat = Math.max(...lats);
+      const minLng = Math.min(...lngs);
+      const maxLng = Math.max(...lngs);
+
+      let latitudeDelta = (maxLat - minLat) * 1.5;
+      let longitudeDelta = (maxLng - minLng) * 1.5;
+
+      if (isNaN(latitudeDelta) || latitudeDelta <= 0) latitudeDelta = 0.02;
+      if (isNaN(longitudeDelta) || longitudeDelta <= 0) longitudeDelta = 0.02;
+
+      latitudeDelta = Math.min(Math.max(latitudeDelta, 0.02), 20);
+      longitudeDelta = Math.min(Math.max(longitudeDelta, 0.02), 20);
+
+      const region = {
+        latitude: (minLat + maxLat) / 2,
+        longitude: (minLng + maxLng) / 2,
+        latitudeDelta,
+        longitudeDelta,
+      };
+
+      console.log('Calculated map region:', region);
+
+      const validRegion = !isNaN(region.latitude) && !isNaN(region.longitude) &&
+                          !isNaN(region.latitudeDelta) && !isNaN(region.longitudeDelta);
+      if (!validRegion) {
+        console.warn('Invalid region generated');
+        return;
       }
-    });
 
-    if (allLatLngs.length === 0) return;
-
-    const lats = allLatLngs.map(p => p.lat);
-    const lngs = allLatLngs.map(p => p.lng);
-    const minLat = Math.min(...lats);
-    const maxLat = Math.max(...lats);
-    const minLng = Math.min(...lngs);
-    const maxLng = Math.max(...lngs);
-
-    const region = {
-      latitude: (minLat + maxLat) / 2,
-      longitude: (minLng + maxLng) / 2,
-      latitudeDelta: Math.max((maxLat - minLat) * 1.5, 0.5),
-      longitudeDelta: Math.max((maxLng - minLng) * 1.5, 0.5),
-    };
-
-    setMapRegion(region);
-    if (mapRef.current && mapReady) {
-      try {
+      setMapRegion(region);
+      if (mapRef.current && mapReady) {
         mapRef.current.animateToRegion(region, 1000);
-      } catch (e) {}
+      }
+    } catch (error) {
+      console.error('fitMapToAllFeatures failed:', error);
     }
   };
 
   const centerOnDevice = (device) => {
     if (!device.latitude || !device.longitude) return;
+    const latitude = parseFloat(device.latitude);
+    const longitude = parseFloat(device.longitude);
+    if (isNaN(latitude) || isNaN(longitude)) return;
 
     const region = {
-      latitude: parseFloat(device.latitude),
-      longitude: parseFloat(device.longitude),
+      latitude,
+      longitude,
       latitudeDelta: 0.01,
       longitudeDelta: 0.01,
     };
-
     setMapRegion(region);
     if (mapRef.current && mapReady) {
-      try {
-        mapRef.current.animateToRegion(region, 500);
-      } catch (e) {}
+      mapRef.current.animateToRegion(region, 500);
     }
     setSelectedDeviceMarker(device);
   };
@@ -446,18 +506,18 @@ const DeviceMapScreen = () => {
   };
 
   const formatSpeed = (speed) => {
-    if (!speed && speed !== 0) return t('device_map.na', { defaultValue: 'N/A' });
+    if (!speed && speed !== 0) return 'N/A';
     return `${Math.round(speed)} km/h`;
   };
 
   const formatDate = (dateString) => {
-    if (!dateString) return t('device_map.na', { defaultValue: 'N/A' });
+    if (!dateString) return 'N/A';
     const date = new Date(dateString);
     const now = new Date();
     const diff = Math.floor((now - date) / 1000 / 60);
-    if (diff < 1) return t('device_map.time.just_now', { defaultValue: 'Just now' });
-    if (diff < 60) return t('device_map.time.minutes_ago', { defaultValue: '{{count}} min ago' }).replace('{{count}}', diff.toString());
-    if (diff < 1440) return t('device_map.time.hours_ago', { defaultValue: '{{count}} hr ago' }).replace('{{count}}', Math.floor(diff / 60).toString());
+    if (diff < 1) return 'Just now';
+    if (diff < 60) return `${diff} min ago`;
+    if (diff < 1440) return `${Math.floor(diff / 60)} hr ago`;
     return date.toLocaleTimeString();
   };
 
@@ -478,12 +538,9 @@ const DeviceMapScreen = () => {
 
   const getMapTypeValue = () => {
     switch(mapType) {
-      case 'satellite':
-        return 'satellite';
-      case 'hybrid':
-        return 'hybrid';
-      default:
-        return 'standard';
+      case 'satellite': return 'satellite';
+      case 'hybrid': return 'hybrid';
+      default: return 'standard';
     }
   };
 
@@ -524,7 +581,7 @@ const DeviceMapScreen = () => {
                   <View style={styles.detailRow}>
                     <Text style={styles.detailLabel}>{t('device_map.location_label', { defaultValue: 'Location' })}:</Text>
                     <Text style={styles.detailValue}>
-                      {device.latitude?.toFixed(4) || t('device_map.na', { defaultValue: 'N/A' })}, {device.longitude?.toFixed(4) || t('device_map.na', { defaultValue: 'N/A' })}
+                      {device.latitude?.toFixed(4) || 'N/A'}, {device.longitude?.toFixed(4) || 'N/A'}
                     </Text>
                   </View>
                   <View style={styles.detailRow}>
@@ -555,7 +612,7 @@ const DeviceMapScreen = () => {
           </TouchableOpacity>
           <Text style={styles.headerTitle}>{t('device_map.title', { defaultValue: 'Device Monitoring' })}</Text>
           <View style={styles.headerRightActions}>
-            {/* ========== OFFLINE: Manual sync button ========== */}
+            {/* Manual sync button */}
             {isSyncing ? (
               <ActivityIndicator size="small" color="#FFA500" style={styles.syncIndicator} />
             ) : (
@@ -563,20 +620,18 @@ const DeviceMapScreen = () => {
                 <Icon name="sync" size={20} color={isOnline ? "#4CAF50" : "#999"} />
               </TouchableOpacity>
             )}
-            {/* ========== END OFFLINE SYNC BUTTON ========== */}
             <TouchableOpacity onPress={onRefresh} style={styles.refreshButton}>
               <Text style={styles.refreshButtonText}>↻</Text>
             </TouchableOpacity>
           </View>
         </View>
 
-        {/* ========== OFFLINE: Network status banner ========== */}
+        {/* Offline banner */}
         {!isOnline && (
           <View style={styles.offlineBanner}>
             <Text style={styles.offlineBannerText}>📴 Offline Mode - Using cached data</Text>
           </View>
         )}
-        {/* ========== END OFFLINE BANNER ========== */}
 
         <View style={styles.searchContainer}>
           <Text style={styles.searchIcon}>🔍</Text>
@@ -599,21 +654,21 @@ const DeviceMapScreen = () => {
             style={[styles.mapTypeButton, mapType === 'standard' && styles.activeMapType]}
             onPress={() => setMapType('standard')}
           >
-            <Text style={[styles.mapTypeText, mapType === 'standard' && styles.activeMapTypeText]}>{t('device_map.map_types.standard', { defaultValue: '🗺️ Standard' })}</Text>
+            <Text style={[styles.mapTypeText, mapType === 'standard' && styles.activeMapTypeText]}>🗺️ Standard</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
             style={[styles.mapTypeButton, mapType === 'satellite' && styles.activeMapType]}
             onPress={() => setMapType('satellite')}
           >
-            <Text style={[styles.mapTypeText, mapType === 'satellite' && styles.activeMapTypeText]}>{t('device_map.map_types.satellite', { defaultValue: '🛰️ Satellite' })}</Text>
+            <Text style={[styles.mapTypeText, mapType === 'satellite' && styles.activeMapTypeText]}>🛰️ Satellite</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
             style={[styles.mapTypeButton, mapType === 'hybrid' && styles.activeMapType]}
             onPress={() => setMapType('hybrid')}
           >
-            <Text style={[styles.mapTypeText, mapType === 'hybrid' && styles.activeMapTypeText]}>{t('device_map.map_types.hybrid', { defaultValue: '🌍 Hybrid' })}</Text>
+            <Text style={[styles.mapTypeText, mapType === 'hybrid' && styles.activeMapTypeText]}>🌍 Hybrid</Text>
           </TouchableOpacity>
         </View>
 
@@ -623,7 +678,7 @@ const DeviceMapScreen = () => {
             onPress={() => setShowGeofences(!showGeofences)}
           >
             <Text style={[styles.mapTypeText, showGeofences && styles.activeMapTypeText]}>
-              {showGeofences ? t('device_map.hide_geofences', { defaultValue: 'Hide Geofences' }) : t('device_map.show_geofences', { defaultValue: 'Show Geofences' })}
+              {showGeofences ? 'Hide Geofences' : 'Show Geofences'}
             </Text>
           </TouchableOpacity>
         </View>
@@ -637,7 +692,7 @@ const DeviceMapScreen = () => {
         <StatusBar barStyle="dark-content" backgroundColor="#F8F9FA" />
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#FFA500" />
-          <Text style={styles.loadingText}>{t('device_map.loading', { defaultValue: 'Loading device locations & geofences...' })}</Text>
+          <Text style={styles.loadingText}>Loading device locations & geofences...</Text>
         </View>
       </SafeAreaView>
     );
@@ -654,7 +709,7 @@ const DeviceMapScreen = () => {
           ref={mapRef}
           style={styles.map}
           provider={PROVIDER_GOOGLE}
-          region={mapRegion}
+          initialRegion={mapRegion}
           mapType={getMapTypeValue()}
           showsUserLocation={true}
           showsMyLocationButton={true}
@@ -662,10 +717,13 @@ const DeviceMapScreen = () => {
           showsScale={true}
           zoomControlEnabled={true}
           onMapReady={() => {
+            console.log('Map ready');
             setMapReady(true);
-            if (devices.length > 0 || geofences.length > 0) {
-              fitMapToAllFeatures(devices, geofences);
-            }
+            setTimeout(() => {
+              if (devices.length > 0 || geofences.length > 0) {
+                fitMapToAllFeatures(devices, geofences);
+              }
+            }, 800);
           }}
           onError={(error) => {
             console.error('Map error:', error);
@@ -684,7 +742,7 @@ const DeviceMapScreen = () => {
                 key={device.id || index}
                 coordinate={{ latitude, longitude }}
                 title={device.deviceName || device.deviceSn}
-                description={`${t('device_map.speed_label', { defaultValue: 'Speed' })}: ${formatSpeed(device.speedKmh)}`}
+                description={`Speed: ${formatSpeed(device.speedKmh)}`}
                 onPress={() => {
                   setSelectedDeviceMarker(device);
                   setSelectedDevice(device);
@@ -699,18 +757,9 @@ const DeviceMapScreen = () => {
                 <Callout>
                   <View style={styles.calloutContainer}>
                     <Text style={styles.calloutTitle}>{device.deviceName || device.deviceSn}</Text>
-                    <Text style={styles.calloutText}>{t('device_map.speed_label', { defaultValue: 'Speed' })}: {formatSpeed(device.speedKmh)}</Text>
-                    <Text style={styles.calloutText}>{t('device_map.mileage_label', { defaultValue: 'Mileage' })}: {Math.round(device.mileageKm || 0)} km</Text>
-                    <Text style={styles.calloutText}>{t('device_map.updated_label', { defaultValue: 'Updated' })}: {formatDate(device.timestamp)}</Text>
-                    <TouchableOpacity
-                      style={styles.calloutButton}
-                      onPress={() => {
-                        setSelectedDevice(device);
-                        setModalVisible(true);
-                      }}
-                    >
-                      <Text style={styles.calloutButtonText}>{t('device_map.view_details', { defaultValue: 'View Details' })}</Text>
-                    </TouchableOpacity>
+                    <Text style={styles.calloutText}>Speed: {formatSpeed(device.speedKmh)}</Text>
+                    <Text style={styles.calloutText}>Mileage: {Math.round(device.mileageKm || 0)} km</Text>
+                    <Text style={styles.calloutText}>Updated: {formatDate(device.timestamp)}</Text>
                   </View>
                 </Callout>
               </Marker>
@@ -719,33 +768,44 @@ const DeviceMapScreen = () => {
 
           {/* Geofences */}
           {showGeofences && geofences.map((geofence) => {
+            // LINE GEOFENCES
             if (geofence.fenceType === 'LINE' && geofence.coordinatesJson) {
               try {
                 const points = JSON.parse(geofence.coordinatesJson);
-                const coordinates = points.map(p => ({ latitude: p.lat, longitude: p.lng }));
+                const coordinates = points.map(point => {
+                  const latitude = parseFloat(point.lat);
+                  const longitude = parseFloat(point.lng);
+                  if (isNaN(latitude) || isNaN(longitude)) return null;
+                  return { latitude, longitude };
+                }).filter(Boolean);
+                if (coordinates.length === 0) return null;
                 return (
                   <Polyline
                     key={geofence.id}
                     coordinates={coordinates}
                     strokeColor={geofence.colorHex || '#3b82f6'}
                     strokeWidth={3}
-                    lineDashPattern={[5, 5]} // dashed line for routes
+                    lineDashPattern={[5, 5]}
                   />
                 );
               } catch (e) {
-                console.warn('Failed to parse coordinates for route', geofence.id);
+                console.warn('Failed to parse coordinates', geofence.id);
                 return null;
               }
-            } else if (geofence.fenceType === 'CIRCLE' && geofence.centerLat && geofence.centerLng && geofence.radiusMeters) {
-              const center = { latitude: geofence.centerLat, longitude: geofence.centerLng };
+            }
+            // CIRCLE GEOFENCES
+            else if (geofence.fenceType === 'CIRCLE' && geofence.centerLat && geofence.centerLng && geofence.radiusMeters) {
+              const latitude = parseFloat(geofence.centerLat);
+              const longitude = parseFloat(geofence.centerLng);
+              if (isNaN(latitude) || isNaN(longitude)) return null;
               return (
                 <Circle
                   key={geofence.id}
-                  center={center}
+                  center={{ latitude, longitude }}
                   radius={geofence.radiusMeters}
                   strokeColor={geofence.colorHex || '#ff0000'}
                   strokeWidth={2}
-                  fillColor={`${geofence.colorHex || '#ff0000'}20`} // semi-transparent fill
+                  fillColor={`${geofence.colorHex || '#ff0000'}20`}
                 />
               );
             }
@@ -753,17 +813,12 @@ const DeviceMapScreen = () => {
           })}
         </MapView>
 
-        {/* Center on current location button */}
+        {/* My Location Button */}
         <TouchableOpacity
           style={styles.myLocationButton}
           onPress={() => {
             if (mapRef.current) {
-              mapRef.current.animateToRegion({
-                latitude: -1.286389,
-                longitude: 36.817223,
-                latitudeDelta: 0.05,
-                longitudeDelta: 0.05,
-              }, 500);
+              mapRef.current.animateToRegion(DEFAULT_REGION, 500);
             }
           }}
         >
@@ -783,7 +838,7 @@ const DeviceMapScreen = () => {
         <View style={styles.modalOverlay}>
           <Animatable.View animation="slideInUp" duration={300} style={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>{t('device_map.modal.title', { defaultValue: 'Device Details' })}</Text>
+              <Text style={styles.modalTitle}>Device Details</Text>
               <TouchableOpacity onPress={() => setModalVisible(false)} style={styles.closeButton}>
                 <Text style={styles.closeButtonText}>✕</Text>
               </TouchableOpacity>
@@ -794,7 +849,7 @@ const DeviceMapScreen = () => {
                 <View style={styles.modalStatusContainer}>
                   <View style={[styles.modalStatusDot, { backgroundColor: getMarkerColor(selectedDevice.speedKmh) }]} />
                   <Text style={styles.modalStatusText}>
-                    {selectedDevice.speedKmh > 5 ? t('device_map.modal.moving', { defaultValue: 'Moving' }) : t('device_map.modal.stationary', { defaultValue: 'Stationary' })}
+                    {selectedDevice.speedKmh > 5 ? 'Moving' : 'Stationary'}
                   </Text>
                 </View>
 
@@ -804,41 +859,41 @@ const DeviceMapScreen = () => {
 
                 <View style={styles.infoGrid}>
                   <View style={styles.infoItem}>
-                    <Text style={styles.infoLabel}>{t('device_map.modal.serial_number', { defaultValue: 'Serial Number' })}</Text>
-                    <Text style={styles.infoValue}>{selectedDevice.deviceSn || t('device_map.na', { defaultValue: 'N/A' })}</Text>
+                    <Text style={styles.infoLabel}>Serial Number</Text>
+                    <Text style={styles.infoValue}>{selectedDevice.deviceSn || 'N/A'}</Text>
                   </View>
 
                   <View style={styles.infoItem}>
-                    <Text style={styles.infoLabel}>{t('device_map.modal.t1_number', { defaultValue: 'T1 Number' })}</Text>
-                    <Text style={styles.infoValue}>{selectedDevice.t1Number || t('device_map.na', { defaultValue: 'N/A' })}</Text>
+                    <Text style={styles.infoLabel}>T1 Number</Text>
+                    <Text style={styles.infoValue}>{selectedDevice.t1Number || 'N/A'}</Text>
                   </View>
 
                   <View style={styles.infoItem}>
-                    <Text style={styles.infoLabel}>{t('device_map.modal.speed', { defaultValue: 'Speed' })}</Text>
+                    <Text style={styles.infoLabel}>Speed</Text>
                     <Text style={styles.infoValue}>{formatSpeed(selectedDevice.speedKmh)}</Text>
                   </View>
 
                   <View style={styles.infoItem}>
-                    <Text style={styles.infoLabel}>{t('device_map.modal.mileage', { defaultValue: 'Mileage' })}</Text>
+                    <Text style={styles.infoLabel}>Mileage</Text>
                     <Text style={styles.infoValue}>{Math.round(selectedDevice.mileageKm || 0)} km</Text>
                   </View>
                 </View>
 
                 <View style={styles.sectionContainer}>
-                  <Text style={styles.sectionTitle}>{t('device_map.modal.location', { defaultValue: 'Location' })}</Text>
+                  <Text style={styles.sectionTitle}>Location</Text>
                   <View style={styles.locationCard}>
-                    <Text style={styles.locationLabel}>{t('device_map.modal.coordinates', { defaultValue: 'Coordinates' })}</Text>
+                    <Text style={styles.locationLabel}>Coordinates</Text>
                     <Text style={styles.locationValue}>
-                      {selectedDevice.latitude?.toFixed(6) || t('device_map.na', { defaultValue: 'N/A' })}, {selectedDevice.longitude?.toFixed(6) || t('device_map.na', { defaultValue: 'N/A' })}
+                      {selectedDevice.latitude?.toFixed(6) || 'N/A'}, {selectedDevice.longitude?.toFixed(6) || 'N/A'}
                     </Text>
                   </View>
                 </View>
 
                 <View style={styles.sectionContainer}>
-                  <Text style={styles.sectionTitle}>{t('device_map.modal.last_update', { defaultValue: 'Last Update' })}</Text>
+                  <Text style={styles.sectionTitle}>Last Update</Text>
                   <View style={styles.timestampCard}>
                     <Text style={styles.timestampValue}>
-                      {selectedDevice.timestamp ? new Date(selectedDevice.timestamp).toLocaleString() : t('device_map.na', { defaultValue: 'N/A' })}
+                      {selectedDevice.timestamp ? new Date(selectedDevice.timestamp).toLocaleString() : 'N/A'}
                     </Text>
                   </View>
                 </View>
@@ -851,7 +906,7 @@ const DeviceMapScreen = () => {
                       setModalVisible(false);
                     }}
                   >
-                    <Text style={styles.centerButtonText}>{t('device_map.modal.center_on_map', { defaultValue: 'Center on Map' })}</Text>
+                    <Text style={styles.centerButtonText}>Center on Map</Text>
                   </TouchableOpacity>
                 </View>
 
@@ -859,7 +914,7 @@ const DeviceMapScreen = () => {
                   style={styles.closeModalButton}
                   onPress={() => setModalVisible(false)}
                 >
-                  <Text style={styles.closeModalButtonText}>{t('device_map.modal.close', { defaultValue: 'Close' })}</Text>
+                  <Text style={styles.closeModalButtonText}>Close</Text>
                 </TouchableOpacity>
               </ScrollView>
             )}
@@ -870,7 +925,6 @@ const DeviceMapScreen = () => {
   );
 };
 
-// Styles (with offline additions)
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -1164,19 +1218,6 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: '#666',
     marginBottom: 2,
-  },
-  calloutButton: {
-    backgroundColor: '#FFA500',
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderRadius: 6,
-    marginTop: 8,
-    alignItems: 'center',
-  },
-  calloutButtonText: {
-    fontSize: 10,
-    color: '#FFFFFF',
-    fontWeight: '500',
   },
   loadingContainer: {
     flex: 1,

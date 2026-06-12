@@ -1327,9 +1327,9 @@ const TicketsScreen = () => {
                         setModalVisible(false);
                         const shipment = shipments.find(s => s.t1Number === selectedTicket.t1Number);
                         if (shipment) {
-                          navigation.navigate('TrackOnMap2', { shipment });
+                          navigation.navigate('DeviceMapScreen', { shipment });
                         } else {
-                          navigation.navigate('TrackOnMap2', { t1Number: selectedTicket.t1Number });
+                          navigation.navigate('DeviceMapScreen', { t1Number: selectedTicket.t1Number });
                         }
                       }}
                     >
