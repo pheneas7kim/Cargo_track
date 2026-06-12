@@ -29,6 +29,12 @@ import { useTranslation } from 'react-i18next';
 // ✅ Import global token refresh service
 import { refreshAccessToken, addTokenRefreshListener } from '../services/TokenService';
 
+// ========== OFFLINE MODULE IMPORTS ==========
+import OfflineDatabaseService from '../services/OfflineDatabaseService';
+import NetworkMonitorService from '../services/NetworkMonitorService';
+import OfflineSyncService from '../services/OfflineSyncService';
+// ========== END OFFLINE MODULE IMPORTS ==========
+
 const { width, height } = Dimensions.get('window');
 
 // ✅ Helper function to get language header
@@ -95,6 +101,11 @@ const HotspotsScreen = () => {
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(30)).current;
 
+  // ========== OFFLINE MODE STATE VARIABLES ==========
+  const [isOnline, setIsOnline] = useState(true);
+  const [isSyncing, setIsSyncing] = useState(false);
+  // ========== END OFFLINE MODE STATE VARIABLES ==========
+
   // ✅ Listen for token refresh events
   useEffect(() => {
     const removeListener = addTokenRefreshListener((newToken) => {
@@ -102,6 +113,121 @@ const HotspotsScreen = () => {
     });
     return () => removeListener();
   }, []);
+
+  // ========== OFFLINE MODE INITIALIZATION ==========
+  useEffect(() => {
+    const initOfflineMode = async () => {
+      try {
+        // Initialize offline database
+        await OfflineDatabaseService.initDatabase();
+        console.log('✅ Offline database initialized for Hotspots Screen');
+
+        // Initialize network monitor
+        NetworkMonitorService.init();
+
+        // Start auto-sync service
+        await OfflineSyncService.startAutoSync();
+
+        // Listen for network changes
+        NetworkMonitorService.on('connectionChange', (online) => {
+          setIsOnline(online);
+          if (online) {
+            Snackbar.show({
+              text: t('hotspots.back_online', { defaultValue: 'Back online! Syncing data...' }),
+              duration: 2000,
+              backgroundColor: '#4CAF50',
+            });
+            // Auto-refresh when coming back online
+            fetchHotspots();
+          } else {
+            Snackbar.show({
+              text: t('hotspots.offline_mode', { defaultValue: 'Offline mode - using cached hotspots' }),
+              duration: 3000,
+              backgroundColor: '#FF9800',
+            });
+          }
+        });
+
+        // Load initial data
+        await fetchHotspots();
+      } catch (error) {
+        console.error('❌ Offline mode init error:', error);
+      }
+    };
+
+    initOfflineMode();
+
+    return () => {
+      // Cleanup
+      OfflineSyncService.stopAutoSync();
+      NetworkMonitorService.cleanup();
+    };
+  }, []);
+  // ========== END OFFLINE MODE INITIALIZATION ==========
+
+  // ========== OFFLINE: Cache hotspots data ==========
+  const cacheHotspotsData = async (hotspotsData) => {
+    try {
+      await OfflineDatabaseService.saveUserData('hotspots_list', {
+        data: hotspotsData,
+        timestamp: Date.now()
+      });
+      console.log('✅ Hotspots data cached offline');
+    } catch (error) {
+      console.error('Error caching hotspots data:', error);
+    }
+  };
+  // ========== END OFFLINE CACHE HELPER ==========
+
+  // ========== OFFLINE: Load cached hotspots ==========
+  const loadCachedHotspots = async () => {
+    try {
+      const cached = await OfflineDatabaseService.getUserData('hotspots_list');
+      if (cached && cached.data && cached.data.length > 0) {
+        setHotspots(cached.data);
+        console.log('📦 Loaded cached hotspots');
+        return true;
+      }
+      return false;
+    } catch (error) {
+      console.error('Error loading cached hotspots:', error);
+      return false;
+    }
+  };
+  // ========== END OFFLINE LOAD CACHED ==========
+
+  // ========== OFFLINE: Manual sync function ==========
+  const manualSync = async () => {
+    if (!isOnline) {
+      Snackbar.show({
+        text: t('hotspots.cannot_sync_offline', { defaultValue: 'Cannot sync while offline' }),
+        duration: 3000,
+        backgroundColor: '#FF6B6B',
+      });
+      return;
+    }
+
+    setIsSyncing(true);
+    try {
+      await OfflineSyncService.syncAll();
+      await fetchHotspots(true);
+      Snackbar.show({
+        text: t('hotspots.sync_complete', { defaultValue: 'Sync completed successfully!' }),
+        duration: 3000,
+        backgroundColor: '#4CAF50',
+      });
+    } catch (error) {
+      console.error('Manual sync error:', error);
+      Snackbar.show({
+        text: t('hotspots.sync_failed', { defaultValue: 'Sync failed' }),
+        duration: 3000,
+        backgroundColor: '#FF6B6B',
+      });
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+  // ========== END OFFLINE MANUAL SYNC ==========
 
   useEffect(() => {
     Animated.parallel([
@@ -134,6 +260,19 @@ const HotspotsScreen = () => {
     try {
       if (!isRefresh) setLoading(true);
 
+      // ========== OFFLINE: Check if online ==========
+      const online = await NetworkMonitorService.isOnline();
+
+      if (!online) {
+        const hasCached = await loadCachedHotspots();
+        if (hasCached) {
+          setLoading(false);
+          setRefreshing(false);
+          return;
+        }
+      }
+      // ========== END OFFLINE CHECK ==========
+
       // ✅ FIXED: Changed from axios.get to 'get' string method
       const response = await authenticatedAxios(
         'get',  // <-- FIXED: Use string method name
@@ -143,18 +282,37 @@ const HotspotsScreen = () => {
         i18n
       );
 
+      let hotspotsData = [];
       if (response.data && response.data.content) {
-        setHotspots(response.data.content);
+        hotspotsData = response.data.content;
+        setHotspots(hotspotsData);
       } else if (response.data && Array.isArray(response.data)) {
-        setHotspots(response.data);
+        hotspotsData = response.data;
+        setHotspots(hotspotsData);
       }
+
+      // ========== OFFLINE: Cache fetched hotspots ==========
+      await cacheHotspotsData(hotspotsData);
+      // ========== END OFFLINE CACHE ==========
     } catch (error) {
       console.error('Failed to fetch hotspots:', error);
-      Snackbar.show({
-        text: t('hotspots.errors.load_failed', { defaultValue: 'Failed to load hotspots' }),
-        duration: 3000,
-        backgroundColor: '#FF6B6B',
-      });
+
+      // ========== OFFLINE: Fallback to cached hotspots on error ==========
+      const hasCached = await loadCachedHotspots();
+      if (!hasCached) {
+        Snackbar.show({
+          text: t('hotspots.errors.load_failed', { defaultValue: 'Failed to load hotspots' }),
+          duration: 3000,
+          backgroundColor: '#FF6B6B',
+        });
+      } else {
+        Snackbar.show({
+          text: t('hotspots.using_cached', { defaultValue: 'Using cached hotspots (offline mode)' }),
+          duration: 3000,
+          backgroundColor: '#FF9800',
+        });
+      }
+      // ========== END OFFLINE FALLBACK ==========
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -163,7 +321,13 @@ const HotspotsScreen = () => {
 
   const onRefresh = () => {
     setRefreshing(true);
-    fetchHotspots(true);
+    // ========== OFFLINE: Manual sync on refresh ==========
+    if (isOnline) {
+      manualSync();
+    } else {
+      fetchHotspots(true);
+    }
+    // ========== END OFFLINE MANUAL SYNC ==========
   };
 
   const getFilteredHotspots = () => {
@@ -332,9 +496,26 @@ const HotspotsScreen = () => {
           </TouchableOpacity>
           <Text style={styles.headerTitle}>{t('hotspots.title', { defaultValue: 'Hotspots' })}</Text>
           <View style={styles.headerRight}>
+            {/* ========== OFFLINE: Manual sync button ========== */}
+            {isSyncing ? (
+              <ActivityIndicator size="small" color="#FFA500" style={styles.syncIndicator} />
+            ) : (
+              <TouchableOpacity onPress={manualSync} style={styles.syncButton}>
+                <Icon name="sync" size={20} color={isOnline ? "#4CAF50" : "#999"} />
+              </TouchableOpacity>
+            )}
+            {/* ========== END OFFLINE SYNC BUTTON ========== */}
             <Text style={styles.countBadge}>{filteredHotspots.length}</Text>
           </View>
         </View>
+
+        {/* ========== OFFLINE: Network status banner ========== */}
+        {!isOnline && (
+          <View style={styles.offlineBanner}>
+            <Text style={styles.offlineBannerText}>📴 Offline Mode - Using cached hotspots</Text>
+          </View>
+        )}
+        {/* ========== END OFFLINE BANNER ========== */}
 
         <View style={styles.searchContainer}>
           <Icon name="search" size={20} color="#999" />
@@ -585,8 +766,21 @@ const styles = StyleSheet.create({
     color: '#1A1A1A',
   },
   headerRight: {
-    width: 40,
-    alignItems: 'flex-end',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  syncButton: {
+    width: 36,
+    height: 36,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 18,
+    backgroundColor: '#F5F5F5',
+  },
+  syncIndicator: {
+    width: 36,
+    height: 36,
   },
   countBadge: {
     backgroundColor: '#FFA500',
@@ -597,6 +791,19 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     borderRadius: 12,
     overflow: 'hidden',
+  },
+  offlineBanner: {
+    backgroundColor: '#FF9800',
+    padding: 10,
+    marginHorizontal: 20,
+    marginBottom: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  offlineBannerText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '500',
   },
   searchContainer: {
     flexDirection: 'row',

@@ -20,11 +20,188 @@ import axios from 'axios';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import serverUrl from '../config';
 
+// ========== OFFLINE MODULE IMPORTS ==========
+import OfflineDatabaseService from '../services/OfflineDatabaseService';
+import NetworkMonitorService from '../services/NetworkMonitorService';
+import OfflineSyncService from '../services/OfflineSyncService';
+// ========== END OFFLINE MODULE IMPORTS ==========
+
 const RequestEsealsForm = () => {
   const navigation = useNavigation();
   const [quantity, setQuantity] = useState('');
   const [reason, setReason] = useState('');
   const [loading, setLoading] = useState(false);
+
+  // ========== OFFLINE MODE STATE VARIABLES ==========
+  const [isOnline, setIsOnline] = useState(true);
+  // ========== END OFFLINE MODE STATE VARIABLES ==========
+
+  // ========== OFFLINE MODE INITIALIZATION ==========
+  React.useEffect(() => {
+    const initOfflineMode = async () => {
+      try {
+        // Initialize offline database
+        await OfflineDatabaseService.initDatabase();
+        console.log('✅ Offline database initialized for Request Eseals Form');
+
+        // Initialize network monitor
+        NetworkMonitorService.init();
+
+        // Start auto-sync service
+        await OfflineSyncService.startAutoSync();
+
+        // Listen for network changes
+        NetworkMonitorService.on('connectionChange', (online) => {
+          setIsOnline(online);
+          if (online) {
+            // Sync pending requests when coming online
+            syncPendingRequests();
+          }
+          if (!online) {
+            Snackbar.show({
+              text: 'Offline mode - Requests will be saved locally',
+              duration: 3000,
+              backgroundColor: '#FF9800',
+            });
+          }
+        });
+
+      } catch (error) {
+        console.error('❌ Offline mode init error:', error);
+      }
+    };
+
+    initOfflineMode();
+
+    return () => {
+      // Cleanup
+      NetworkMonitorService.cleanup();
+    };
+  }, []);
+  // ========== END OFFLINE MODE INITIALIZATION ==========
+
+  // ========== OFFLINE: Save request offline ==========
+  const saveRequestOffline = async (qty, reqReason) => {
+    try {
+      const offlineRequest = {
+        id: Date.now().toString(),
+        quantity: qty,
+        reason: reqReason,
+        timestamp: new Date().toISOString(),
+        status: 'PENDING',
+        syncStatus: 'QUEUED',
+        retryCount: 0
+      };
+
+      const existingRequests = await OfflineDatabaseService.getUserData('pending_eseal_requests') || [];
+      existingRequests.push(offlineRequest);
+      await OfflineDatabaseService.saveUserData('pending_eseal_requests', existingRequests);
+
+      // Also add to sync queue
+      await OfflineDatabaseService.addToSyncQueue('ESEAL_REQUEST', '/rru-inventory/replenishment/request', {
+        quantity: qty,
+        reason: reqReason
+      });
+
+      // Save to request history
+      const requestHistory = await OfflineDatabaseService.getUserData('eseal_request_history') || [];
+      requestHistory.unshift({
+        id: offlineRequest.id,
+        quantity: qty,
+        reason: reqReason,
+        timestamp: offlineRequest.timestamp,
+        status: 'QUEUED'
+      });
+      await OfflineDatabaseService.saveUserData('eseal_request_history', requestHistory.slice(0, 50)); // Keep last 50
+
+      console.log(`📦 E-seal request for ${qty} units saved offline`);
+      return true;
+    } catch (error) {
+      console.error('Error saving request offline:', error);
+      return false;
+    }
+  };
+  // ========== END OFFLINE SAVE REQUEST ==========
+
+  // ========== OFFLINE: Sync pending requests ==========
+  const syncPendingRequests = async () => {
+    if (!isOnline) return;
+
+    const pendingRequests = await OfflineDatabaseService.getUserData('pending_eseal_requests');
+    if (!pendingRequests || pendingRequests.length === 0) return;
+
+    console.log(`🔄 Processing ${pendingRequests.length} pending e-seal requests...`);
+    let successCount = 0;
+    let failCount = 0;
+
+    for (const request of pendingRequests) {
+      try {
+        const token = await AsyncStorage.getItem('accessToken');
+        if (!token) throw new Error('No token');
+
+        const payload = { quantity: request.quantity, reason: request.reason };
+        const response = await axios.post(
+          `${serverUrl}/rru-inventory/replenishment/request`,
+          payload,
+          { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } }
+        );
+
+        if (response.status === 200 || response.status === 201) {
+          successCount++;
+          console.log(`✅ Synced request for ${request.quantity} e-seals`);
+        } else {
+          failCount++;
+        }
+      } catch (error) {
+        console.error(`Error syncing request for ${request.quantity} e-seals:`, error);
+        failCount++;
+      }
+    }
+
+    // Clear processed requests
+    await OfflineDatabaseService.saveUserData('pending_eseal_requests', []);
+
+    if (successCount > 0) {
+      Snackbar.show({
+        text: `Synced ${successCount} e-seal request(s) to server`,
+        duration: 3000,
+        backgroundColor: '#4CAF50',
+      });
+    }
+  };
+  // ========== END OFFLINE SYNC REQUESTS ==========
+
+  // ========== OFFLINE: Manual sync for pending requests ==========
+  const manualSyncRequests = async () => {
+    if (!isOnline) {
+      Snackbar.show({
+        text: 'Cannot sync while offline',
+        duration: 3000,
+        backgroundColor: '#FF6B6B',
+      });
+      return;
+    }
+
+    setLoading(true);
+    try {
+      await syncPendingRequests();
+      Snackbar.show({
+        text: 'Requests synchronized!',
+        duration: 3000,
+        backgroundColor: '#4CAF50',
+      });
+    } catch (error) {
+      console.error('Manual sync error:', error);
+      Snackbar.show({
+        text: 'Sync failed',
+        duration: 3000,
+        backgroundColor: '#FF6B6B',
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+  // ========== END OFFLINE MANUAL SYNC ==========
 
   // Disable hardware back button if needed, or keep default (go back)
   // We'll keep default behaviour – user can press back without confirmation
@@ -50,6 +227,37 @@ const RequestEsealsForm = () => {
     }
 
     setLoading(true);
+
+    // ========== OFFLINE: Check if online ==========
+    const online = await NetworkMonitorService.isOnline();
+
+    if (!online) {
+      console.log('📴 Offline - saving e-seal request for later sync');
+      const saved = await saveRequestOffline(qty, reason.trim());
+      if (saved) {
+        Snackbar.show({
+          text: 'Request saved offline. Will sync when online.',
+          duration: 4000,
+          backgroundColor: '#FF9800',
+        });
+        // Reset form
+        setQuantity('');
+        setReason('');
+        setLoading(false);
+        // Navigate back to list
+        navigation.goBack();
+      } else {
+        Snackbar.show({
+          text: 'Failed to save request offline. Please try again.',
+          duration: 3000,
+          backgroundColor: '#FF6B6B',
+        });
+        setLoading(false);
+      }
+      return;
+    }
+    // ========== END OFFLINE CHECK ==========
+
     try {
       const token = await AsyncStorage.getItem('accessToken');
       if (!token) throw new Error('No token');
@@ -74,11 +282,34 @@ const RequestEsealsForm = () => {
       }
     } catch (error) {
       console.error('Request error:', error);
-      Snackbar.show({
-        text: error.response?.data?.message || 'Failed to submit request. Please try again.',
-        duration: 3000,
-        backgroundColor: '#FF6B6B',
-      });
+
+      // ========== OFFLINE: Save request offline on error ==========
+      if (error.response?.status === 500 || error.response?.status === 503 || error.message === 'Network Error') {
+        const saved = await saveRequestOffline(qty, reason.trim());
+        if (saved) {
+          Snackbar.show({
+            text: 'Server error. Request saved offline. Will sync when online.',
+            duration: 4000,
+            backgroundColor: '#FF9800',
+          });
+          setQuantity('');
+          setReason('');
+          navigation.goBack();
+        } else {
+          Snackbar.show({
+            text: error.response?.data?.message || 'Failed to submit request. Please try again.',
+            duration: 3000,
+            backgroundColor: '#FF6B6B',
+          });
+        }
+      } else {
+        Snackbar.show({
+          text: error.response?.data?.message || 'Failed to submit request. Please try again.',
+          duration: 3000,
+          backgroundColor: '#FF6B6B',
+        });
+      }
+      // ========== END OFFLINE SAVE ==========
     } finally {
       setLoading(false);
     }
@@ -87,6 +318,15 @@ const RequestEsealsForm = () => {
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#F8F9FA" />
+
+      {/* ========== OFFLINE: Network status banner ========== */}
+      {!isOnline && (
+        <View style={styles.offlineBanner}>
+          <Icon name="wifi-off" size={16} color="#FFF" />
+          <Text style={styles.offlineBannerText}>Offline Mode - Requests will be saved locally</Text>
+        </View>
+      )}
+      {/* ========== END OFFLINE BANNER ========== */}
 
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -162,6 +402,15 @@ const RequestEsealsForm = () => {
               You will be notified once approved or rejected.
             </Text>
           </View>
+
+          {/* ========== OFFLINE: Sync button when online ========== */}
+          {isOnline && (
+            <TouchableOpacity style={styles.syncButton} onPress={manualSyncRequests}>
+              <Icon name="sync" size={20} color="#FFA500" />
+              <Text style={styles.syncButtonText}>Sync Pending Requests</Text>
+            </TouchableOpacity>
+          )}
+          {/* ========== END OFFLINE SYNC BUTTON ========== */}
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -248,6 +497,39 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   infoText: { flex: 1, fontSize: 12, color: '#B76E00', lineHeight: 16 },
+  // ========== OFFLINE STYLES ==========
+  offlineBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FF9800',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    gap: 8,
+  },
+  offlineBannerText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '500',
+    flex: 1,
+  },
+  syncButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FFF9E6',
+    marginHorizontal: 20,
+    marginTop: 16,
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#FFA500',
+    gap: 8,
+  },
+  syncButtonText: {
+    color: '#FFA500',
+    fontSize: 14,
+    fontWeight: '600',
+  },
 });
 
 export default RequestEsealsForm;

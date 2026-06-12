@@ -28,6 +28,11 @@ import * as Animatable from 'react-native-animatable';
 // ✅ i18n import
 import { useTranslation } from 'react-i18next';
 
+// ========== OFFLINE MODULE IMPORTS ==========
+import OfflineDatabaseService from '../services/OfflineDatabaseService';
+import NetworkMonitorService from '../services/NetworkMonitorService';
+// ========== END OFFLINE MODULE IMPORTS ==========
+
 const { width, height } = Dimensions.get('window');
 
 // ========== TOKEN REFRESH HELPER FUNCTION ==========
@@ -231,6 +236,10 @@ const Login = () => {
   const fadeAnim = new Animated.Value(0);
   const slideAnim = new Animated.Value(50);
 
+  // ========== OFFLINE MODE STATE VARIABLES ==========
+  const [isOnline, setIsOnline] = useState(true);
+  // ========== END OFFLINE MODE STATE VARIABLES ==========
+
   useEffect(() => {
     Animated.parallel([
       Animated.timing(fadeAnim, {
@@ -253,6 +262,42 @@ const Login = () => {
       return () => setIsVisible(false);
     }, [])
   );
+
+  // ========== OFFLINE MODE INITIALIZATION ==========
+  useEffect(() => {
+    const initOfflineMode = async () => {
+      try {
+        // Initialize offline database
+        await OfflineDatabaseService.initDatabase();
+        console.log('✅ Offline database initialized for Login Screen');
+
+        // Initialize network monitor
+        NetworkMonitorService.init();
+
+        // Listen for network changes
+        NetworkMonitorService.on('connectionChange', (online) => {
+          setIsOnline(online);
+          if (!online) {
+            Snackbar.show({
+              text: t('login.offline_mode', { defaultValue: 'Offline mode - Login requires internet connection' }),
+              duration: 3000,
+              backgroundColor: '#FF9800',
+            });
+          }
+        });
+      } catch (error) {
+        console.error('❌ Offline mode init error:', error);
+      }
+    };
+
+    initOfflineMode();
+
+    return () => {
+      // Cleanup
+      NetworkMonitorService.cleanup();
+    };
+  }, []);
+  // ========== END OFFLINE MODE INITIALIZATION ==========
 
   /** Request camera permission */
   useEffect(() => {
@@ -316,6 +361,19 @@ const Login = () => {
       });
       return;
     }
+
+    // ========== OFFLINE: Check if online ==========
+    const online = await NetworkMonitorService.isOnline();
+
+    if (!online) {
+      Snackbar.show({
+        text: t('login.errors.offline_login', { defaultValue: 'Cannot login while offline. Please connect to the internet.' }),
+        duration: 4000,
+        backgroundColor: '#FF6B6B',
+      });
+      return;
+    }
+    // ========== END OFFLINE CHECK ==========
 
     setLoading(true);
 
@@ -382,6 +440,13 @@ const Login = () => {
         await AsyncStorage.setItem('userLanguage', currentLanguage);
         console.log('💾 Saved language preference on login:', currentLanguage);
 
+        // ========== OFFLINE: Save user credentials for offline access? ==========
+        // We don't store passwords offline for security reasons
+        // But we can store a flag that user has logged in before
+        await AsyncStorage.setItem('hasLoggedInBefore', 'true');
+        await AsyncStorage.setItem('lastLoggedInEmail', email);
+        // ========== END OFFLINE SAVE ==========
+
         setUserLoggedIn(data);
 
         await requestPermissionAndToken(data.id, data.accessToken);
@@ -418,12 +483,15 @@ const Login = () => {
       }
     } catch (error) {
       console.log('DEBUG: Network or Request Error:', error);
+
+      // ========== OFFLINE: Offer offline mode hint ==========
       Snackbar.show({
-        // ✅ Translated network error message
         text: t('login.errors.network_error', { defaultValue: 'Something went wrong. Please check your connection.' }),
-        duration: 3000,
+        duration: 4000,
         backgroundColor: '#FF6B6B',
       });
+      // ========== END OFFLINE OFFER ==========
+
       setLoading(false);
     }
   };
@@ -515,6 +583,14 @@ const Login = () => {
               <Text style={[styles.langText, i18n.language === 'fr' && styles.langTextActive]}>FR</Text>
             </TouchableOpacity>
           </View>
+
+          {/* ========== OFFLINE: Network status banner ========== */}
+          {!isOnline && (
+            <View style={styles.offlineBanner}>
+              <Text style={styles.offlineBannerText}>📴 Offline Mode - Please connect to the internet to login</Text>
+            </View>
+          )}
+          {/* ========== END OFFLINE BANNER ========== */}
 
           {/* Email Input */}
           <Animatable.View
@@ -828,6 +904,18 @@ const styles = StyleSheet.create({
     color: '#fff',
   },
   // ✅ End Language Switcher Styles
+  offlineBanner: {
+    backgroundColor: '#FF9800',
+    padding: 10,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  offlineBannerText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '500',
+  },
   inputContainer: {
     marginBottom: 20,
   },

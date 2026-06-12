@@ -29,6 +29,12 @@ import { useTranslation } from 'react-i18next';
 // ✅ Import global token refresh service
 import { refreshAccessToken, addTokenRefreshListener } from '../services/TokenService';
 
+// ========== OFFLINE MODULE IMPORTS ==========
+import OfflineDatabaseService from '../services/OfflineDatabaseService';
+import NetworkMonitorService from '../services/NetworkMonitorService';
+import OfflineSyncService from '../services/OfflineSyncService';
+// ========== END OFFLINE MODULE IMPORTS ==========
+
 const { width, height } = Dimensions.get('window');
 
 // ✅ Helper function to get language header
@@ -96,6 +102,11 @@ const GeofencesScreen = () => {
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(30)).current;
 
+  // ========== OFFLINE MODE STATE VARIABLES ==========
+  const [isOnline, setIsOnline] = useState(true);
+  const [isSyncing, setIsSyncing] = useState(false);
+  // ========== END OFFLINE MODE STATE VARIABLES ==========
+
   // ✅ Listen for token refresh events
   useEffect(() => {
     const removeListener = addTokenRefreshListener((newToken) => {
@@ -103,6 +114,121 @@ const GeofencesScreen = () => {
     });
     return () => removeListener();
   }, []);
+
+  // ========== OFFLINE MODE INITIALIZATION ==========
+  useEffect(() => {
+    const initOfflineMode = async () => {
+      try {
+        // Initialize offline database
+        await OfflineDatabaseService.initDatabase();
+        console.log('✅ Offline database initialized for Geofences Screen');
+
+        // Initialize network monitor
+        NetworkMonitorService.init();
+
+        // Start auto-sync service
+        await OfflineSyncService.startAutoSync();
+
+        // Listen for network changes
+        NetworkMonitorService.on('connectionChange', (online) => {
+          setIsOnline(online);
+          if (online) {
+            Snackbar.show({
+              text: t('geofences.back_online', { defaultValue: 'Back online! Syncing data...' }),
+              duration: 2000,
+              backgroundColor: '#4CAF50',
+            });
+            // Auto-refresh when coming back online
+            fetchGeofences();
+          } else {
+            Snackbar.show({
+              text: t('geofences.offline_mode', { defaultValue: 'Offline mode - using cached geofences' }),
+              duration: 3000,
+              backgroundColor: '#FF9800',
+            });
+          }
+        });
+
+        // Load initial data
+        await fetchGeofences();
+      } catch (error) {
+        console.error('❌ Offline mode init error:', error);
+      }
+    };
+
+    initOfflineMode();
+
+    return () => {
+      // Cleanup
+      OfflineSyncService.stopAutoSync();
+      NetworkMonitorService.cleanup();
+    };
+  }, []);
+  // ========== END OFFLINE MODE INITIALIZATION ==========
+
+  // ========== OFFLINE: Cache geofences data ==========
+  const cacheGeofencesData = async (geofencesData) => {
+    try {
+      await OfflineDatabaseService.saveUserData('geofences_list', {
+        data: geofencesData,
+        timestamp: Date.now()
+      });
+      console.log('✅ Geofences data cached offline');
+    } catch (error) {
+      console.error('Error caching geofences data:', error);
+    }
+  };
+  // ========== END OFFLINE CACHE HELPER ==========
+
+  // ========== OFFLINE: Load cached geofences ==========
+  const loadCachedGeofences = async () => {
+    try {
+      const cached = await OfflineDatabaseService.getUserData('geofences_list');
+      if (cached && cached.data && cached.data.length > 0) {
+        setGeofences(cached.data);
+        console.log('📦 Loaded cached geofences');
+        return true;
+      }
+      return false;
+    } catch (error) {
+      console.error('Error loading cached geofences:', error);
+      return false;
+    }
+  };
+  // ========== END OFFLINE LOAD CACHED ==========
+
+  // ========== OFFLINE: Manual sync function ==========
+  const manualSync = async () => {
+    if (!isOnline) {
+      Snackbar.show({
+        text: t('geofences.cannot_sync_offline', { defaultValue: 'Cannot sync while offline' }),
+        duration: 3000,
+        backgroundColor: '#FF6B6B',
+      });
+      return;
+    }
+
+    setIsSyncing(true);
+    try {
+      await OfflineSyncService.syncAll();
+      await fetchGeofences(true);
+      Snackbar.show({
+        text: t('geofences.sync_complete', { defaultValue: 'Sync completed successfully!' }),
+        duration: 3000,
+        backgroundColor: '#4CAF50',
+      });
+    } catch (error) {
+      console.error('Manual sync error:', error);
+      Snackbar.show({
+        text: t('geofences.sync_failed', { defaultValue: 'Sync failed' }),
+        duration: 3000,
+        backgroundColor: '#FF6B6B',
+      });
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+  // ========== END OFFLINE MANUAL SYNC ==========
 
   useEffect(() => {
     Animated.parallel([
@@ -135,6 +261,19 @@ const GeofencesScreen = () => {
     try {
       if (!isRefresh) setLoading(true);
 
+      // ========== OFFLINE: Check if online ==========
+      const online = await NetworkMonitorService.isOnline();
+
+      if (!online) {
+        const hasCached = await loadCachedGeofences();
+        if (hasCached) {
+          setLoading(false);
+          setRefreshing(false);
+          return;
+        }
+      }
+      // ========== END OFFLINE CHECK ==========
+
       // ✅ FIXED: Changed from axios.get to 'get' string method
       const response = await authenticatedAxios(
         'get',  // <-- FIXED: Use string method name
@@ -144,18 +283,38 @@ const GeofencesScreen = () => {
         i18n
       );
 
+      let geofencesData = [];
       if (response.data && response.data.content) {
-        setGeofences(response.data.content);
+        geofencesData = response.data.content;
+        setGeofences(geofencesData);
       } else if (response.data && Array.isArray(response.data)) {
-        setGeofences(response.data);
+        geofencesData = response.data;
+        setGeofences(geofencesData);
       }
+
+      // ========== OFFLINE: Cache fetched geofences ==========
+      await cacheGeofencesData(geofencesData);
+      // ========== END OFFLINE CACHE ==========
+
     } catch (error) {
       console.error('Failed to fetch geofences:', error);
-      Snackbar.show({
-        text: t('geofences.errors.load_failed', { defaultValue: 'Failed to load geofences' }),
-        duration: 3000,
-        backgroundColor: '#FF6B6B',
-      });
+
+      // ========== OFFLINE: Fallback to cached geofences on error ==========
+      const hasCached = await loadCachedGeofences();
+      if (!hasCached) {
+        Snackbar.show({
+          text: t('geofences.errors.load_failed', { defaultValue: 'Failed to load geofences' }),
+          duration: 3000,
+          backgroundColor: '#FF6B6B',
+        });
+      } else {
+        Snackbar.show({
+          text: t('geofences.using_cached', { defaultValue: 'Using cached geofences (offline mode)' }),
+          duration: 3000,
+          backgroundColor: '#FF9800',
+        });
+      }
+      // ========== END OFFLINE FALLBACK ==========
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -164,7 +323,13 @@ const GeofencesScreen = () => {
 
   const onRefresh = () => {
     setRefreshing(true);
-    fetchGeofences(true);
+    // ========== OFFLINE: Manual sync on refresh ==========
+    if (isOnline) {
+      manualSync();
+    } else {
+      fetchGeofences(true);
+    }
+    // ========== END OFFLINE MANUAL SYNC ==========
   };
 
   const getFilteredGeofences = () => {
@@ -399,9 +564,26 @@ const GeofencesScreen = () => {
           </TouchableOpacity>
           <Text style={styles.headerTitle}>{t('geofences.title', { defaultValue: 'Geofences' })}</Text>
           <View style={styles.headerRight}>
+            {/* ========== OFFLINE: Manual sync button ========== */}
+            {isSyncing ? (
+              <ActivityIndicator size="small" color="#FFA500" style={styles.syncIndicator} />
+            ) : (
+              <TouchableOpacity onPress={manualSync} style={styles.syncButton}>
+                <Icon name="sync" size={20} color={isOnline ? "#4CAF50" : "#999"} />
+              </TouchableOpacity>
+            )}
+            {/* ========== END OFFLINE SYNC BUTTON ========== */}
             <Text style={styles.countBadge}>{filteredGeofences.length}</Text>
           </View>
         </View>
+
+        {/* ========== OFFLINE: Network status banner ========== */}
+        {!isOnline && (
+          <View style={styles.offlineBanner}>
+            <Text style={styles.offlineBannerText}>📴 Offline Mode - Using cached geofences</Text>
+          </View>
+        )}
+        {/* ========== END OFFLINE BANNER ========== */}
 
         <View style={styles.searchContainer}>
           <Icon name="search" size={20} color="#999" />
@@ -742,8 +924,21 @@ const styles = StyleSheet.create({
     color: '#1A1A1A',
   },
   headerRight: {
-    width: 40,
-    alignItems: 'flex-end',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  syncButton: {
+    width: 36,
+    height: 36,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 18,
+    backgroundColor: '#F5F5F5',
+  },
+  syncIndicator: {
+    width: 36,
+    height: 36,
   },
   countBadge: {
     backgroundColor: '#FFA500',
@@ -754,6 +949,19 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     borderRadius: 12,
     overflow: 'hidden',
+  },
+  offlineBanner: {
+    backgroundColor: '#FF9800',
+    padding: 10,
+    marginHorizontal: 20,
+    marginBottom: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  offlineBannerText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '500',
   },
   searchContainer: {
     flexDirection: 'row',

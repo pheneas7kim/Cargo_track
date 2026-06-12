@@ -22,6 +22,12 @@ import { useTranslation } from 'react-i18next';
 // ✅ Import global token refresh service
 import { refreshAccessToken, addTokenRefreshListener } from '../services/TokenService';
 
+// ========== OFFLINE MODULE IMPORTS ==========
+import OfflineDatabaseService from '../services/OfflineDatabaseService';
+import NetworkMonitorService from '../services/NetworkMonitorService';
+import OfflineSyncService from '../services/OfflineSyncService';
+// ========== END OFFLINE MODULE IMPORTS ==========
+
 const { width, height } = Dimensions.get('window');
 const SCAN_SIZE = width * 0.7;
 
@@ -107,6 +113,11 @@ const MasterSlaveMapper = ({ navigation }) => {
   const [viewMode, setViewMode] = useState('DASHBOARD'); // DASHBOARD, SCANNER, SUMMARY
   const [scanType, setScanType] = useState(null);
 
+  // ========== OFFLINE MODE STATE VARIABLES ==========
+  const [isOnline, setIsOnline] = useState(true);
+  const [offlineMappingsAvailable, setOfflineMappingsAvailable] = useState(false);
+  // ========== END OFFLINE MODE STATE VARIABLES ==========
+
   // ✅ Listen for token refresh events
   useEffect(() => {
     const removeListener = addTokenRefreshListener((newToken) => {
@@ -114,6 +125,210 @@ const MasterSlaveMapper = ({ navigation }) => {
     });
     return () => removeListener();
   }, []);
+
+  // ========== OFFLINE MODE INITIALIZATION ==========
+  useEffect(() => {
+    const initOfflineMode = async () => {
+      try {
+        // Initialize offline database
+        await OfflineDatabaseService.initDatabase();
+        console.log('✅ Offline database initialized for Master Slave Mapper');
+
+        // Initialize network monitor
+        NetworkMonitorService.init();
+
+        // Start auto-sync service
+        await OfflineSyncService.startAutoSync();
+
+        // Listen for network changes
+        NetworkMonitorService.on('connectionChange', (online) => {
+          setIsOnline(online);
+          if (online) {
+            Snackbar.show({
+              text: t('master_slave.back_online', { defaultValue: 'Back online! Syncing mappings...' }),
+              duration: 2000,
+              backgroundColor: '#4CAF50',
+            });
+            // Sync offline mappings when back online
+            syncOfflineMappings();
+          } else {
+            Snackbar.show({
+              text: t('master_slave.offline_mode', { defaultValue: 'Offline mode - Mappings saved locally' }),
+              duration: 3000,
+              backgroundColor: '#FF9800',
+            });
+          }
+        });
+
+        // Load cached mappings from offline database
+        await loadCachedMappings();
+
+      } catch (error) {
+        console.error('❌ Offline mode init error:', error);
+      }
+    };
+
+    initOfflineMode();
+
+    return () => {
+      // Cleanup
+      NetworkMonitorService.cleanup();
+    };
+  }, []);
+  // ========== END OFFLINE MODE INITIALIZATION ==========
+
+  // ========== OFFLINE: Load cached mappings from offline database ==========
+  const loadCachedMappings = async () => {
+    try {
+      const cachedMappings = await OfflineDatabaseService.getUserData('cached_mappings');
+      if (cachedMappings && cachedMappings.mappings && cachedMappings.mappings.length > 0) {
+        setAllMappings(cachedMappings.mappings);
+        setOfflineMappingsAvailable(true);
+        console.log(`📦 Loaded ${cachedMappings.mappings.length} mappings from offline cache`);
+      }
+    } catch (error) {
+      console.error('Error loading cached mappings:', error);
+    }
+  };
+  // ========== END OFFLINE LOAD CACHED MAPPINGS ==========
+
+  // ========== OFFLINE: Save mappings to offline database ==========
+  const saveMappingsToOfflineCache = async (mappingsList) => {
+    try {
+      await OfflineDatabaseService.saveUserData('cached_mappings', {
+        mappings: mappingsList,
+        timestamp: Date.now(),
+        count: mappingsList.length
+      });
+      console.log(`💾 Saved ${mappingsList.length} mappings to offline cache`);
+      setOfflineMappingsAvailable(true);
+    } catch (error) {
+      console.error('Error saving mappings to cache:', error);
+    }
+  };
+  // ========== END OFFLINE SAVE TO CACHE ==========
+
+  // ========== OFFLINE: Save pending mapping for later sync ==========
+  const saveMappingOffline = async (masterSN, masterTypeParam, slavesList, response = null) => {
+    try {
+      const offlineMapping = {
+        id: Date.now().toString(),
+        master: masterSN,
+        masterType: masterTypeParam,
+        slaves: [...slavesList],
+        timestamp: new Date().toLocaleString(),
+        response: response,
+        syncStatus: 'PENDING',
+        createdAt: new Date().toISOString()
+      };
+
+      const existingMappings = await OfflineDatabaseService.getUserData('pending_mappings') || [];
+      existingMappings.push(offlineMapping);
+      await OfflineDatabaseService.saveUserData('pending_mappings', existingMappings);
+
+      // Also add to sync queue
+      await OfflineDatabaseService.addToSyncQueue('MAPPING', '/joint-tech/command', {
+        master: masterSN,
+        slaves: slavesList,
+        command: `(${masterSN},1,001,WLNET,1,1,${slavesList.length},${slavesList.join(',')})`
+      });
+
+      console.log(`📦 Mapping for master ${masterSN} saved offline for later sync`);
+      return true;
+    } catch (error) {
+      console.error('Error saving mapping offline:', error);
+      return false;
+    }
+  };
+  // ========== END OFFLINE SAVE MAPPING ==========
+
+  // ========== OFFLINE: Sync pending mappings ==========
+  const syncOfflineMappings = async () => {
+    if (!isOnline) return;
+
+    const pendingMappings = await OfflineDatabaseService.getUserData('pending_mappings');
+    if (!pendingMappings || pendingMappings.length === 0) return;
+
+    console.log(`🔄 Processing ${pendingMappings.length} pending mappings...`);
+    let successCount = 0;
+    let failCount = 0;
+
+    for (const mapping of pendingMappings) {
+      try {
+        // Only sync Joint Tech mappings (API only supports Joint Tech)
+        if (mapping.masterType === 'JOINT_TECH') {
+          const cleanedSlaves = mapping.slaves.map(slave => slave.replace(/^0+/, ''));
+          const slaveString = cleanedSlaves.join(',');
+          const command = `(${mapping.master},1,001,WLNET,1,1,${mapping.slaves.length},${slaveString})`;
+          const url = `${serverURL}joint-tech/command/${mapping.master}?command=${encodeURIComponent(command)}`;
+
+          const response = await authenticatedAxios(
+            'get',
+            { url: url, headers: { 'Accept': 'application/json' } },
+            i18n
+          );
+
+          if (response.status === 200) {
+            successCount++;
+            console.log(`✅ Synced mapping for master ${mapping.master}`);
+          } else {
+            failCount++;
+          }
+        } else {
+          // Telematics - just mark as synced (no API endpoint)
+          successCount++;
+        }
+      } catch (error) {
+        console.error(`Error syncing mapping for master ${mapping.master}:`, error);
+        failCount++;
+      }
+    }
+
+    // Clear processed mappings from storage
+    await OfflineDatabaseService.saveUserData('pending_mappings', []);
+
+    if (successCount > 0) {
+      Snackbar.show({
+        text: t('master_slave.synced_mappings', { defaultValue: 'Synced {{count}} mapping(s) to server', count: successCount }).replace('{{count}}', successCount.toString()),
+        duration: 3000,
+        backgroundColor: '#4CAF50',
+      });
+    }
+  };
+  // ========== END OFFLINE SYNC MAPPINGS ==========
+
+  // ========== OFFLINE: Manual sync for mappings ==========
+  const manualSyncMappings = async () => {
+    if (!isOnline) {
+      Snackbar.show({
+        text: t('master_slave.cannot_sync_offline', { defaultValue: 'Cannot sync while offline' }),
+        duration: 3000,
+        backgroundColor: '#FF6B6B',
+      });
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      await syncOfflineMappings();
+      await loadCachedMappings();
+      Snackbar.show({
+        text: t('master_slave.sync_complete', { defaultValue: 'Mappings synchronized!' }),
+        duration: 3000,
+        backgroundColor: '#4CAF50',
+      });
+    } catch (error) {
+      console.error('Manual sync error:', error);
+      Snackbar.show({
+        text: t('master_slave.sync_failed', { defaultValue: 'Sync failed' }),
+        duration: 3000,
+        backgroundColor: '#FF6B6B',
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+  // ========== END OFFLINE MANUAL SYNC ==========
 
   console.log('--- COMPONENT RENDERED ---');
 
@@ -237,7 +452,7 @@ const MasterSlaveMapper = ({ navigation }) => {
     }
   };
 
-  // Send command to Joint Tech device (10 digits - GET request with fixed command) - UPDATED to use authenticatedAxios
+  // Send command to Joint Tech device (10 digits - GET request) - UPDATED to use authenticatedAxios
   const sendJointTechCommand = async (deviceSn) => {
     try {
       const url = `${serverURL}joint-tech/command/${deviceSn}?command=${encodeURIComponent(
@@ -562,27 +777,72 @@ const MasterSlaveMapper = ({ navigation }) => {
     }
 
     setIsLoading(true);
+
+    // ========== OFFLINE: Check if online ==========
+    const online = await NetworkMonitorService.isOnline();
+    // ========== END OFFLINE CHECK ==========
+
     try {
-      const response = await sendMapping(slaves);
+      let response = null;
+      let mappingSuccess = false;
 
-      // Save to AsyncStorage
-      await saveMasterToStorage(master, slaves);
+      // ========== OFFLINE: Handle based on connectivity ==========
+      if (!online) {
+        console.log('📴 Offline - saving mapping for later sync');
+        await saveMappingOffline(master, masterType, slaves);
+        mappingSuccess = true;
+        Snackbar.show({
+          text: t('master_slave.offline_mapping_saved', { defaultValue: 'Mapping saved offline. Will sync when online.' }),
+          duration: 4000,
+          backgroundColor: '#FF9800',
+        });
+      } else {
+        try {
+          response = await sendMapping(slaves);
+          mappingSuccess = true;
+        } catch (apiError) {
+          console.error('API mapping failed, saving offline:', apiError);
+          await saveMappingOffline(master, masterType, slaves);
+          mappingSuccess = true;
+          Snackbar.show({
+            text: t('master_slave.mapping_saved_offline_sync_later', { defaultValue: 'Mapping saved offline due to server error. Will sync later.' }),
+            duration: 4000,
+            backgroundColor: '#FF9800',
+          });
+        }
+      }
+      // ========== END OFFLINE HANDLING ==========
 
-      // Save to global list for tracking
-      const newMapping = {
-        id: Date.now().toString(),
-        master: master,
-        masterType: masterType,
-        slaves: [...slaves],
-        timestamp: new Date().toLocaleString(),
-        response: response,
-      };
-      setAllMappings(prev => [newMapping, ...prev]);
+      if (mappingSuccess) {
+        // Save to AsyncStorage
+        await saveMasterToStorage(master, slaves);
 
-      Snackbar.show({ text: t('master_slave.success.mapping_complete', { defaultValue: '✓ Successfully mapped {{count}} slave(s) to master {{master}}', count: slaves.length, master: master }).replace('{{count}}', slaves.length.toString()).replace('{{master}}', master), backgroundColor: '#4CAF50', duration: 4000 });
+        // Save to global list for tracking
+        const newMapping = {
+          id: Date.now().toString(),
+          master: master,
+          masterType: masterType,
+          slaves: [...slaves],
+          timestamp: new Date().toLocaleString(),
+          response: response,
+          syncStatus: !online ? 'PENDING' : 'SYNCED'
+        };
 
-      // Reset current fields for next truck
-      resetCurrentSession();
+        const updatedMappings = [newMapping, ...allMappings];
+        setAllMappings(updatedMappings);
+
+        // Save to offline cache
+        await saveMappingsToOfflineCache(updatedMappings);
+
+        Snackbar.show({
+          text: t('master_slave.success.mapping_complete', { defaultValue: '✓ Successfully mapped {{count}} slave(s) to master {{master}}', count: slaves.length, master: master }).replace('{{count}}', slaves.length.toString()).replace('{{master}}', master),
+          backgroundColor: '#4CAF50',
+          duration: 4000
+        });
+
+        // Reset current fields for next truck
+        resetCurrentSession();
+      }
     } catch (error) {
       console.error('Mapping failed:', error);
       Snackbar.show({ text: t('master_slave.errors.mapping_failed', { defaultValue: 'Mapping failed: {{message}}', message: error.message }).replace('{{message}}', error.message), backgroundColor: '#FF6B6B', duration: 4000 });
@@ -599,8 +859,9 @@ const MasterSlaveMapper = ({ navigation }) => {
     setViewMode('DASHBOARD');
   };
 
-  const clearHistory = () => {
+  const clearHistory = async () => {
     setAllMappings([]);
+    await saveMappingsToOfflineCache([]);
     Snackbar.show({ text: t('master_slave.success.history_cleared', { defaultValue: 'History cleared' }), backgroundColor: '#7F8C8D' });
   };
 
@@ -625,6 +886,22 @@ const MasterSlaveMapper = ({ navigation }) => {
           </View>
         </View>
 
+        {/* ========== OFFLINE: Sync banner ========== */}
+        {!isOnline && (
+          <View style={styles.offlineBanner}>
+            <Ionicons name="wifi-off" size={16} color="#FFF" />
+            <Text style={styles.offlineBannerText}>{t('master_slave.offline_banner', { defaultValue: 'Offline Mode - Mappings saved locally' })}</Text>
+          </View>
+        )}
+
+        {isOnline && (
+          <TouchableOpacity style={styles.syncBanner} onPress={manualSyncMappings}>
+            <Ionicons name="sync" size={16} color="#FFA500" />
+            <Text style={styles.syncBannerText}>{t('master_slave.sync_banner', { defaultValue: 'Tap to sync pending mappings' })}</Text>
+          </TouchableOpacity>
+        )}
+        {/* ========== END OFFLINE BANNER ========== */}
+
         <FlatList
           style={{ width: '100%', marginTop: 10 }}
           data={allMappings}
@@ -638,7 +915,16 @@ const MasterSlaveMapper = ({ navigation }) => {
                   </Text>
                   <Text style={styles.summaryMaster}>{t('master_slave.summary.master_label', { defaultValue: 'Master' })}: {item.master}</Text>
                 </View>
-                <Text style={styles.timestamp}>{item.timestamp}</Text>
+                <View style={styles.summaryHeaderRight}>
+                  <Text style={styles.timestamp}>{item.timestamp}</Text>
+                  {/* ========== OFFLINE: Sync status indicator ========== */}
+                  {item.syncStatus === 'PENDING' && (
+                    <View style={styles.pendingBadge}>
+                      <Text style={styles.pendingBadgeText}>📴 Pending</Text>
+                    </View>
+                  )}
+                  {/* ========== END OFFLINE STATUS ========== */}
+                </View>
               </View>
               <Text style={styles.summarySlaves}>
                 {t('master_slave.summary.slaves_label', { defaultValue: 'Slaves ({{count}})' }).replace('{{count}}', item.slaves.length.toString())}: {item.slaves.join(', ')}
@@ -757,6 +1043,15 @@ const MasterSlaveMapper = ({ navigation }) => {
           <Text style={styles.headerSubtitle}>{t('master_slave.dashboard.subtitle', { defaultValue: 'Map sensors to master device' })}</Text>
         </View>
       </View>
+
+      {/* ========== OFFLINE: Network status banner ========== */}
+      {!isOnline && (
+        <View style={styles.dashboardOfflineBanner}>
+          <Ionicons name="wifi-off" size={14} color="#FF9800" />
+          <Text style={styles.dashboardOfflineBannerText}>{t('master_slave.offline_mode_dashboard', { defaultValue: 'Offline Mode - Mappings saved locally' })}</Text>
+        </View>
+      )}
+      {/* ========== END OFFLINE BANNER ========== */}
 
       {/* Master Card */}
       <View style={styles.infoCard}>
@@ -928,6 +1223,73 @@ const styles = StyleSheet.create({
     color: '#666',
     marginTop: 4,
   },
+  // ========== OFFLINE STYLES ==========
+  offlineBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FF9800',
+    padding: 10,
+    marginHorizontal: 16,
+    marginTop: 12,
+    borderRadius: 8,
+    gap: 8,
+  },
+  offlineBannerText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '500',
+    flex: 1,
+  },
+  syncBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFF3E0',
+    padding: 10,
+    marginHorizontal: 16,
+    marginTop: 12,
+    borderRadius: 8,
+    gap: 8,
+    borderWidth: 1,
+    borderColor: '#FFA500',
+  },
+  syncBannerText: {
+    color: '#FFA500',
+    fontSize: 12,
+    fontWeight: '500',
+    flex: 1,
+  },
+  dashboardOfflineBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFF3E0',
+    padding: 8,
+    marginHorizontal: 16,
+    marginTop: 8,
+    borderRadius: 8,
+    gap: 8,
+  },
+  dashboardOfflineBannerText: {
+    color: '#FF9800',
+    fontSize: 11,
+    fontWeight: '500',
+    flex: 1,
+  },
+  pendingBadge: {
+    backgroundColor: '#FF9800',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 8,
+    marginTop: 4,
+  },
+  pendingBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 9,
+    fontWeight: '600',
+  },
+  summaryHeaderRight: {
+    alignItems: 'flex-end',
+  },
+  // ========== END OFFLINE STYLES ==========
   infoCard: {
     backgroundColor: '#FFFFFF',
     borderRadius: 16,

@@ -21,6 +21,11 @@ import * as Animatable from 'react-native-animatable';
 import { useTranslation } from 'react-i18next';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+// ========== OFFLINE MODULE IMPORTS ==========
+import OfflineDatabaseService from '../services/OfflineDatabaseService';
+import NetworkMonitorService from '../services/NetworkMonitorService';
+// ========== END OFFLINE MODULE IMPORTS ==========
+
 const { width, height } = Dimensions.get('window');
 
 // ✅ Helper function to get language header
@@ -42,6 +47,71 @@ const ForgotPassword = () => {
   const [emailFocused, setEmailFocused] = useState(false);
   const [isVisible, setIsVisible] = useState(true);
 
+  // ========== OFFLINE MODE STATE VARIABLES ==========
+  const [isOnline, setIsOnline] = useState(true);
+  // ========== END OFFLINE MODE STATE VARIABLES ==========
+
+  // ========== OFFLINE MODE INITIALIZATION ==========
+  React.useEffect(() => {
+    const initOfflineMode = async () => {
+      try {
+        // Initialize offline database
+        await OfflineDatabaseService.initDatabase();
+        console.log('✅ Offline database initialized for Forgot Password Screen');
+
+        // Initialize network monitor
+        NetworkMonitorService.init();
+
+        // Listen for network changes
+        NetworkMonitorService.on('connectionChange', (online) => {
+          setIsOnline(online);
+          if (!online) {
+            console.log('📴 Offline mode in Forgot Password - Reset requests will be saved locally');
+          }
+        });
+      } catch (error) {
+        console.error('❌ Offline mode init error:', error);
+      }
+    };
+
+    initOfflineMode();
+
+    return () => {
+      // Cleanup
+      NetworkMonitorService.cleanup();
+    };
+  }, []);
+  // ========== END OFFLINE MODE INITIALIZATION ==========
+
+  // ========== OFFLINE: Save reset request offline ==========
+  const saveResetRequestOffline = async (emailAddress) => {
+    try {
+      const offlineRequest = {
+        id: Date.now(),
+        email: emailAddress,
+        timestamp: new Date().toISOString(),
+        status: 'PENDING',
+        syncStatus: 'PENDING'
+      };
+
+      const existingRequests = await OfflineDatabaseService.getUserData('pending_password_resets') || [];
+      existingRequests.push(offlineRequest);
+      await OfflineDatabaseService.saveUserData('pending_password_resets', existingRequests);
+
+      // Also add to sync queue
+      await OfflineDatabaseService.addToSyncQueue('PASSWORD_RESET', '/api/auth/forgotpassword', {
+        userEmail: emailAddress
+      });
+
+      console.log('📦 Password reset request saved offline');
+      return true;
+    } catch (error) {
+      console.error('Error saving reset request offline:', error);
+      return false;
+    }
+  };
+  // ========== END OFFLINE SAVE REQUEST ==========
+
   // Handle screen focus for re-entry animations
   useFocusEffect(
     React.useCallback(() => {
@@ -62,6 +132,36 @@ const ForgotPassword = () => {
     }
 
     setLoading(true);
+
+    // ========== OFFLINE: Check if online ==========
+    const online = await NetworkMonitorService.isOnline();
+
+    if (!online) {
+      // Save reset request offline
+      const saved = await saveResetRequestOffline(email);
+      if (saved) {
+        Snackbar.show({
+          text: t('forgot_password.success.saved_offline', { defaultValue: 'Reset request saved offline. Will process when online.' }),
+          duration: 4000,
+          backgroundColor: '#FF9800',
+        });
+        setLoading(false);
+        navigation.reset({
+          index: 0,
+          routes: [{ name: 'Login' }],
+        });
+      } else {
+        Snackbar.show({
+          text: t('forgot_password.errors.save_offline_failed', { defaultValue: 'Failed to save request offline. Please try again.' }),
+          duration: 3000,
+          backgroundColor: '#FF6B6B',
+        });
+        setLoading(false);
+      }
+      return;
+    }
+    // ========== END OFFLINE CHECK ==========
+
     try {
       const language = await getLanguageHeader(i18n);
 
@@ -111,6 +211,7 @@ const ForgotPassword = () => {
 
         console.error('❌ Password reset failed:', errorData);
 
+        // ========== OFFLINE: Offer to save offline on error ==========
         Snackbar.show({
           text: t('forgot_password.errors.invalid_email', { defaultValue: 'Invalid Email.' }),
           duration: 3000,
@@ -122,11 +223,38 @@ const ForgotPassword = () => {
     } catch (error) {
       console.error('🛑 Network or server error during password reset:', error);
 
-      Snackbar.show({
-        text: t('forgot_password.errors.network_error', { defaultValue: 'Something went wrong. Please try again later.' }),
-        duration: 3000,
-        backgroundColor: '#FF6B6B',
-      });
+      // ========== OFFLINE: Offer to save offline on network error ==========
+      const isNetworkError = error.message?.includes('network') ||
+                            error.message?.includes('offline') ||
+                            error.code === 'ERR_NETWORK';
+
+      if (isNetworkError) {
+        const saved = await saveResetRequestOffline(email);
+        if (saved) {
+          Snackbar.show({
+            text: t('forgot_password.success.saved_offline', { defaultValue: 'Reset request saved offline. Will process when online.' }),
+            duration: 4000,
+            backgroundColor: '#FF9800',
+          });
+          navigation.reset({
+            index: 0,
+            routes: [{ name: 'Login' }],
+          });
+        } else {
+          Snackbar.show({
+            text: t('forgot_password.errors.network_error', { defaultValue: 'Something went wrong. Please try again later.' }),
+            duration: 3000,
+            backgroundColor: '#FF6B6B',
+          });
+        }
+      } else {
+        Snackbar.show({
+          text: t('forgot_password.errors.network_error', { defaultValue: 'Something went wrong. Please try again later.' }),
+          duration: 3000,
+          backgroundColor: '#FF6B6B',
+        });
+      }
+      // ========== END OFFLINE OFFER ==========
 
       setLoading(false);
     }
@@ -152,6 +280,14 @@ const ForgotPassword = () => {
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
+        {/* ========== OFFLINE: Network status banner ========== */}
+        {!isOnline && (
+          <Animatable.View animation="fadeIn" duration={300} style={styles.offlineBanner}>
+            <Text style={styles.offlineBannerText}>📴 Offline Mode - Reset requests will be saved locally</Text>
+          </Animatable.View>
+        )}
+        {/* ========== END OFFLINE BANNER ========== */}
+
         {/* Header Section */}
         <Animatable.View
           animation="fadeInDown"
@@ -222,7 +358,9 @@ const ForgotPassword = () => {
                   <Text style={styles.loadingText}>{t('forgot_password.loading', { defaultValue: 'Submitting...' })}</Text>
                 </View>
               ) : (
-                <Text style={styles.loginButtonText}>{t('forgot_password.buttons.submit', { defaultValue: 'Submit' })}</Text>
+                <Text style={styles.loginButtonText}>
+                  {!isOnline ? t('forgot_password.buttons.save_offline', { defaultValue: 'Save Offline' }) : t('forgot_password.buttons.submit', { defaultValue: 'Submit' })}
+                </Text>
               )}
             </TouchableOpacity>
           </Animatable.View>
@@ -243,6 +381,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: Platform.OS === 'ios' ? 60 : 100,
     paddingBottom: 400,
+  },
+  offlineBanner: {
+    backgroundColor: '#FF9800',
+    padding: 10,
+    marginBottom: 20,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginHorizontal: 16,
+  },
+  offlineBannerText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '500',
   },
   headerSection: {
     alignItems: 'center',

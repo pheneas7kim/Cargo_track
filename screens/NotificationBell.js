@@ -8,12 +8,19 @@ import {
   StyleSheet,
   Animated,
   Dimensions,
-  PanResponder
+  PanResponder,
+  Platform
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useNotifications } from './NotificationContext';
 import { formatDistanceToNow } from 'date-fns';
+
+// ========== OFFLINE MODULE IMPORTS ==========
+import OfflineDatabaseService from '../services/OfflineDatabaseService';
+import NetworkMonitorService from '../services/NetworkMonitorService';
+import OfflineSyncService from '../services/OfflineSyncService';
+// ========== END OFFLINE MODULE IMPORTS ==========
 
 const { width, height } = Dimensions.get('window');
 const DRAWER_WIDTH = width * 0.85;
@@ -24,6 +31,11 @@ const NotificationBell = () => {
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const slideAnim = useRef(new Animated.Value(DRAWER_WIDTH)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
+
+  // ========== OFFLINE MODE STATE VARIABLES ==========
+  const [isOnline, setIsOnline] = useState(true);
+  const [offlineNotifications, setOfflineNotifications] = useState([]);
+  // ========== END OFFLINE MODE STATE VARIABLES ==========
 
   // Pan responder for swipe to close
   const panResponder = useRef(
@@ -47,6 +59,122 @@ const NotificationBell = () => {
       },
     })
   ).current;
+
+  // ========== OFFLINE MODE INITIALIZATION ==========
+  useEffect(() => {
+    const initOfflineMode = async () => {
+      try {
+        // Initialize offline database
+        await OfflineDatabaseService.initDatabase();
+        console.log('✅ Offline database initialized for Notification Bell');
+
+        // Initialize network monitor
+        NetworkMonitorService.init();
+
+        // Start auto-sync service
+        await OfflineSyncService.startAutoSync();
+
+        // Listen for network changes
+        NetworkMonitorService.on('connectionChange', (online) => {
+          setIsOnline(online);
+          if (online) {
+            console.log('🌐 Back online in NotificationBell');
+          }
+        });
+
+        // Load cached notifications
+        await loadCachedNotifications();
+      } catch (error) {
+        console.error('❌ Offline mode init error:', error);
+      }
+    };
+
+    initOfflineMode();
+
+    return () => {
+      // Cleanup
+      OfflineSyncService.stopAutoSync();
+      NetworkMonitorService.cleanup();
+    };
+  }, []);
+  // ========== END OFFLINE MODE INITIALIZATION ==========
+
+  // ========== OFFLINE: Cache notifications ==========
+  const cacheNotifications = async () => {
+    try {
+      await OfflineDatabaseService.saveUserData('cached_notifications', {
+        data: notifications,
+        unreadCount: unreadCount,
+        timestamp: Date.now()
+      });
+      console.log('✅ Notifications cached offline');
+    } catch (error) {
+      console.error('Error caching notifications:', error);
+    }
+  };
+  // ========== END OFFLINE CACHE HELPER ==========
+
+  // ========== OFFLINE: Load cached notifications ==========
+  const loadCachedNotifications = async () => {
+    try {
+      const cached = await OfflineDatabaseService.getUserData('cached_notifications');
+      if (cached && cached.data && cached.data.length > 0) {
+        setOfflineNotifications(cached.data);
+        console.log('📦 Loaded cached notifications');
+      }
+    } catch (error) {
+      console.error('Error loading cached notifications:', error);
+    }
+  };
+  // ========== END OFFLINE LOAD CACHED ==========
+
+  // ========== OFFLINE: Save read status offline ==========
+  const saveReadStatusOffline = async (notificationId) => {
+    try {
+      const readActions = await OfflineDatabaseService.getUserData('pending_read_actions') || [];
+      if (!readActions.includes(notificationId)) {
+        readActions.push(notificationId);
+        await OfflineDatabaseService.saveUserData('pending_read_actions', readActions);
+        await OfflineDatabaseService.addToSyncQueue('MARK_READ', `/notifications/${notificationId}/read`, { id: notificationId });
+        console.log(`📦 Mark read action saved offline for notification ${notificationId}`);
+      }
+      return true;
+    } catch (error) {
+      console.error('Error saving read status offline:', error);
+      return false;
+    }
+  };
+  // ========== END OFFLINE SAVE READ STATUS ==========
+
+  // ========== OFFLINE: Save mark all read offline ==========
+  const saveMarkAllReadOffline = async () => {
+    try {
+      const unreadIds = notifications.filter(n => !n.read).map(n => n.id);
+      const readActions = await OfflineDatabaseService.getUserData('pending_read_actions') || [];
+
+      for (const id of unreadIds) {
+        if (!readActions.includes(id)) {
+          readActions.push(id);
+          await OfflineDatabaseService.addToSyncQueue('MARK_READ', `/notifications/${id}/read`, { id: id });
+        }
+      }
+
+      await OfflineDatabaseService.saveUserData('pending_read_actions', readActions);
+      console.log(`📦 Mark all read action saved offline for ${unreadIds.length} notifications`);
+      return true;
+    } catch (error) {
+      console.error('Error saving mark all read offline:', error);
+      return false;
+    }
+  };
+  // ========== END OFFLINE SAVE MARK ALL READ ==========
+
+  // Cache notifications whenever they change
+  useEffect(() => {
+    if (notifications.length > 0) {
+      cacheNotifications();
+    }
+  }, [notifications, unreadCount]);
 
   const openDrawer = () => {
     setIsDrawerOpen(true);
@@ -83,6 +211,11 @@ const NotificationBell = () => {
 
   const handleNotificationPress = (notification) => {
     if (!notification.read) {
+      // ========== OFFLINE: Save read action offline if needed ==========
+      if (!isOnline) {
+        saveReadStatusOffline(notification.id);
+      }
+      // ========== END OFFLINE SAVE ==========
       markAsRead(notification.id);
     }
     closeDrawer();
@@ -92,6 +225,15 @@ const NotificationBell = () => {
     } else if (notification.deviceSerialNumber) {
       navigation.navigate('DeviceDetails', { deviceId: notification.deviceSerialNumber });
     }
+  };
+
+  const handleMarkAllAsRead = async () => {
+    // ========== OFFLINE: Save mark all read action offline if needed ==========
+    if (!isOnline) {
+      await saveMarkAllReadOffline();
+    }
+    // ========== END OFFLINE SAVE ==========
+    markAllAsRead();
   };
 
   const getNotificationIcon = (type, priority) => {
@@ -142,17 +284,26 @@ const NotificationBell = () => {
     </TouchableOpacity>
   );
 
+  // Use cached notifications when offline and no real notifications
+  const displayNotifications = notifications.length > 0 ? notifications : offlineNotifications;
+  const displayUnreadCount = notifications.length > 0 ? unreadCount : offlineNotifications.filter(n => !n.read).length;
+
   return (
     <>
       <TouchableOpacity style={styles.bellButton} onPress={openDrawer}>
         <Icon name="notifications" size={24} color="#1A1A1A" />
-        {unreadCount > 0 && (
+        {displayUnreadCount > 0 && (
           <View style={styles.badge}>
             <Text style={styles.badgeText}>
-              {unreadCount > 99 ? '99+' : unreadCount}
+              {displayUnreadCount > 99 ? '99+' : displayUnreadCount}
             </Text>
           </View>
         )}
+        {/* ========== OFFLINE: Offline indicator dot ========== */}
+        {!isOnline && (
+          <View style={styles.offlineDot} />
+        )}
+        {/* ========== END OFFLINE INDICATOR ========== */}
       </TouchableOpacity>
 
       {isDrawerOpen && (
@@ -169,8 +320,16 @@ const NotificationBell = () => {
             <View style={styles.drawerHeader}>
               <Text style={styles.drawerTitle}>Notifications</Text>
               <View style={styles.drawerActions}>
-                {unreadCount > 0 && (
-                  <TouchableOpacity onPress={markAllAsRead} style={styles.markAllButton}>
+                {/* ========== OFFLINE: Sync indicator ========== */}
+                {!isOnline && (
+                  <View style={styles.offlineBadge}>
+                    <Icon name="wifi-off" size={12} color="#FF9800" />
+                    <Text style={styles.offlineBadgeText}>Offline</Text>
+                  </View>
+                )}
+                {/* ========== END OFFLINE INDICATOR ========== */}
+                {displayUnreadCount > 0 && (
+                  <TouchableOpacity onPress={handleMarkAllAsRead} style={styles.markAllButton}>
                     <Text style={styles.markAllText}>Mark all read</Text>
                   </TouchableOpacity>
                 )}
@@ -181,7 +340,7 @@ const NotificationBell = () => {
             </View>
 
             <FlatList
-              data={notifications}
+              data={displayNotifications}
               keyExtractor={item => item.id.toString()}
               renderItem={renderNotification}
               showsVerticalScrollIndicator={false}
@@ -194,6 +353,17 @@ const NotificationBell = () => {
                 </View>
               }
             />
+
+            {/* ========== OFFLINE: Pending actions banner ========== */}
+            {!isOnline && displayNotifications.length > 0 && (
+              <View style={styles.offlineFooter}>
+                <Icon name="sync" size={14} color="#FF9800" />
+                <Text style={styles.offlineFooterText}>
+                  Offline - Actions will sync when online
+                </Text>
+              </View>
+            )}
+            {/* ========== END OFFLINE PENDING BANNER ========== */}
           </Animated.View>
         </>
       )}
@@ -222,6 +392,17 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 10,
     fontWeight: 'bold',
+  },
+  offlineDot: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: '#FF9800',
+    borderWidth: 1,
+    borderColor: '#FFFFFF',
   },
   overlay: {
     position: 'absolute',
@@ -265,6 +446,20 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
+  },
+  offlineBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFF3E0',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    gap: 4,
+  },
+  offlineBadgeText: {
+    fontSize: 10,
+    color: '#FF9800',
+    fontWeight: '500',
   },
   markAllButton: {
     paddingVertical: 6,
@@ -352,6 +547,19 @@ const styles = StyleSheet.create({
   emptyText: {
     fontSize: 14,
     color: '#666',
+  },
+  offlineFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#F0F0F0',
+    gap: 8,
+  },
+  offlineFooterText: {
+    fontSize: 11,
+    color: '#FF9800',
   },
 });
 

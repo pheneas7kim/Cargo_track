@@ -25,7 +25,11 @@ import axios from 'axios';
 import serverUrl from '../config';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 
-
+// ========== OFFLINE MODULE IMPORTS ==========
+import OfflineDatabaseService from '../services/OfflineDatabaseService';
+import NetworkMonitorService from '../services/NetworkMonitorService';
+import OfflineSyncService from '../services/OfflineSyncService';
+// ========== END OFFLINE MODULE IMPORTS ==========
 
 const { width } = Dimensions.get('window');
 
@@ -39,10 +43,130 @@ const DevicesScreen = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [filter, setFilter] = useState('all'); // all, online, offline
   const [expandedId, setExpandedId] = useState(null);
-  
+
   // Animation values
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(30)).current;
+
+  // ========== OFFLINE MODE STATE VARIABLES ==========
+  const [isOnline, setIsOnline] = useState(true);
+  const [isSyncing, setIsSyncing] = useState(false);
+  // ========== END OFFLINE MODE STATE VARIABLES ==========
+
+  // ========== OFFLINE MODE INITIALIZATION ==========
+  useEffect(() => {
+    const initOfflineMode = async () => {
+      try {
+        // Initialize offline database
+        await OfflineDatabaseService.initDatabase();
+        console.log('✅ Offline database initialized for Devices Screen');
+
+        // Initialize network monitor
+        NetworkMonitorService.init();
+
+        // Start auto-sync service
+        await OfflineSyncService.startAutoSync();
+
+        // Listen for network changes
+        NetworkMonitorService.on('connectionChange', (online) => {
+          setIsOnline(online);
+          if (online) {
+            Snackbar.show({
+              text: 'Back online! Syncing data...',
+              duration: 2000,
+              backgroundColor: '#4CAF50',
+            });
+            // Auto-refresh when coming back online
+            fetchDevices();
+          } else {
+            Snackbar.show({
+              text: 'Offline mode - using cached devices',
+              duration: 3000,
+              backgroundColor: '#FF9800',
+            });
+          }
+        });
+
+        // Load initial data
+        await fetchDevices();
+      } catch (error) {
+        console.error('❌ Offline mode init error:', error);
+      }
+    };
+
+    initOfflineMode();
+
+    return () => {
+      // Cleanup
+      OfflineSyncService.stopAutoSync();
+      NetworkMonitorService.cleanup();
+    };
+  }, []);
+  // ========== END OFFLINE MODE INITIALIZATION ==========
+
+  // ========== OFFLINE: Cache devices data ==========
+  const cacheDevicesData = async (devicesData) => {
+    try {
+      await OfflineDatabaseService.saveUserData('devices_list', {
+        data: devicesData,
+        timestamp: Date.now()
+      });
+      console.log('✅ Devices data cached offline');
+    } catch (error) {
+      console.error('Error caching devices data:', error);
+    }
+  };
+  // ========== END OFFLINE CACHE HELPER ==========
+
+  // ========== OFFLINE: Load cached devices ==========
+  const loadCachedDevices = async () => {
+    try {
+      const cached = await OfflineDatabaseService.getUserData('devices_list');
+      if (cached && cached.data && cached.data.length > 0) {
+        setDevices(cached.data);
+        console.log('📦 Loaded cached devices');
+        return true;
+      }
+      return false;
+    } catch (error) {
+      console.error('Error loading cached devices:', error);
+      return false;
+    }
+  };
+  // ========== END OFFLINE LOAD CACHED ==========
+
+  // ========== OFFLINE: Manual sync function ==========
+  const manualSync = async () => {
+    if (!isOnline) {
+      Snackbar.show({
+        text: 'Cannot sync while offline',
+        duration: 3000,
+        backgroundColor: '#FF6B6B',
+      });
+      return;
+    }
+
+    setIsSyncing(true);
+    try {
+      await OfflineSyncService.syncAll();
+      await fetchDevices(true);
+      Snackbar.show({
+        text: 'Sync completed successfully!',
+        duration: 3000,
+        backgroundColor: '#4CAF50',
+      });
+    } catch (error) {
+      console.error('Manual sync error:', error);
+      Snackbar.show({
+        text: 'Sync failed',
+        duration: 3000,
+        backgroundColor: '#FF6B6B',
+      });
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+  // ========== END OFFLINE MANUAL SYNC ==========
 
   useEffect(() => {
     Animated.parallel([
@@ -62,7 +186,7 @@ const DevicesScreen = () => {
   useFocusEffect(
     React.useCallback(() => {
       fetchDevices();
-      
+
       const backAction = () => {
         return false;
       };
@@ -74,10 +198,27 @@ const DevicesScreen = () => {
   const fetchDevices = async (isRefresh = false) => {
     try {
       if (!isRefresh) setLoading(true);
-      
+
+      // ========== OFFLINE: Check if online ==========
+      const online = await NetworkMonitorService.isOnline();
+
+      if (!online) {
+        const hasCached = await loadCachedDevices();
+        if (hasCached) {
+          setLoading(false);
+          setRefreshing(false);
+          return;
+        }
+      }
+      // ========== END OFFLINE CHECK ==========
+
       const token = await AsyncStorage.getItem('accessToken');
       if (!token) {
         console.error('No token found');
+        // ========== OFFLINE: Try to load cached even without token ==========
+        await loadCachedDevices();
+        setLoading(false);
+        setRefreshing(false);
         return;
       }
 
@@ -92,14 +233,29 @@ const DevicesScreen = () => {
 
       if (response.data && Array.isArray(response.data)) {
         setDevices(response.data);
+        // ========== OFFLINE: Cache fetched devices ==========
+        await cacheDevicesData(response.data);
+        // ========== END OFFLINE CACHE ==========
       }
     } catch (error) {
       console.error('Failed to fetch devices:', error);
-      Snackbar.show({
-        text: 'Failed to load devices',
-        duration: 3000,
-        backgroundColor: '#FF6B6B',
-      });
+
+      // ========== OFFLINE: Fallback to cached devices on error ==========
+      const hasCached = await loadCachedDevices();
+      if (!hasCached) {
+        Snackbar.show({
+          text: 'Failed to load devices',
+          duration: 3000,
+          backgroundColor: '#FF6B6B',
+        });
+      } else {
+        Snackbar.show({
+          text: 'Using cached devices (offline mode)',
+          duration: 3000,
+          backgroundColor: '#FF9800',
+        });
+      }
+      // ========== END OFFLINE FALLBACK ==========
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -108,7 +264,13 @@ const DevicesScreen = () => {
 
   const onRefresh = () => {
     setRefreshing(true);
-    fetchDevices(true);
+    // ========== OFFLINE: Manual sync on refresh ==========
+    if (isOnline) {
+      manualSync();
+    } else {
+      fetchDevices(true);
+    }
+    // ========== END OFFLINE MANUAL SYNC ==========
   };
 
   const formatDate = (dateString) => {
@@ -119,18 +281,18 @@ const DevicesScreen = () => {
 
   const getFilteredDevices = () => {
     let filtered = [...devices];
-    
+
     // Apply online/offline filter
     if (filter === 'online') {
       filtered = filtered.filter(d => d.isOnline === true);
     } else if (filter === 'offline') {
       filtered = filtered.filter(d => d.isOnline === false);
     }
-    
+
     // Apply search query
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
-      filtered = filtered.filter(d => 
+      filtered = filtered.filter(d =>
         d.name?.toLowerCase().includes(query) ||
         d.serialNo?.toLowerCase().includes(query) ||
         d.imei?.toLowerCase().includes(query) ||
@@ -138,7 +300,7 @@ const DevicesScreen = () => {
         d.manufacturer?.name?.toLowerCase().includes(query)
       );
     }
-    
+
     return filtered;
   };
 
@@ -157,10 +319,10 @@ const DevicesScreen = () => {
   const renderDevice = ({ item, index }) => {
     const isExpanded = expandedId === item.deviceId;
     const stats = getStats();
-    
+
     return (
-      <Animatable.View 
-        animation="fadeInUp" 
+      <Animatable.View
+        animation="fadeInUp"
         delay={index * 80}
         duration={400}
         style={styles.animationWrapper}
@@ -212,52 +374,52 @@ const DevicesScreen = () => {
             {isExpanded && (
               <Animatable.View animation="fadeIn" duration={300} style={styles.expandedContent}>
                 <View style={styles.divider} />
-                
+
                 <View style={styles.expandedRow}>
                   <Text style={styles.expandedLabel}>Manufacturer:</Text>
                   <Text style={styles.expandedValue}>{item.manufacturer?.name || 'N/A'}</Text>
                 </View>
-                
+
                 <View style={styles.expandedRow}>
                   <Text style={styles.expandedLabel}>Device Type:</Text>
                   <Text style={styles.expandedValue}>{item.deviceType?.name || 'N/A'}</Text>
                 </View>
-                
+
                 <View style={styles.expandedRow}>
                   <Text style={styles.expandedLabel}>SIM 1:</Text>
                   <Text style={styles.expandedValue}>{item.sim1Number || 'N/A'}</Text>
                 </View>
-                
+
                 <View style={styles.expandedRow}>
                   <Text style={styles.expandedLabel}>SIM 2:</Text>
                   <Text style={styles.expandedValue}>{item.sim2Number || 'N/A'}</Text>
                 </View>
-                
+
                 <View style={styles.expandedRow}>
                   <Text style={styles.expandedLabel}>Warranty:</Text>
                   <Text style={styles.expandedValue}>
                     {item.warrantyNumber ? `${item.warrantyNumber} (${item.warrantyPeriodMonths} months)` : 'N/A'}
                   </Text>
                 </View>
-                
+
                 <View style={styles.expandedRow}>
                   <Text style={styles.expandedLabel}>Firmware:</Text>
                   <Text style={styles.expandedValue}>{item.firmwareVersion || 'N/A'}</Text>
                 </View>
-                
+
                 <View style={styles.expandedRow}>
                   <Text style={styles.expandedLabel}>Year:</Text>
                   <Text style={styles.expandedValue}>{item.yearOfManufacture || 'N/A'}</Text>
                 </View>
-                
+
                 {item.notes && (
                   <View style={styles.expandedRow}>
                     <Text style={styles.expandedLabel}>Notes:</Text>
                     <Text style={styles.expandedValue}>{item.notes}</Text>
                   </View>
                 )}
-                
-                <TouchableOpacity 
+
+                <TouchableOpacity
                   style={styles.viewDetailsButton}
                   onPress={() => {
                     setSelectedDevice(item);
@@ -268,7 +430,7 @@ const DevicesScreen = () => {
                 </TouchableOpacity>
               </Animatable.View>
             )}
-            
+
             <View style={styles.expandIndicator}>
               <Text style={styles.expandIcon}>
                 {isExpanded ? '▲ Less details' : '▼ More details'}
@@ -282,7 +444,7 @@ const DevicesScreen = () => {
 
   const renderHeader = () => {
     const stats = getStats();
-    
+
     return (
       <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: slideAnim }] }}>
         <View style={styles.header}>
@@ -291,8 +453,27 @@ const DevicesScreen = () => {
               <Icon name="arrow-back" size={24} color="#1A1A1A" />
             </TouchableOpacity>
             <Text style={styles.headerTitle}>Devices</Text>
-            <View style={styles.placeholder} />
+            <View style={styles.headerRightActions}>
+              {/* ========== OFFLINE: Manual sync button ========== */}
+              {isSyncing ? (
+                <ActivityIndicator size="small" color="#FFA500" style={styles.syncIndicator} />
+              ) : (
+                <TouchableOpacity onPress={manualSync} style={styles.syncButton}>
+                  <Icon name="sync" size={20} color={isOnline ? "#4CAF50" : "#999"} />
+                </TouchableOpacity>
+              )}
+              {/* ========== END OFFLINE SYNC BUTTON ========== */}
+              <View style={styles.placeholder} />
+            </View>
           </View>
+
+          {/* ========== OFFLINE: Network status banner ========== */}
+          {!isOnline && (
+            <View style={styles.offlineBanner}>
+              <Text style={styles.offlineBannerText}>📴 Offline Mode - Using cached devices</Text>
+            </View>
+          )}
+          {/* ========== END OFFLINE BANNER ========== */}
 
           <View style={styles.searchContainer}>
             <Text style={styles.searchIcon}>🔍</Text>
@@ -310,28 +491,28 @@ const DevicesScreen = () => {
             )}
           </View>
 
-          <ScrollView 
-            horizontal 
-            showsHorizontalScrollIndicator={false} 
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.statsContainer}
           >
-            <TouchableOpacity 
+            <TouchableOpacity
               style={[styles.statCard, filter === 'all' && styles.activeStatCard]}
               onPress={() => setFilter('all')}
             >
               <Text style={styles.statNumber}>{stats.total}</Text>
               <Text style={styles.statLabel}>All Devices</Text>
             </TouchableOpacity>
-            
-            <TouchableOpacity 
+
+            <TouchableOpacity
               style={[styles.statCard, filter === 'online' && styles.activeStatCard]}
               onPress={() => setFilter('online')}
             >
               <Text style={[styles.statNumber, { color: '#4CAF50' }]}>{stats.online}</Text>
               <Text style={styles.statLabel}>Online</Text>
             </TouchableOpacity>
-            
-            <TouchableOpacity 
+
+            <TouchableOpacity
               style={[styles.statCard, filter === 'offline' && styles.activeStatCard]}
               onPress={() => setFilter('offline')}
             >
@@ -359,15 +540,15 @@ const DevicesScreen = () => {
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#F8F9FA" />
-      
+
       <FlatList
         data={getFilteredDevices()}
         keyExtractor={item => item.deviceId.toString()}
         renderItem={renderDevice}
         ListHeaderComponent={renderHeader}
         refreshControl={
-          <RefreshControl 
-            refreshing={refreshing} 
+          <RefreshControl
+            refreshing={refreshing}
             onRefresh={onRefresh}
             tintColor="#FFA500"
             colors={['#FFA500']}
@@ -380,8 +561,8 @@ const DevicesScreen = () => {
             <Text style={styles.emptyIcon}>📱</Text>
             <Text style={styles.emptyTitle}>No devices found</Text>
             <Text style={styles.emptyText}>
-              {searchQuery 
-                ? 'Try adjusting your search' 
+              {searchQuery
+                ? 'Try adjusting your search'
                 : filter !== 'all'
                 ? `No ${filter} devices available`
                 : 'No devices have been added yet'}
@@ -405,7 +586,7 @@ const DevicesScreen = () => {
                 <Text style={styles.closeButtonText}>✕</Text>
               </TouchableOpacity>
             </View>
-            
+
             {selectedDevice && (
               <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
                 {/* Status Header */}
@@ -418,24 +599,24 @@ const DevicesScreen = () => {
 
                 {/* Device Name */}
                 <Text style={styles.modalDeviceName}>{selectedDevice.name || selectedDevice.serialNo}</Text>
-                
+
                 {/* Basic Info Grid */}
                 <View style={styles.infoGrid}>
                   <View style={styles.infoItem}>
                     <Text style={styles.infoLabel}>Serial Number</Text>
                     <Text style={styles.infoValue}>{selectedDevice.serialNo}</Text>
                   </View>
-                  
+
                   <View style={styles.infoItem}>
                     <Text style={styles.infoLabel}>Model</Text>
                     <Text style={styles.infoValue}>{selectedDevice.model || 'N/A'}</Text>
                   </View>
-                  
+
                   <View style={styles.infoItem}>
                     <Text style={styles.infoLabel}>IMEI</Text>
                     <Text style={styles.infoValue}>{selectedDevice.imei || 'N/A'}</Text>
                   </View>
-                  
+
                   <View style={styles.infoItem}>
                     <Text style={styles.infoLabel}>Year of Manufacture</Text>
                     <Text style={styles.infoValue}>{selectedDevice.yearOfManufacture || 'N/A'}</Text>
@@ -509,7 +690,7 @@ const DevicesScreen = () => {
                   </View>
                 )}
 
-                <TouchableOpacity 
+                <TouchableOpacity
                   style={styles.closeModalButton}
                   onPress={() => setModalVisible(false)}
                 >
@@ -566,8 +747,38 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#1A1A1A',
   },
+  headerRightActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  syncButton: {
+    width: 40,
+    height: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 20,
+    backgroundColor: '#F5F5F5',
+  },
+  syncIndicator: {
+    width: 40,
+    height: 40,
+  },
   placeholder: {
     width: 40,
+  },
+  offlineBanner: {
+    backgroundColor: '#FF9800',
+    padding: 8,
+    marginHorizontal: 20,
+    marginBottom: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  offlineBannerText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '500',
   },
   searchContainer: {
     flexDirection: 'row',

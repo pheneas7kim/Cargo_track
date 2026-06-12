@@ -27,6 +27,12 @@ import { useTranslation } from 'react-i18next';
 // ✅ Import global token refresh service
 import { refreshAccessToken, addTokenRefreshListener } from '../services/TokenService';
 
+// ========== OFFLINE MODULE IMPORTS ==========
+import OfflineDatabaseService from '../services/OfflineDatabaseService';
+import NetworkMonitorService from '../services/NetworkMonitorService';
+import OfflineSyncService from '../services/OfflineSyncService';
+// ========== END OFFLINE MODULE IMPORTS ==========
+
 const { width } = Dimensions.get('window');
 
 // ✅ Helper function to get language header
@@ -137,6 +143,12 @@ const AlarmsNotigicationScreen = () => {
   const [attendNotificationId, setAttendNotificationId] = useState(null);
   const [attendComment, setAttendComment] = useState('');
 
+  // ========== OFFLINE MODE STATE VARIABLES ==========
+  const [isOnline, setIsOnline] = useState(true);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [offlineActionsQueue, setOfflineActionsQueue] = useState([]);
+  // ========== END OFFLINE MODE STATE VARIABLES ==========
+
   // ✅ Listen for token refresh events
   useEffect(() => {
     const removeListener = addTokenRefreshListener((newToken) => {
@@ -144,6 +156,59 @@ const AlarmsNotigicationScreen = () => {
     });
     return () => removeListener();
   }, []);
+
+  // ========== OFFLINE MODE INITIALIZATION ==========
+  useEffect(() => {
+    const initOfflineMode = async () => {
+      try {
+        // Initialize offline database
+        await OfflineDatabaseService.initDatabase();
+        console.log('✅ Offline database initialized for Alerts Screen');
+
+        // Initialize network monitor
+        NetworkMonitorService.init();
+
+        // Start auto-sync service
+        await OfflineSyncService.startAutoSync();
+
+        // Listen for network changes
+        NetworkMonitorService.on('connectionChange', (online) => {
+          setIsOnline(online);
+          if (online) {
+            Snackbar.show({
+              text: t('alerts.online', { defaultValue: 'Back online! Syncing data...' }),
+              duration: 2000,
+              backgroundColor: '#4CAF50',
+            });
+            // Auto-refresh when coming back online
+            fetchNotifications();
+            fetchUsers();
+          } else {
+            Snackbar.show({
+              text: t('alerts.offline', { defaultValue: 'Offline mode - using cached data' }),
+              duration: 3000,
+              backgroundColor: '#FF9800',
+            });
+          }
+        });
+
+        // Load initial data
+        await fetchNotifications();
+        await fetchUsers();
+      } catch (error) {
+        console.error('❌ Offline mode init error:', error);
+      }
+    };
+
+    initOfflineMode();
+
+    return () => {
+      // Cleanup
+      OfflineSyncService.stopAutoSync();
+      NetworkMonitorService.cleanup();
+    };
+  }, []);
+  // ========== END OFFLINE MODE INITIALIZATION ==========
 
   useFocusEffect(
     useCallback(() => {
@@ -165,9 +230,25 @@ const AlarmsNotigicationScreen = () => {
         i18n
       );
 
-      if (response.data) setUsers(response.data);
+      if (response.data) {
+        setUsers(response.data);
+        // ========== OFFLINE: Cache users data ==========
+        await OfflineDatabaseService.saveUserData('alert_users', response.data);
+        // ========== END OFFLINE CACHE ==========
+      }
     } catch (error) {
       console.error('Failed to fetch users', error);
+      // ========== OFFLINE: Fallback to cached users ==========
+      const cachedUsers = await OfflineDatabaseService.getUserData('alert_users');
+      if (cachedUsers && cachedUsers.length > 0) {
+        setUsers(cachedUsers);
+        Snackbar.show({
+          text: t('alerts.using_cached_users', { defaultValue: 'Using cached user list (offline mode)' }),
+          duration: 2000,
+          backgroundColor: '#FF9800',
+        });
+      }
+      // ========== END OFFLINE FALLBACK ==========
     }
   };
 
@@ -197,14 +278,45 @@ const AlarmsNotigicationScreen = () => {
         setUnreadCount(unread);
         setUnattendedCount(unattended);
         setCriticalCount(critical);
+
+        // ========== OFFLINE: Cache notifications data ==========
+        await OfflineDatabaseService.saveUserData('alerts_notifications', {
+          content: newNotifications,
+          totalElements: response.data.totalElements,
+          timestamp: Date.now()
+        });
+        // ========== END OFFLINE CACHE ==========
       }
     } catch (error) {
       console.error('Failed to fetch notifications:', error);
-      Snackbar.show({
-        text: t('alerts.errors.load_failed', { defaultValue: 'Failed to load notifications' }),
-        duration: 3000,
-        backgroundColor: '#FF6B6B',
-      });
+
+      // ========== OFFLINE: Fallback to cached notifications ==========
+      const cachedData = await OfflineDatabaseService.getUserData('alerts_notifications');
+      if (cachedData && cachedData.content && cachedData.content.length > 0) {
+        setNotifications(cachedData.content);
+        setTotalElements(cachedData.totalElements || cachedData.content.length);
+
+        // Update counts from cached data
+        const unread = cachedData.content.filter(n => !n.read).length;
+        const unattended = cachedData.content.filter(n => !n.attended).length;
+        const critical = cachedData.content.filter(n => n.priority === 'CRITICAL').length;
+        setUnreadCount(unread);
+        setUnattendedCount(unattended);
+        setCriticalCount(critical);
+
+        Snackbar.show({
+          text: t('alerts.using_cached', { defaultValue: 'Using cached notifications (offline mode)' }),
+          duration: 3000,
+          backgroundColor: '#FF9800',
+        });
+      } else {
+        Snackbar.show({
+          text: t('alerts.errors.load_failed', { defaultValue: 'Failed to load notifications' }),
+          duration: 3000,
+          backgroundColor: '#FF6B6B',
+        });
+      }
+      // ========== END OFFLINE FALLBACK ==========
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -213,11 +325,56 @@ const AlarmsNotigicationScreen = () => {
 
   const onRefresh = () => {
     setRefreshing(true);
-    fetchNotifications();
+    // ========== OFFLINE: Manual sync on refresh ==========
+    if (isOnline) {
+      manualSync();
+    } else {
+      fetchNotifications();
+      fetchUsers();
+    }
+    // ========== END OFFLINE MANUAL SYNC ==========
   };
+
+  // ========== OFFLINE: Manual sync function ==========
+  const manualSync = async () => {
+    if (!isOnline) {
+      Snackbar.show({
+        text: t('alerts.errors.offline_sync', { defaultValue: 'Cannot sync while offline' }),
+        duration: 3000,
+        backgroundColor: '#FF6B6B',
+      });
+      return;
+    }
+
+    setIsSyncing(true);
+    try {
+      await OfflineSyncService.syncAll();
+      await fetchNotifications();
+      await fetchUsers();
+      Snackbar.show({
+        text: t('alerts.success.sync_complete', { defaultValue: 'Sync completed successfully!' }),
+        duration: 3000,
+        backgroundColor: '#4CAF50',
+      });
+    } catch (error) {
+      console.error('Manual sync error:', error);
+      Snackbar.show({
+        text: t('alerts.errors.sync_failed', { defaultValue: 'Sync failed' }),
+        duration: 3000,
+        backgroundColor: '#FF6B6B',
+      });
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+  // ========== END OFFLINE MANUAL SYNC ==========
 
   const markAsRead = async (id) => {
     try {
+      // ========== OFFLINE: Check if online ==========
+      const online = await NetworkMonitorService.isOnline();
+      // ========== END OFFLINE CHECK ==========
+
       // ✅ FIXED: Changed from axios.post to 'post' string method
       await authenticatedAxios(
         'post',  // <-- FIXED: Use string method name
@@ -233,8 +390,36 @@ const AlarmsNotigicationScreen = () => {
       );
       setUnreadCount(prev => Math.max(0, prev - 1));
       Snackbar.show({ text: t('alerts.success.marked_read', { defaultValue: 'Marked as read' }), duration: 2000, backgroundColor: '#4CAF50' });
+
+      // ========== OFFLINE: Update cache ==========
+      const cachedData = await OfflineDatabaseService.getUserData('alerts_notifications');
+      if (cachedData && cachedData.content) {
+        const updatedContent = cachedData.content.map(n => (n.id === id ? { ...n, read: true } : n));
+        await OfflineDatabaseService.saveUserData('alerts_notifications', {
+          ...cachedData,
+          content: updatedContent,
+          timestamp: Date.now()
+        });
+      }
+      // ========== END OFFLINE CACHE UPDATE ==========
     } catch (error) {
       console.error('Failed to mark as read', error);
+
+      // ========== OFFLINE: Queue for later sync ==========
+      if (!online) {
+        await OfflineDatabaseService.addToSyncQueue('MARK_READ', `/notifications/${id}/read`, { id });
+        // Update local state optimistically
+        setNotifications(prev =>
+          prev.map(n => (n.id === id ? { ...n, read: true } : n))
+        );
+        setUnreadCount(prev => Math.max(0, prev - 1));
+        Snackbar.show({
+          text: t('alerts.success.saved_offline', { defaultValue: 'Saved offline. Will sync when online.' }),
+          duration: 2000,
+          backgroundColor: '#FF9800',
+        });
+      }
+      // ========== END OFFLINE QUEUE ==========
     }
   };
 
@@ -244,6 +429,11 @@ const AlarmsNotigicationScreen = () => {
       Snackbar.show({ text: t('alerts.no_unread', { defaultValue: 'No unread notifications' }), duration: 2000, backgroundColor: '#FFA500' });
       return;
     }
+
+    // ========== OFFLINE: Check online status ==========
+    const online = await NetworkMonitorService.isOnline();
+    // ========== END OFFLINE CHECK ==========
+
     try {
       await Promise.all(
         unreadIds.map(id =>
@@ -260,13 +450,45 @@ const AlarmsNotigicationScreen = () => {
       setNotifications(prev => prev.map(n => ({ ...n, read: true })));
       setUnreadCount(0);
       Snackbar.show({ text: t('alerts.success.all_marked_read', { defaultValue: 'All marked as read' }), duration: 2000, backgroundColor: '#4CAF50' });
+
+      // ========== OFFLINE: Update cache ==========
+      const cachedData = await OfflineDatabaseService.getUserData('alerts_notifications');
+      if (cachedData && cachedData.content) {
+        const updatedContent = cachedData.content.map(n => ({ ...n, read: true }));
+        await OfflineDatabaseService.saveUserData('alerts_notifications', {
+          ...cachedData,
+          content: updatedContent,
+          timestamp: Date.now()
+        });
+      }
+      // ========== END OFFLINE CACHE UPDATE ==========
     } catch (error) {
       console.error('Failed to mark all as read', error);
+
+      // ========== OFFLINE: Queue all for sync ==========
+      if (!online) {
+        for (const id of unreadIds) {
+          await OfflineDatabaseService.addToSyncQueue('MARK_READ', `/notifications/${id}/read`, { id });
+        }
+        // Update local state optimistically
+        setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+        setUnreadCount(0);
+        Snackbar.show({
+          text: t('alerts.success.saved_offline_batch', { defaultValue: 'Saved offline. Will sync when online.' }),
+          duration: 2000,
+          backgroundColor: '#FF9800',
+        });
+      }
+      // ========== END OFFLINE QUEUE ==========
     }
   };
 
   const markAsAttended = async (id, comments) => {
     try {
+      // ========== OFFLINE: Check online status ==========
+      const online = await NetworkMonitorService.isOnline();
+      // ========== END OFFLINE CHECK ==========
+
       // ✅ FIXED: Changed from axios.post to 'post' string method
       await authenticatedAxios(
         'post',  // <-- FIXED: Use string method name
@@ -282,8 +504,36 @@ const AlarmsNotigicationScreen = () => {
       );
       setUnattendedCount(prev => Math.max(0, prev - 1));
       Snackbar.show({ text: t('alerts.success.marked_attended', { defaultValue: 'Marked as attended' }), duration: 2000, backgroundColor: '#4CAF50' });
+
+      // ========== OFFLINE: Update cache ==========
+      const cachedData = await OfflineDatabaseService.getUserData('alerts_notifications');
+      if (cachedData && cachedData.content) {
+        const updatedContent = cachedData.content.map(n => (n.id === id ? { ...n, attended: true } : n));
+        await OfflineDatabaseService.saveUserData('alerts_notifications', {
+          ...cachedData,
+          content: updatedContent,
+          timestamp: Date.now()
+        });
+      }
+      // ========== END OFFLINE CACHE UPDATE ==========
     } catch (error) {
       console.error('Failed to mark as attended', error);
+
+      // ========== OFFLINE: Queue for later sync ==========
+      if (!online) {
+        await OfflineDatabaseService.addToSyncQueue('MARK_ATTENDED', `/notifications/${id}/attend`, { id, comments });
+        // Update local state optimistically
+        setNotifications(prev =>
+          prev.map(n => (n.id === id ? { ...n, attended: true } : n))
+        );
+        setUnattendedCount(prev => Math.max(0, prev - 1));
+        Snackbar.show({
+          text: t('alerts.success.saved_offline_attend', { defaultValue: 'Attendance saved offline. Will sync when online.' }),
+          duration: 2000,
+          backgroundColor: '#FF9800',
+        });
+      }
+      // ========== END OFFLINE QUEUE ==========
     }
   };
 
@@ -292,6 +542,11 @@ const AlarmsNotigicationScreen = () => {
       Snackbar.show({ text: t('alerts.errors.select_user', { defaultValue: 'Please select a user' }), duration: 2000, backgroundColor: '#FF6B6B' });
       return;
     }
+
+    // ========== OFFLINE: Check online status ==========
+    const online = await NetworkMonitorService.isOnline();
+    // ========== END OFFLINE CHECK ==========
+
     try {
       // ✅ FIXED: Changed from axios.post to 'post' string method
       await authenticatedAxios(
@@ -307,9 +562,38 @@ const AlarmsNotigicationScreen = () => {
       setAssignModalVisible(false);
       setAssignUserId('');
       setAssignComment('');
+
+      // ========== OFFLINE: Update local state ==========
+      setNotifications(prev =>
+        prev.map(n => (n.id === assignNotificationId ? { ...n, assigned: true, assigneeId: parseInt(assignUserId) } : n))
+      );
+      // ========== END OFFLINE UPDATE ==========
     } catch (error) {
       console.error('Failed to assign', error);
-      Snackbar.show({ text: t('alerts.errors.assign_failed', { defaultValue: 'Assignment failed' }), duration: 2000, backgroundColor: '#FF6B6B' });
+
+      // ========== OFFLINE: Queue for later sync ==========
+      if (!online) {
+        await OfflineDatabaseService.addToSyncQueue('ASSIGN', `/notifications/${assignNotificationId}/assign`, {
+          assigneeId: parseInt(assignUserId),
+          comments: assignComment,
+          notificationId: assignNotificationId
+        });
+        // Update local state optimistically
+        setNotifications(prev =>
+          prev.map(n => (n.id === assignNotificationId ? { ...n, assigned: true, assigneeId: parseInt(assignUserId) } : n))
+        );
+        Snackbar.show({
+          text: t('alerts.success.assigned_offline', { defaultValue: 'Assignment saved offline. Will sync when online.' }),
+          duration: 2000,
+          backgroundColor: '#FF9800',
+        });
+        setAssignModalVisible(false);
+        setAssignUserId('');
+        setAssignComment('');
+      } else {
+        Snackbar.show({ text: t('alerts.errors.assign_failed', { defaultValue: 'Assignment failed' }), duration: 2000, backgroundColor: '#FF6B6B' });
+      }
+      // ========== END OFFLINE QUEUE ==========
     }
   };
 
@@ -510,10 +794,24 @@ const AlarmsNotigicationScreen = () => {
           <Icon name="arrow-back" size={24} color="#1A1A1A" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>{t('alerts.title', { defaultValue: 'Alerts' })}</Text>
-        <TouchableOpacity onPress={markAllAsRead} style={styles.markAllButton}>
-          <Icon name="done-all" size={20} color="#FFA500" />
-          <Text style={styles.markAllText}>{t('alerts.mark_all_read', { defaultValue: 'Mark all read' })}</Text>
-        </TouchableOpacity>
+        <View style={{ flexDirection: 'row', gap: 8 }}>
+          {/* ========== OFFLINE: Manual sync button ========== */}
+          {isSyncing ? (
+            <ActivityIndicator size="small" color="#FFA500" style={{ marginRight: 8 }} />
+          ) : (
+            <TouchableOpacity onPress={manualSync} style={styles.markAllButton}>
+              <Icon name="sync" size={20} color={isOnline ? "#4CAF50" : "#999"} />
+              <Text style={[styles.markAllText, { color: isOnline ? "#4CAF50" : "#999" }]}>
+                {t('alerts.sync', { defaultValue: 'Sync' })}
+              </Text>
+            </TouchableOpacity>
+          )}
+          {/* ========== END OFFLINE SYNC BUTTON ========== */}
+          <TouchableOpacity onPress={markAllAsRead} style={styles.markAllButton}>
+            <Icon name="done-all" size={20} color="#FFA500" />
+            <Text style={styles.markAllText}>{t('alerts.mark_all_read', { defaultValue: 'Mark all read' })}</Text>
+          </TouchableOpacity>
+        </View>
       </View>
       {renderStats()}
       {renderFilters()}

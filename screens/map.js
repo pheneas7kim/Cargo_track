@@ -30,9 +30,16 @@ import { useTranslation } from 'react-i18next';
 // ✅ Import global token refresh service
 import { refreshAccessToken, getValidToken, addTokenRefreshListener } from '../services/TokenService';
 
+// ========== OFFLINE MODULE IMPORTS ==========
+import OfflineDatabaseService from '../services/OfflineDatabaseService';
+import NetworkMonitorService from '../services/NetworkMonitorService';
+import OfflineSyncService from '../services/OfflineSyncService';
+// ========== END OFFLINE MODULE IMPORTS ==========
+
 const { width, height } = Dimensions.get('window');
 const BOTTOM_SHEET_MAX_HEIGHT = height * 0.65;
 const BOTTOM_SHEET_MIN_HEIGHT = height * 0.15;
+
 
 const DeviceMapScreen = () => {
   const { t, i18n } = useTranslation();
@@ -56,6 +63,12 @@ const DeviceMapScreen = () => {
   const [lastUpdate, setLastUpdate] = useState(null);
   const [mapReady, setMapReady] = useState(false);
   const [bottomSheetVisible, setBottomSheetVisible] = useState(false);
+
+  // ========== OFFLINE MODE STATE VARIABLES ==========
+  const [isOnline, setIsOnline] = useState(true);
+  const [offlineDataAvailable, setOfflineDataAvailable] = useState(false);
+  const [lastSyncTime, setLastSyncTime] = useState(null);
+  // ========== END OFFLINE MODE STATE VARIABLES ==========
 
   const mapRef = useRef(null);
   const intervalRef = useRef(null);
@@ -89,9 +102,103 @@ const DeviceMapScreen = () => {
     return () => removeListener();
   }, []);
 
+  // ========== OFFLINE MODE INITIALIZATION ==========
+  useEffect(() => {
+    const initOfflineMode = async () => {
+      try {
+        // Initialize offline database
+        await OfflineDatabaseService.initDatabase();
+        console.log('✅ Offline database initialized for Device Map Screen');
+
+        // Initialize network monitor
+        NetworkMonitorService.init();
+
+        // Start auto-sync service
+        await OfflineSyncService.startAutoSync();
+
+        // Listen for network changes
+        NetworkMonitorService.on('connectionChange', (online) => {
+          setIsOnline(online);
+          if (online) {
+            Snackbar.show({
+              text: t('device_map.back_online', { defaultValue: 'Back online! Syncing fleet data...' }),
+              duration: 2000,
+              backgroundColor: '#4CAF50',
+            });
+            // Auto-refresh when coming back online
+            fetchDevices();
+          } else {
+            Snackbar.show({
+              text: t('device_map.offline_mode', { defaultValue: 'Offline mode - Showing cached device locations' }),
+              duration: 3000,
+              backgroundColor: '#FF9800',
+            });
+          }
+        });
+
+        // Load cached devices from offline database
+        await loadCachedDevices();
+
+        // Load last sync time
+        const lastSync = await OfflineDatabaseService.getUserData('last_device_sync');
+        if (lastSync) {
+          setLastSyncTime(new Date(lastSync));
+        }
+
+      } catch (error) {
+        console.error('❌ Offline mode init error:', error);
+      }
+    };
+
+    initOfflineMode();
+
+    return () => {
+      // Cleanup
+      NetworkMonitorService.cleanup();
+    };
+  }, []);
+  // ========== END OFFLINE MODE INITIALIZATION ==========
+
+  // ========== OFFLINE: Load cached devices from offline database ==========
+  const loadCachedDevices = async () => {
+    try {
+      const cachedDevices = await OfflineDatabaseService.getUserData('cached_devices');
+      if (cachedDevices && cachedDevices.devices && cachedDevices.devices.length > 0) {
+        setDevices(cachedDevices.devices);
+        setOfflineDataAvailable(true);
+        setLastUpdate(new Date(cachedDevices.timestamp));
+        console.log(`📦 Loaded ${cachedDevices.devices.length} devices from offline cache`);
+
+        // Fit map to cached markers
+        if (cachedDevices.devices.length > 0 && mapRef.current && mapReady) {
+          fitMapToMarkers(cachedDevices.devices);
+        }
+      }
+    } catch (error) {
+      console.error('Error loading cached devices:', error);
+    }
+  };
+  // ========== END OFFLINE LOAD CACHED DEVICES ==========
+
+  // ========== OFFLINE: Save devices to offline database ==========
+  const saveDevicesToOfflineCache = async (devicesList) => {
+    try {
+      await OfflineDatabaseService.saveUserData('cached_devices', {
+        devices: devicesList,
+        timestamp: Date.now(),
+        deviceCount: devicesList.length
+      });
+      console.log(`💾 Saved ${devicesList.length} devices to offline cache`);
+      setOfflineDataAvailable(true);
+    } catch (error) {
+      console.error('Error saving devices to cache:', error);
+    }
+  };
+  // ========== END OFFLINE SAVE TO CACHE ==========
+
   // Auto-refresh device locations every 30 seconds
   useEffect(() => {
-    if (autoRefresh) {
+    if (autoRefresh && isOnline) {
       intervalRef.current = setInterval(() => {
         fetchDevices(true);
       }, 30000);
@@ -101,7 +208,7 @@ const DeviceMapScreen = () => {
         clearInterval(intervalRef.current);
       }
     };
-  }, [autoRefresh]);
+  }, [autoRefresh, isOnline]);
 
   useFocusEffect(
     React.useCallback(() => {
@@ -119,12 +226,35 @@ const DeviceMapScreen = () => {
     try {
       if (!isAutoRefresh) setLoading(true);
 
+      // ========== OFFLINE: Check if online ==========
+      const online = await NetworkMonitorService.isOnline();
+
+      if (!online) {
+        console.log('📴 Offline - using cached device data');
+        await loadCachedDevices();
+        if (!isAutoRefresh) {
+          Snackbar.show({
+            text: t('device_map.offline_data', { defaultValue: 'Offline - Showing cached device locations' }),
+            duration: 3000,
+            backgroundColor: '#FF9800',
+          });
+        }
+        setLoading(false);
+        setRefreshing(false);
+        return;
+      }
+      // ========== END OFFLINE CHECK ==========
+
       // ✅ Get valid token (will auto-refresh if expired)
       let token = await AsyncStorage.getItem('accessToken');
       const language = await AsyncStorage.getItem('userLanguage') || i18n.language || 'en';
 
       if (!token) {
         console.error('No token found');
+        // Try to load from cache
+        await loadCachedDevices();
+        setLoading(false);
+        setRefreshing(false);
         return;
       }
 
@@ -161,6 +291,13 @@ const DeviceMapScreen = () => {
       if (response && response.data && Array.isArray(response.data)) {
         setDevices(response.data);
         setLastUpdate(new Date());
+        setLastSyncTime(new Date());
+        setOfflineDataAvailable(true);
+
+        // ========== OFFLINE: Save to offline cache ==========
+        await saveDevicesToOfflineCache(response.data);
+        await OfflineDatabaseService.saveUserData('last_device_sync', Date.now());
+        // ========== END OFFLINE SAVE ==========
 
         if (!selectedDeviceMarker && response.data.length > 0 && mapRef.current && mapReady) {
           fitMapToMarkers(response.data);
@@ -168,14 +305,30 @@ const DeviceMapScreen = () => {
       }
     } catch (error) {
       console.error('Failed to fetch device locations:', error);
-      // Only show error if not a 401 (already handled) and not auto-refresh
-      if (error.response?.status !== 401 && !isAutoRefresh) {
-        Snackbar.show({
-          text: t('device_map.errors.load_failed', { defaultValue: 'Failed to load device locations' }),
-          duration: 3000,
-          backgroundColor: '#FF6B6B',
-        });
+
+      // ========== OFFLINE: Fall back to cached data on error ==========
+      const cachedDevices = await OfflineDatabaseService.getUserData('cached_devices');
+      if (cachedDevices && cachedDevices.devices && cachedDevices.devices.length > 0) {
+        setDevices(cachedDevices.devices);
+        setOfflineDataAvailable(true);
+        if (!isAutoRefresh) {
+          Snackbar.show({
+            text: t('device_map.using_cached_data', { defaultValue: 'Using cached data (server unavailable)' }),
+            duration: 3000,
+            backgroundColor: '#FF9800',
+          });
+        }
+      } else {
+        // Only show error if not a 401 (already handled) and not auto-refresh
+        if (error.response?.status !== 401 && !isAutoRefresh) {
+          Snackbar.show({
+            text: t('device_map.errors.load_failed', { defaultValue: 'Failed to load device locations' }),
+            duration: 3000,
+            backgroundColor: '#FF6B6B',
+          });
+        }
       }
+      // ========== END OFFLINE FALLBACK ==========
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -186,6 +339,38 @@ const DeviceMapScreen = () => {
     setRefreshing(true);
     fetchDevices();
   };
+
+  // ========== OFFLINE: Manual sync for device data ==========
+  const manualSync = async () => {
+    if (!isOnline) {
+      Snackbar.show({
+        text: t('device_map.cannot_sync_offline', { defaultValue: 'Cannot sync while offline' }),
+        duration: 3000,
+        backgroundColor: '#FF6B6B',
+      });
+      return;
+    }
+
+    setLoading(true);
+    try {
+      await fetchDevices(false);
+      Snackbar.show({
+        text: t('device_map.sync_complete', { defaultValue: 'Fleet data synchronized!' }),
+        duration: 3000,
+        backgroundColor: '#4CAF50',
+      });
+    } catch (error) {
+      console.error('Manual sync error:', error);
+      Snackbar.show({
+        text: t('device_map.sync_failed', { defaultValue: 'Sync failed' }),
+        duration: 3000,
+        backgroundColor: '#FF6B6B',
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+  // ========== END OFFLINE MANUAL SYNC ==========
 
   const fitMapToMarkers = (devicesList) => {
     if (!devicesList || devicesList.length === 0) return;
@@ -322,6 +507,19 @@ const DeviceMapScreen = () => {
     return t('device_map.status.parked', { defaultValue: 'Parked' });
   };
 
+  // ========== OFFLINE: Format last update time with offline indicator ==========
+  const getLastUpdateText = () => {
+    if (!lastUpdate) return t('device_map.na', { defaultValue: 'N/A' });
+
+    const now = new Date();
+    const diff = Math.floor((now - lastUpdate) / 1000 / 60);
+
+    if (diff < 1) return t('device_map.time.just_now', { defaultValue: 'Just now' });
+    if (diff < 60) return t('device_map.time.minutes_ago', { defaultValue: '{{count}} min ago' }).replace('{{count}}', diff.toString());
+    return t('device_map.time.hours_ago', { defaultValue: '{{count}} hr ago' }).replace('{{count}}', Math.floor(diff / 60).toString());
+  };
+  // ========== END OFFLINE LAST UPDATE ==========
+
   const renderHeader = () => {
     const stats = getStats();
 
@@ -388,6 +586,35 @@ const DeviceMapScreen = () => {
               <Text style={styles.statLabel}>{t('device_map.stats.stationary', { defaultValue: 'Stationary' })}</Text>
             </TouchableOpacity>
           </ScrollView>
+
+          {/* ========== OFFLINE: Status bar with sync indicator ========== */}
+          <View style={styles.statusBar}>
+            <View style={styles.statusLeft}>
+              {!isOnline && (
+                <View style={styles.offlineStatusBadge}>
+                  <Text style={styles.offlineStatusText}>📴 {t('device_map.offline', { defaultValue: 'Offline Mode' })}</Text>
+                </View>
+              )}
+              {isOnline && offlineDataAvailable && !loading && (
+                <Text style={styles.lastUpdateText}>
+                  {t('device_map.last_update', { defaultValue: 'Updated' })}: {getLastUpdateText()}
+                </Text>
+              )}
+            </View>
+            <View style={styles.statusRight}>
+              {!isOnline && offlineDataAvailable && (
+                <Text style={styles.cachedDataText}>
+                  📦 {t('device_map.cached_data', { defaultValue: 'Cached Data' })}
+                </Text>
+              )}
+              {isOnline && (
+                <TouchableOpacity onPress={manualSync} style={styles.syncButton}>
+                  <Text style={styles.syncButtonText}>🔄 {t('device_map.sync', { defaultValue: 'Sync' })}</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          </View>
+          {/* ========== END OFFLINE STATUS BAR ========== */}
 
           <View style={styles.controlsContainer}>
             <TouchableOpacity
@@ -475,6 +702,14 @@ const DeviceMapScreen = () => {
                 </View>
               </View>
 
+              {/* ========== OFFLINE: Data source indicator ========== */}
+              {!isOnline && (
+                <View style={styles.offlineDataBadge}>
+                  <Text style={styles.offlineDataBadgeText}>📴 {t('device_map.cached_location', { defaultValue: 'Cached location data' })}</Text>
+                </View>
+              )}
+              {/* ========== END OFFLINE DATA INDICATOR ========== */}
+
               <TouchableOpacity
                 style={styles.centerOnMapButton}
                 onPress={() => {
@@ -531,7 +766,7 @@ const DeviceMapScreen = () => {
     );
   };
 
-  if (loading && !refreshing) {
+  if (loading && !refreshing && !offlineDataAvailable) {
     return (
       <SafeAreaView style={styles.container}>
         <StatusBar barStyle="light-content" backgroundColor="#000000" />
@@ -546,9 +781,9 @@ const DeviceMapScreen = () => {
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#000000" />
-      
+
       {renderHeader()}
-      
+
       <View style={styles.mapContainer}>
         <MapView
           ref={mapRef}
@@ -571,12 +806,12 @@ const DeviceMapScreen = () => {
         >
           {getFilteredDevices().map((device, index) => {
             if (!device.latitude || !device.longitude) return null;
-            
+
             const latitude = parseFloat(device.latitude);
             const longitude = parseFloat(device.longitude);
-            
+
             if (isNaN(latitude) || isNaN(longitude)) return null;
-            
+
             return (
               <Marker
                 key={device.id || index}
@@ -595,8 +830,8 @@ const DeviceMapScreen = () => {
             );
           })}
         </MapView>
-        
-        <TouchableOpacity 
+
+        <TouchableOpacity
           style={styles.myLocationButton}
           onPress={() => {
             if (mapRef.current) {
@@ -612,7 +847,7 @@ const DeviceMapScreen = () => {
           <Text style={styles.myLocationText}>📍</Text>
         </TouchableOpacity>
       </View>
-      
+
       {renderBottomSheet()}
     </SafeAreaView>
   );
@@ -728,6 +963,67 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     opacity: 0.8,
   },
+  // ========== OFFLINE STYLES ==========
+  statusBar: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 8,
+    marginBottom: 8,
+  },
+  statusLeft: {
+    flex: 1,
+  },
+  statusRight: {
+    alignItems: 'flex-end',
+  },
+  offlineStatusBadge: {
+    backgroundColor: '#FF9800',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    alignSelf: 'flex-start',
+  },
+  offlineStatusText: {
+    color: '#FFFFFF',
+    fontSize: 10,
+    fontWeight: '600',
+  },
+  lastUpdateText: {
+    color: 'rgba(255,255,255,0.7)',
+    fontSize: 10,
+  },
+  cachedDataText: {
+    color: '#FF9800',
+    fontSize: 10,
+    fontWeight: '500',
+  },
+  syncButton: {
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 16,
+  },
+  syncButtonText: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: '500',
+  },
+  offlineDataBadge: {
+    backgroundColor: '#FFF3E0',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    marginBottom: 16,
+    alignItems: 'center',
+  },
+  offlineDataBadgeText: {
+    color: '#FF9800',
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  // ========== END OFFLINE STYLES ==========
   controlsContainer: {
     flexDirection: 'row',
     alignItems: 'center',

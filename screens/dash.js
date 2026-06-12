@@ -24,6 +24,12 @@ import Snackbar from 'react-native-snackbar';
 import * as Animatable from 'react-native-animatable';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+// ========== OFFLINE MODULE IMPORTS ==========
+import OfflineDatabaseService from '../services/OfflineDatabaseService';
+import NetworkMonitorService from '../services/NetworkMonitorService';
+import OfflineSyncService from '../services/OfflineSyncService';
+// ========== END OFFLINE MODULE IMPORTS ==========
+
 const { width } = Dimensions.get('window');
 
 // API Base URL
@@ -121,6 +127,11 @@ function HomeScreen() {
   const [amount2, setAmount2] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
+  // ========== OFFLINE MODE STATE VARIABLES ==========
+  const [isOnline, setIsOnline] = useState(true);
+  const [isSyncing, setIsSyncing] = useState(false);
+  // ========== END OFFLINE MODE STATE VARIABLES ==========
+
   // Commands list (unchanged)
   const commands = [
     { id: 'CMD-001', name: 'Check Status', description: 'Get real-time status of your shipment' },
@@ -129,6 +140,148 @@ function HomeScreen() {
     { id: 'CMD-004', name: 'Update Delivery', description: 'Update delivery preferences' },
     { id: 'CMD-005', name: 'Report Issue', description: 'Report a problem with your shipment' }
   ];
+
+  // ========== OFFLINE MODE INITIALIZATION ==========
+  useEffect(() => {
+    const initOfflineMode = async () => {
+      try {
+        // Initialize offline database
+        await OfflineDatabaseService.initDatabase();
+        console.log('✅ Offline database initialized for Home Screen');
+
+        // Initialize network monitor
+        NetworkMonitorService.init();
+
+        // Start auto-sync service
+        await OfflineSyncService.startAutoSync();
+
+        // Listen for network changes
+        NetworkMonitorService.on('connectionChange', (online) => {
+          setIsOnline(online);
+          if (online) {
+            Snackbar.show({
+              text: 'Back online! Syncing data...',
+              duration: 2000,
+              backgroundColor: '#4CAF50',
+            });
+            // Auto-refresh when coming back online
+            loadAllData();
+          } else {
+            Snackbar.show({
+              text: 'Offline mode - using cached data',
+              duration: 3000,
+              backgroundColor: '#FF9800',
+            });
+          }
+        });
+
+        // Load initial data
+        await loadAllData();
+      } catch (error) {
+        console.error('❌ Offline mode init error:', error);
+      }
+    };
+
+    initOfflineMode();
+
+    return () => {
+      // Cleanup
+      OfflineSyncService.stopAutoSync();
+      NetworkMonitorService.cleanup();
+    };
+  }, []);
+  // ========== END OFFLINE MODE INITIALIZATION ==========
+
+  // ========== OFFLINE: Cache data helper ==========
+  const cacheDashboardData = async (shipmentsData, ticketsData, alertsData, notificationsData) => {
+    try {
+      await OfflineDatabaseService.saveUserData('dashboard_shipments', {
+        data: shipmentsData,
+        timestamp: Date.now()
+      });
+      await OfflineDatabaseService.saveUserData('dashboard_tickets', {
+        data: ticketsData,
+        timestamp: Date.now()
+      });
+      await OfflineDatabaseService.saveUserData('dashboard_alerts', {
+        data: alertsData,
+        timestamp: Date.now()
+      });
+      await OfflineDatabaseService.saveUserData('dashboard_notifications', {
+        data: notificationsData,
+        timestamp: Date.now()
+      });
+      console.log('✅ Dashboard data cached offline');
+    } catch (error) {
+      console.error('Error caching dashboard data:', error);
+    }
+  };
+  // ========== END OFFLINE CACHE HELPER ==========
+
+  // ========== OFFLINE: Load cached data ==========
+  const loadCachedData = async () => {
+    try {
+      const cachedShipments = await OfflineDatabaseService.getUserData('dashboard_shipments');
+      if (cachedShipments && cachedShipments.data) {
+        setShipments(cachedShipments.data);
+        console.log('📦 Loaded cached shipments');
+      }
+
+      const cachedTickets = await OfflineDatabaseService.getUserData('dashboard_tickets');
+      if (cachedTickets && cachedTickets.data) {
+        setTickets(cachedTickets.data);
+        console.log('📦 Loaded cached tickets');
+      }
+
+      const cachedAlerts = await OfflineDatabaseService.getUserData('dashboard_alerts');
+      if (cachedAlerts && cachedAlerts.data) {
+        setAlerts(cachedAlerts.data);
+        console.log('📦 Loaded cached alerts');
+      }
+
+      const cachedNotifications = await OfflineDatabaseService.getUserData('dashboard_notifications');
+      if (cachedNotifications && cachedNotifications.data) {
+        setNotifications(cachedNotifications.data);
+        console.log('📦 Loaded cached notifications');
+      }
+    } catch (error) {
+      console.error('Error loading cached data:', error);
+    }
+  };
+  // ========== END OFFLINE LOAD CACHED ==========
+
+  // ========== OFFLINE: Manual sync function ==========
+  const manualSync = async () => {
+    if (!isOnline) {
+      Snackbar.show({
+        text: 'Cannot sync while offline',
+        duration: 3000,
+        backgroundColor: '#FF6B6B',
+      });
+      return;
+    }
+
+    setIsSyncing(true);
+    try {
+      await OfflineSyncService.syncAll();
+      await loadAllData();
+      Snackbar.show({
+        text: 'Sync completed successfully!',
+        duration: 3000,
+        backgroundColor: '#4CAF50',
+      });
+    } catch (error) {
+      console.error('Manual sync error:', error);
+      Snackbar.show({
+        text: 'Sync failed',
+        duration: 3000,
+        backgroundColor: '#FF6B6B',
+      });
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+  // ========== END OFFLINE MANUAL SYNC ==========
 
   // ---------------------- API Calls with Bearer Token ----------------------
   const fetchShipments = async () => {
@@ -182,6 +335,7 @@ function HomeScreen() {
         truckReg: item.truckRegistrationNumber,
       }));
       setShipments(transformed);
+      return transformed;
     } catch (error) {
       console.error('Error fetching shipments:', error);
       Snackbar.show({
@@ -189,6 +343,7 @@ function HomeScreen() {
         duration: 3000,
         backgroundColor: '#FF6B6B',
       });
+      return null;
     } finally {
       setLoadingShipments(false);
     }
@@ -244,6 +399,7 @@ function HomeScreen() {
       }));
 
       setTickets(transformed);
+      return transformed;
     } catch (error) {
       console.error('Error fetching tickets:', error);
       Snackbar.show({
@@ -251,6 +407,7 @@ function HomeScreen() {
         duration: 3000,
         backgroundColor: '#FF6B6B',
       });
+      return null;
     } finally {
       setLoadingTickets(false);
     }
@@ -285,6 +442,7 @@ function HomeScreen() {
         timestamp: alert.createdAt,
       }));
       setAlerts(transformed);
+      return transformed;
     } catch (error) {
       console.error('Error fetching alerts:', error);
       Snackbar.show({
@@ -292,6 +450,7 @@ function HomeScreen() {
         duration: 3000,
         backgroundColor: '#FF6B6B',
       });
+      return null;
     } finally {
       setLoadingAlerts(false);
     }
@@ -327,21 +486,41 @@ function HomeScreen() {
         type: notif.type?.toLowerCase() === 'alarm' ? 'alert' : 'info',
       }));
       setNotifications(transformed);
+      return transformed;
     } catch (error) {
       console.error('Error fetching notifications:', error);
       setNotifications([]);
+      return [];
     } finally {
       setLoadingNotifications(false);
     }
   };
 
   const loadAllData = async () => {
-    await Promise.all([
+    // ========== OFFLINE: Check if online ==========
+    const online = await NetworkMonitorService.isOnline();
+
+    if (!online) {
+      // Load cached data
+      await loadCachedData();
+      setLoadingShipments(false);
+      setLoadingTickets(false);
+      setLoadingAlerts(false);
+      setLoadingNotifications(false);
+      return;
+    }
+    // ========== END OFFLINE CHECK ==========
+
+    const [shipmentsData, ticketsData, alertsData, notificationsData] = await Promise.all([
       fetchShipments(),
       fetchTickets(),
       fetchAlerts(),
       fetchNotifications(),
     ]);
+
+    // ========== OFFLINE: Cache fetched data ==========
+    if (shipmentsData) await cacheDashboardData(shipmentsData, ticketsData, alertsData, notificationsData);
+    // ========== END OFFLINE CACHE ==========
   };
 
   // ---------------------- Lifecycle ----------------------
@@ -410,7 +589,7 @@ function HomeScreen() {
 
   const handleViewOnMap = (shipment) => {
     navigation.navigate('TrackOnMap', { shipment });
-    
+
   };
 
   const handleSendCommand = (command) => {
@@ -634,7 +813,7 @@ function HomeScreen() {
     </Animatable.View>
   );
 
-  // List header component (unchanged)
+  // List header component (with offline sync button)
   const HeaderComponent = () => (
     <>
       <View style={styles.header}>
@@ -642,6 +821,15 @@ function HomeScreen() {
           <Text style={styles.greeting}>{getCurrentTime()}</Text>
         </View>
         <View style={styles.headerActions}>
+          {/* ========== OFFLINE: Sync button ========== */}
+          {isSyncing ? (
+            <ActivityIndicator size="small" color="#FFA500" style={styles.syncIndicator} />
+          ) : (
+            <TouchableOpacity style={styles.iconButton} onPress={manualSync}>
+              <Image source={require('../assets/command.png')} style={[styles.headerIcon, { tintColor: isOnline ? '#4CAF50' : '#999' }]} />
+            </TouchableOpacity>
+          )}
+          {/* ========== END OFFLINE SYNC BUTTON ========== */}
           <TouchableOpacity style={styles.iconButton} onPress={handleNotificationsScreen}>
             <Image source={require('../assets/bell.png')} style={styles.headerIcon} />
             {notifications.filter(n => !n.read).length > 0 && (
@@ -655,6 +843,14 @@ function HomeScreen() {
           </TouchableOpacity>
         </View>
       </View>
+
+      {/* ========== OFFLINE: Network status banner ========== */}
+      {!isOnline && (
+        <View style={styles.offlineBanner}>
+          <Text style={styles.offlineBannerText}>📴 Offline Mode - Using cached data</Text>
+        </View>
+      )}
+      {/* ========== END OFFLINE BANNER ========== */}
 
       <View style={styles.trackingCard}>
         <Text style={styles.trackingTitle}>Track Your Shipment</Text>
@@ -1037,7 +1233,7 @@ function HomeScreen() {
   );
 }
 
-// Styles (unchanged)
+// Styles (with offline additions)
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F8F9FA' },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingTop: 60, paddingBottom: 20 },
@@ -1047,6 +1243,9 @@ const styles = StyleSheet.create({
   headerIcon: { width: 24, height: 24 },
   badge: { position: 'absolute', top: -5, right: -8, backgroundColor: '#FFA500', borderRadius: 10, minWidth: 18, height: 18, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 4 },
   badgeText: { color: '#FFFFFF', fontSize: 10, fontWeight: 'bold' },
+  syncIndicator: { marginLeft: 16 },
+  offlineBanner: { backgroundColor: '#FF9800', padding: 8, marginHorizontal: 20, marginBottom: 12, borderRadius: 8, alignItems: 'center' },
+  offlineBannerText: { color: '#FFFFFF', fontSize: 12, fontWeight: '500' },
   trackingCard: { backgroundColor: '#FFFFFF', marginHorizontal: 20, marginBottom: 20, padding: 20, borderRadius: 12, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 12, elevation: 1 },
   trackingTitle: { fontSize: 18, fontWeight: '600', color: '#1A1A1A', marginBottom: 12 },
   trackingSearch: { flexDirection: 'row' },

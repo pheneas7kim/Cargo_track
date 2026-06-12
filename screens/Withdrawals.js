@@ -16,6 +16,13 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
 import { useFocusEffect } from '@react-navigation/native';
 import { BackHandler } from 'react-native';
+import Snackbar from 'react-native-snackbar'; // Add missing import
+
+// ========== OFFLINE MODULE IMPORTS ==========
+import OfflineDatabaseService from '../services/OfflineDatabaseService';
+import NetworkMonitorService from '../services/NetworkMonitorService';
+import OfflineSyncService from '../services/OfflineSyncService';
+// ========== END OFFLINE MODULE IMPORTS ==========
 
 const { width } = Dimensions.get('window');
 
@@ -43,13 +50,13 @@ const formatDate = (dateString) => {
   const now = new Date();
   const diffTime = Math.abs(now - date);
   const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-  
+
   if (diffDays === 1) return 'Today';
   if (diffDays === 2) return 'Yesterday';
   if (diffDays <= 7) return `${diffDays} days ago`;
-  
-  return date.toLocaleDateString('en-US', { 
-    month: 'short', 
+
+  return date.toLocaleDateString('en-US', {
+    month: 'short',
     day: 'numeric',
     year: date.getFullYear() !== now.getFullYear() ? 'numeric' : undefined
   });
@@ -57,10 +64,10 @@ const formatDate = (dateString) => {
 
 const formatTime = (dateString) => {
   const date = new Date(dateString);
-  return date.toLocaleTimeString('en-US', { 
-    hour: 'numeric', 
+  return date.toLocaleTimeString('en-US', {
+    hour: 'numeric',
     minute: '2-digit',
-    hour12: true 
+    hour12: true
   });
 };
 
@@ -75,6 +82,128 @@ function Withdrawals() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [totalWithdrawn, setTotalWithdrawn] = useState(0);
+
+  // ========== OFFLINE MODE STATE VARIABLES ==========
+  const [isOnline, setIsOnline] = useState(true);
+  const [isSyncing, setIsSyncing] = useState(false);
+  // ========== END OFFLINE MODE STATE VARIABLES ==========
+
+  // ========== OFFLINE MODE INITIALIZATION ==========
+  useEffect(() => {
+    const initOfflineMode = async () => {
+      try {
+        // Initialize offline database
+        await OfflineDatabaseService.initDatabase();
+        console.log('✅ Offline database initialized for Withdrawals Screen');
+
+        // Initialize network monitor
+        NetworkMonitorService.init();
+
+        // Start auto-sync service
+        await OfflineSyncService.startAutoSync();
+
+        // Listen for network changes
+        NetworkMonitorService.on('connectionChange', (online) => {
+          setIsOnline(online);
+          if (online) {
+            Snackbar.show({
+              text: 'Back online! Syncing data...',
+              duration: 2000,
+              backgroundColor: '#4CAF50',
+            });
+            // Auto-refresh when coming back online
+            fetTransactions();
+          } else {
+            Snackbar.show({
+              text: 'Offline mode - using cached withdrawal history',
+              duration: 3000,
+              backgroundColor: '#FF9800',
+            });
+          }
+        });
+
+        // Load initial data
+        await fetTransactions();
+      } catch (error) {
+        console.error('❌ Offline mode init error:', error);
+      }
+    };
+
+    initOfflineMode();
+
+    return () => {
+      // Cleanup
+      OfflineSyncService.stopAutoSync();
+      NetworkMonitorService.cleanup();
+    };
+  }, []);
+  // ========== END OFFLINE MODE INITIALIZATION ==========
+
+  // ========== OFFLINE: Cache withdrawals data ==========
+  const cacheWithdrawalsData = async (transactionsData, total) => {
+    try {
+      await OfflineDatabaseService.saveUserData('withdrawals_history', {
+        data: transactionsData,
+        totalWithdrawn: total,
+        timestamp: Date.now()
+      });
+      console.log('✅ Withdrawals data cached offline');
+    } catch (error) {
+      console.error('Error caching withdrawals data:', error);
+    }
+  };
+  // ========== END OFFLINE CACHE HELPER ==========
+
+  // ========== OFFLINE: Load cached withdrawals ==========
+  const loadCachedWithdrawals = async () => {
+    try {
+      const cached = await OfflineDatabaseService.getUserData('withdrawals_history');
+      if (cached && cached.data && cached.data.length > 0) {
+        setTransactions(cached.data);
+        setTotalWithdrawn(cached.totalWithdrawn || 0);
+        console.log('📦 Loaded cached withdrawal history');
+        return true;
+      }
+      return false;
+    } catch (error) {
+      console.error('Error loading cached withdrawals:', error);
+      return false;
+    }
+  };
+  // ========== END OFFLINE LOAD CACHED ==========
+
+  // ========== OFFLINE: Manual sync function ==========
+  const manualSync = async () => {
+    if (!isOnline) {
+      Snackbar.show({
+        text: 'Cannot sync while offline',
+        duration: 3000,
+        backgroundColor: '#FF6B6B',
+      });
+      return;
+    }
+
+    setIsSyncing(true);
+    try {
+      await OfflineSyncService.syncAll();
+      await fetTransactions();
+      Snackbar.show({
+        text: 'Sync completed successfully!',
+        duration: 3000,
+        backgroundColor: '#4CAF50',
+      });
+    } catch (error) {
+      console.error('Manual sync error:', error);
+      Snackbar.show({
+        text: 'Sync failed',
+        duration: 3000,
+        backgroundColor: '#FF6B6B',
+      });
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+  // ========== END OFFLINE MANUAL SYNC ==========
 
   useFocusEffect(
     React.useCallback(() => {
@@ -100,12 +229,31 @@ function Withdrawals() {
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await fetTransactions();
-    setRefreshing(false);
+    // ========== OFFLINE: Manual sync on refresh ==========
+    if (isOnline) {
+      await manualSync();
+    } else {
+      await loadCachedWithdrawals();
+      setRefreshing(false);
+    }
+    // ========== END OFFLINE MANUAL SYNC ==========
   };
 
   const fetTransactions = async () => {
     try {
+      // ========== OFFLINE: Check if online ==========
+      const online = await NetworkMonitorService.isOnline();
+
+      if (!online) {
+        const hasCached = await loadCachedWithdrawals();
+        if (hasCached) {
+          setLoading(false);
+          setRefreshing(false);
+          return;
+        }
+      }
+      // ========== END OFFLINE CHECK ==========
+
       const token = await AsyncStorage.getItem('accessToken');
       const userId = await AsyncStorage.getItem('id');
 
@@ -144,8 +292,25 @@ function Withdrawals() {
 
       setTransactions(salesOrders);
       setTotalWithdrawn(total);
+
+      // ========== OFFLINE: Cache fetched withdrawals ==========
+      await cacheWithdrawalsData(salesOrders, total);
+      // ========== END OFFLINE CACHE ==========
     } catch (error) {
       console.error('Failed to fetch withdrawal data:', error);
+
+      // ========== OFFLINE: Fallback to cached withdrawals on error ==========
+      const hasCached = await loadCachedWithdrawals();
+      if (!hasCached) {
+        // Don't show snackbar on error if we have cached data
+      } else {
+        Snackbar.show({
+          text: 'Using cached withdrawal history (offline mode)',
+          duration: 3000,
+          backgroundColor: '#FF9800',
+        });
+      }
+      // ========== END OFFLINE FALLBACK ==========
     } finally {
       setLoading(false);
     }
@@ -169,7 +334,7 @@ function Withdrawals() {
           <Text style={styles.amountText}>-KSH {item.amount.toLocaleString()}</Text>
           <View style={styles.statusContainer}>
             <View style={[
-              styles.statusDot, 
+              styles.statusDot,
               { backgroundColor: item.status === 'completed' ? '#4ECDC4' : '#FFD700' }
             ]} />
             <Text style={styles.statusText}>
@@ -186,7 +351,7 @@ function Withdrawals() {
 
 
 
-  
+
   const renderEmptyState = () => (
     <View style={styles.emptyContainer}>
       <View style={styles.emptyIconContainer}>
@@ -196,15 +361,35 @@ function Withdrawals() {
       <Text style={styles.emptySubtitle}>
         Your withdrawal history will appear here once you make your first withdrawal.
       </Text>
-      <TouchableOpacity style={styles.emptyActionButton}>
+      <TouchableOpacity style={styles.emptyActionButton} onPress={() => {/* Navigate to withdrawal screen */}}>
         <Text style={styles.emptyActionText}>Make a Withdrawal</Text>
       </TouchableOpacity>
     </View>
   );
-  
+
 
   const renderHeader = () => (
     <View style={styles.headerContainer}>
+      {/* ========== OFFLINE: Network status banner ========== */}
+      {!isOnline && (
+        <View style={styles.offlineBanner}>
+          <Text style={styles.offlineBannerText}>📴 Offline Mode - Using cached withdrawal history</Text>
+        </View>
+      )}
+      {/* ========== END OFFLINE BANNER ========== */}
+
+      {/* ========== OFFLINE: Sync button ========== */}
+      <View style={styles.syncHeader}>
+        {isSyncing ? (
+          <ActivityIndicator size="small" color="#FF6B6B" />
+        ) : (
+          <TouchableOpacity onPress={manualSync} style={styles.syncButton}>
+            <Text style={styles.syncButtonText}>↻ Sync</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+      {/* ========== END OFFLINE SYNC BUTTON ========== */}
+
       <View style={styles.summaryCard}>
         <View style={styles.summaryHeader}>
           <Text style={styles.summaryLabel}>Total Withdrawn</Text>
@@ -217,7 +402,7 @@ function Withdrawals() {
           {transactions.length} {transactions.length === 1 ? 'withdrawal' : 'withdrawals'}
         </Text>
       </View>
-      
+
       {transactions.length > 0 && (
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Withdrawal History</Text>
@@ -242,8 +427,6 @@ function Withdrawals() {
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
-      
-    
 
       <FlatList
         data={transactions}
@@ -252,8 +435,8 @@ function Withdrawals() {
         ListHeaderComponent={renderHeader}
         ListEmptyComponent={renderEmptyState}
         refreshControl={
-          <RefreshControl 
-            refreshing={refreshing} 
+          <RefreshControl
+            refreshing={refreshing}
             onRefresh={onRefresh}
             colors={['#FF6B6B']}
             tintColor="#FF6B6B"
@@ -307,6 +490,33 @@ const styles = StyleSheet.create({
   headerContainer: {
     paddingHorizontal: 20,
     paddingTop: 8,
+  },
+  syncHeader: {
+    alignItems: 'flex-end',
+    marginBottom: 8,
+  },
+  syncButton: {
+    backgroundColor: '#F0F0F0',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+  },
+  syncButtonText: {
+    fontSize: 12,
+    color: '#FF6B6B',
+    fontWeight: '500',
+  },
+  offlineBanner: {
+    backgroundColor: '#FF9800',
+    padding: 10,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  offlineBannerText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '500',
   },
   summaryCard: {
     backgroundColor: '#FF6B6B',

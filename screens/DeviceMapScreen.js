@@ -29,6 +29,12 @@ import { useTranslation } from 'react-i18next';
 // ✅ Import global token refresh service
 import { refreshAccessToken, addTokenRefreshListener } from '../services/TokenService';
 
+// ========== OFFLINE MODULE IMPORTS ==========
+import OfflineDatabaseService from '../services/OfflineDatabaseService';
+import NetworkMonitorService from '../services/NetworkMonitorService';
+import OfflineSyncService from '../services/OfflineSyncService';
+// ========== END OFFLINE MODULE IMPORTS ==========
+
 const { width, height } = Dimensions.get('window');
 const BOTTOM_SHEET_MIN_HEIGHT = 70;
 const BOTTOM_SHEET_MAX_HEIGHT = height * 0.6;
@@ -111,6 +117,11 @@ const DeviceMapScreen = () => {
   const slideAnim = useRef(new Animated.Value(0)).current;
   const panelHeight = useRef(new Animated.Value(BOTTOM_SHEET_MIN_HEIGHT)).current;
 
+  // ========== OFFLINE MODE STATE VARIABLES ==========
+  const [isOnline, setIsOnline] = useState(true);
+  const [isSyncing, setIsSyncing] = useState(false);
+  // ========== END OFFLINE MODE STATE VARIABLES ==========
+
   // ✅ Listen for token refresh events
   useEffect(() => {
     const removeListener = addTokenRefreshListener((newToken) => {
@@ -118,6 +129,137 @@ const DeviceMapScreen = () => {
     });
     return () => removeListener();
   }, []);
+
+  // ========== OFFLINE MODE INITIALIZATION ==========
+  useEffect(() => {
+    const initOfflineMode = async () => {
+      try {
+        // Initialize offline database
+        await OfflineDatabaseService.initDatabase();
+        console.log('✅ Offline database initialized for Device Map Screen');
+
+        // Initialize network monitor
+        NetworkMonitorService.init();
+
+        // Start auto-sync service
+        await OfflineSyncService.startAutoSync();
+
+        // Listen for network changes
+        NetworkMonitorService.on('connectionChange', (online) => {
+          setIsOnline(online);
+          if (online) {
+            Snackbar.show({
+              text: t('device_map.back_online', { defaultValue: 'Back online! Syncing data...' }),
+              duration: 2000,
+              backgroundColor: '#4CAF50',
+            });
+            // Auto-refresh when coming back online
+            fetchAllData();
+          } else {
+            Snackbar.show({
+              text: t('device_map.offline_mode', { defaultValue: 'Offline mode - using cached data' }),
+              duration: 3000,
+              backgroundColor: '#FF9800',
+            });
+          }
+        });
+
+        // Load initial data
+        await fetchAllData();
+      } catch (error) {
+        console.error('❌ Offline mode init error:', error);
+      }
+    };
+
+    initOfflineMode();
+
+    return () => {
+      // Cleanup
+      OfflineSyncService.stopAutoSync();
+      NetworkMonitorService.cleanup();
+    };
+  }, []);
+  // ========== END OFFLINE MODE INITIALIZATION ==========
+
+  // ========== OFFLINE: Cache data helper ==========
+  const cacheMapData = async (devicesData, geofencesData) => {
+    try {
+      if (devicesData) {
+        await OfflineDatabaseService.saveUserData('device_map_devices', {
+          data: devicesData,
+          timestamp: Date.now()
+        });
+      }
+      if (geofencesData) {
+        await OfflineDatabaseService.saveUserData('device_map_geofences', {
+          data: geofencesData,
+          timestamp: Date.now()
+        });
+      }
+      console.log('✅ Map data cached offline');
+    } catch (error) {
+      console.error('Error caching map data:', error);
+    }
+  };
+  // ========== END OFFLINE CACHE HELPER ==========
+
+  // ========== OFFLINE: Load cached data ==========
+  const loadCachedMapData = async () => {
+    try {
+      const cachedDevices = await OfflineDatabaseService.getUserData('device_map_devices');
+      if (cachedDevices && cachedDevices.data) {
+        setDevices(cachedDevices.data);
+        console.log('📦 Loaded cached devices for map');
+      }
+
+      const cachedGeofences = await OfflineDatabaseService.getUserData('device_map_geofences');
+      if (cachedGeofences && cachedGeofences.data) {
+        setGeofences(cachedGeofences.data);
+        console.log('📦 Loaded cached geofences for map');
+      }
+
+      // Fit map to cached features
+      if (cachedDevices?.data?.length > 0 || cachedGeofences?.data?.length > 0) {
+        fitMapToAllFeatures(cachedDevices?.data || [], cachedGeofences?.data || []);
+      }
+    } catch (error) {
+      console.error('Error loading cached map data:', error);
+    }
+  };
+  // ========== END OFFLINE LOAD CACHED ==========
+
+  // ========== OFFLINE: Manual sync function ==========
+  const manualSync = async () => {
+    if (!isOnline) {
+      Snackbar.show({
+        text: t('device_map.cannot_sync_offline', { defaultValue: 'Cannot sync while offline' }),
+        duration: 3000,
+        backgroundColor: '#FF6B6B',
+      });
+      return;
+    }
+
+    setIsSyncing(true);
+    try {
+      await OfflineSyncService.syncAll();
+      await fetchAllData(true);
+      Snackbar.show({
+        text: t('device_map.sync_complete', { defaultValue: 'Sync completed successfully!' }),
+        duration: 3000,
+        backgroundColor: '#4CAF50',
+      });
+    } catch (error) {
+      console.error('Manual sync error:', error);
+      Snackbar.show({
+        text: t('device_map.sync_failed', { defaultValue: 'Sync failed' }),
+        duration: 3000,
+        backgroundColor: '#FF6B6B',
+      });
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+  // ========== END OFFLINE MANUAL SYNC ==========
 
   useEffect(() => {
     Animated.parallel([
@@ -146,6 +288,18 @@ const DeviceMapScreen = () => {
 
   const fetchAllData = async (isRefresh = false) => {
     if (!isRefresh) setLoading(true);
+
+    // ========== OFFLINE: Check if online ==========
+    const online = await NetworkMonitorService.isOnline();
+
+    if (!online) {
+      await loadCachedMapData();
+      setLoading(false);
+      setRefreshing(false);
+      return;
+    }
+    // ========== END OFFLINE CHECK ==========
+
     try {
       // ✅ FIXED: Changed from axios.get to 'get' string method
       // Fetch both devices and geofences in parallel using authenticatedAxios
@@ -173,17 +327,25 @@ const DeviceMapScreen = () => {
         setGeofences(geofencesRes.data.content);
       }
 
+      // ========== OFFLINE: Cache fetched data ==========
+      await cacheMapData(devicesRes.data, geofencesRes.data?.content);
+      // ========== END OFFLINE CACHE ==========
+
       // Fit map to all markers and geofences after both are loaded
       if (!selectedDeviceMarker && (devicesRes.data.length > 0 || geofencesRes.data.content.length > 0)) {
         fitMapToAllFeatures(devicesRes.data, geofencesRes.data.content);
       }
     } catch (error) {
       console.error('Failed to fetch data:', error);
+
+      // ========== OFFLINE: Fallback to cached data on error ==========
+      await loadCachedMapData();
       Snackbar.show({
-        text: t('device_map.errors.load_failed', { defaultValue: 'Failed to load data' }),
+        text: t('device_map.using_cached', { defaultValue: 'Using cached data (offline mode)' }),
         duration: 3000,
-        backgroundColor: '#FF6B6B',
+        backgroundColor: '#FF9800',
       });
+      // ========== END OFFLINE FALLBACK ==========
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -392,10 +554,29 @@ const DeviceMapScreen = () => {
              <Icon name="arrow-back" size={24} color="#1A1A1A" />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>{t('device_map.title', { defaultValue: 'Device Monitoring' })}</Text>
-          <TouchableOpacity onPress={onRefresh} style={styles.refreshButton}>
-            <Text style={styles.refreshButtonText}>↻</Text>
-          </TouchableOpacity>
+          <View style={styles.headerRightActions}>
+            {/* ========== OFFLINE: Manual sync button ========== */}
+            {isSyncing ? (
+              <ActivityIndicator size="small" color="#FFA500" style={styles.syncIndicator} />
+            ) : (
+              <TouchableOpacity onPress={manualSync} style={styles.syncButton}>
+                <Icon name="sync" size={20} color={isOnline ? "#4CAF50" : "#999"} />
+              </TouchableOpacity>
+            )}
+            {/* ========== END OFFLINE SYNC BUTTON ========== */}
+            <TouchableOpacity onPress={onRefresh} style={styles.refreshButton}>
+              <Text style={styles.refreshButtonText}>↻</Text>
+            </TouchableOpacity>
+          </View>
         </View>
+
+        {/* ========== OFFLINE: Network status banner ========== */}
+        {!isOnline && (
+          <View style={styles.offlineBanner}>
+            <Text style={styles.offlineBannerText}>📴 Offline Mode - Using cached data</Text>
+          </View>
+        )}
+        {/* ========== END OFFLINE BANNER ========== */}
 
         <View style={styles.searchContainer}>
           <Text style={styles.searchIcon}>🔍</Text>
@@ -689,7 +870,7 @@ const DeviceMapScreen = () => {
   );
 };
 
-// Styles (same as before, plus one new line for the extra row)
+// Styles (with offline additions)
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -728,6 +909,23 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#1A1A1A',
   },
+  headerRightActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  syncButton: {
+    width: 40,
+    height: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 20,
+    backgroundColor: '#F5F5F5',
+  },
+  syncIndicator: {
+    width: 40,
+    height: 40,
+  },
   refreshButton: {
     width: 40,
     height: 40,
@@ -739,6 +937,19 @@ const styles = StyleSheet.create({
   refreshButtonText: {
     fontSize: 24,
     color: '#FFA500',
+    fontWeight: '500',
+  },
+  offlineBanner: {
+    backgroundColor: '#FF9800',
+    padding: 8,
+    marginHorizontal: 20,
+    marginBottom: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  offlineBannerText: {
+    color: '#FFFFFF',
+    fontSize: 12,
     fontWeight: '500',
   },
   searchContainer: {

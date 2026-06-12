@@ -24,6 +24,12 @@ import { useTranslation } from 'react-i18next';
 // ✅ Import global token refresh service
 import { refreshAccessToken, addTokenRefreshListener } from '../services/TokenService';
 
+// ========== OFFLINE MODULE IMPORTS ==========
+import OfflineDatabaseService from '../services/OfflineDatabaseService';
+import NetworkMonitorService from '../services/NetworkMonitorService';
+import OfflineSyncService from '../services/OfflineSyncService';
+// ========== END OFFLINE MODULE IMPORTS ==========
+
 const { width } = Dimensions.get('window');
 const SCAN_SIZE = width * 0.7;
 const STORAGE_KEY = '@inventory_devices';
@@ -83,6 +89,11 @@ const InventoryScan = ({ navigation }) => {
   const [errorDetails, setErrorDetails] = useState(null);
   const [authToken, setAuthToken] = useState(null);
 
+  // ========== OFFLINE MODE STATE VARIABLES ==========
+  const [isOnline, setIsOnline] = useState(true);
+  const [pendingSyncCount, setPendingSyncCount] = useState(0);
+  // ========== END OFFLINE MODE STATE VARIABLES ==========
+
   // ✅ Listen for token refresh events
   useEffect(() => {
     const removeListener = addTokenRefreshListener((newToken) => {
@@ -91,6 +102,168 @@ const InventoryScan = ({ navigation }) => {
     });
     return () => removeListener();
   }, []);
+
+  // ========== OFFLINE MODE INITIALIZATION ==========
+  useEffect(() => {
+    const initOfflineMode = async () => {
+      try {
+        // Initialize offline database
+        await OfflineDatabaseService.initDatabase();
+        console.log('✅ Offline database initialized for Inventory Scan Screen');
+
+        // Initialize network monitor
+        NetworkMonitorService.init();
+
+        // Start auto-sync service
+        await OfflineSyncService.startAutoSync();
+
+        // Listen for network changes
+        NetworkMonitorService.on('connectionChange', (online) => {
+          setIsOnline(online);
+          if (online) {
+            Snackbar.show({
+              text: t('inventory_scan.back_online', { defaultValue: 'Back online! Syncing devices...' }),
+              duration: 2000,
+              backgroundColor: '#4CAF50',
+            });
+            // Auto-refresh when coming back online
+            fetchDevices();
+            processPendingDevices();
+          } else {
+            Snackbar.show({
+              text: t('inventory_scan.offline_mode', { defaultValue: 'Offline mode - Devices saved locally' }),
+              duration: 3000,
+              backgroundColor: '#FF9800',
+            });
+          }
+        });
+
+        // Check for pending devices to sync
+        await checkPendingDevices();
+
+        // Load initial data
+        await loadAuthAndDevices();
+      } catch (error) {
+        console.error('❌ Offline mode init error:', error);
+      }
+    };
+
+    initOfflineMode();
+
+    return () => {
+      // Cleanup
+      OfflineSyncService.stopAutoSync();
+      NetworkMonitorService.cleanup();
+    };
+  }, []);
+  // ========== END OFFLINE MODE INITIALIZATION ==========
+
+  // ========== OFFLINE: Check pending devices for sync ==========
+  const checkPendingDevices = async () => {
+    try {
+      const pending = await OfflineDatabaseService.getUserData('pending_devices');
+      if (pending && pending.length > 0) {
+        setPendingSyncCount(pending.length);
+        console.log(`📦 Found ${pending.length} pending devices to sync`);
+      } else {
+        setPendingSyncCount(0);
+      }
+    } catch (error) {
+      console.error('Error checking pending devices:', error);
+    }
+  };
+  // ========== END OFFLINE CHECK PENDING ==========
+
+  // ========== OFFLINE: Save device offline for later sync ==========
+  const saveDeviceOffline = async (deviceData, serialNo) => {
+    try {
+      const offlineDevice = {
+        id: Date.now(),
+        serialNo: serialNo,
+        deviceData: deviceData,
+        timestamp: new Date().toISOString(),
+        status: 'PENDING',
+        syncStatus: 'PENDING',
+        retryCount: 0
+      };
+
+      const existingDevices = await OfflineDatabaseService.getUserData('pending_devices') || [];
+      // Check for duplicates in pending queue
+      const exists = existingDevices.some(d => d.serialNo === serialNo);
+      if (!exists) {
+        existingDevices.push(offlineDevice);
+        await OfflineDatabaseService.saveUserData('pending_devices', existingDevices);
+        setPendingSyncCount(existingDevices.length);
+
+        // Also add to sync queue
+        await OfflineDatabaseService.addToSyncQueue('DEVICE_REGISTRATION', '/devices', deviceData);
+
+        console.log(`📦 Device ${serialNo} saved offline for later sync`);
+      }
+      return true;
+    } catch (error) {
+      console.error('Error saving device offline:', error);
+      return false;
+    }
+  };
+  // ========== END OFFLINE SAVE DEVICE ==========
+
+  // ========== OFFLINE: Process pending devices ==========
+  const processPendingDevices = async () => {
+    if (!isOnline) return;
+
+    const pendingDevices = await OfflineDatabaseService.getUserData('pending_devices');
+    if (!pendingDevices || pendingDevices.length === 0) return;
+
+    console.log(`🔄 Processing ${pendingDevices.length} pending devices...`);
+    let successCount = 0;
+    let failCount = 0;
+
+    for (const pendingDevice of pendingDevices) {
+      try {
+        const response = await authenticatedFetch(
+          `${serverURL}devices`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(pendingDevice.deviceData),
+          },
+          i18n
+        );
+
+        if (response.ok) {
+          successCount++;
+          console.log(`✅ Synced device ${pendingDevice.serialNo}`);
+        } else if (response.status === 409) {
+          // Already exists - consider it a success
+          successCount++;
+          console.log(`ℹ️ Device ${pendingDevice.serialNo} already exists on server`);
+        } else {
+          failCount++;
+          console.log(`❌ Failed to sync device ${pendingDevice.serialNo}`);
+        }
+      } catch (error) {
+        console.error(`Error syncing device ${pendingDevice.serialNo}:`, error);
+        failCount++;
+      }
+    }
+
+    // Clear processed devices from storage
+    await OfflineDatabaseService.saveUserData('pending_devices', []);
+    setPendingSyncCount(0);
+
+    if (successCount > 0) {
+      Snackbar.show({
+        text: t('inventory_scan.synced_devices', { defaultValue: 'Synced {{count}} device(s) to server', count: successCount }).replace('{{count}}', successCount.toString()),
+        duration: 3000,
+        backgroundColor: '#4CAF50',
+      });
+      await fetchDevices();
+    }
+  };
+  // ========== END OFFLINE PROCESS PENDING ==========
 
   // Save devices to AsyncStorage
   const saveDevicesToStorage = async (devicesList) => {
@@ -118,33 +291,30 @@ const InventoryScan = ({ navigation }) => {
   };
 
   // 🔐 Load auth token once on mount AND load stored devices
-  useEffect(() => {
-    const loadAuthAndDevices = async () => {
-      try {
-        const token = await AsyncStorage.getItem('accessToken');
-        console.log('🔐 Token loaded:', token ? '✓ Exists' : '✗ Missing');
-        setAuthToken(token);
+  const loadAuthAndDevices = async () => {
+    try {
+      const token = await AsyncStorage.getItem('accessToken');
+      console.log('🔐 Token loaded:', token ? '✓ Exists' : '✗ Missing');
+      setAuthToken(token);
 
-        // Load persisted devices FIRST
-        const storedDevices = await loadDevicesFromStorage();
-        if (storedDevices.length > 0) {
-          console.log(`📦 Loaded ${storedDevices.length} devices from storage`);
-          setDevices(storedDevices);
-        }
+      // Load persisted devices FIRST
+      const storedDevices = await loadDevicesFromStorage();
+      if (storedDevices.length > 0) {
+        console.log(`📦 Loaded ${storedDevices.length} devices from storage`);
+        setDevices(storedDevices);
+      }
 
-        // Then try to fetch from API (with valid token)
-        if (token) {
-          await fetchDevices();
-        } else {
-          setLoading(false);
-        }
-      } catch (e) {
-        console.error('❌ Failed to load token:', e);
+      // Then try to fetch from API (with valid token)
+      if (token && isOnline) {
+        await fetchDevices();
+      } else {
         setLoading(false);
       }
-    };
-    loadAuthAndDevices();
-  }, []);
+    } catch (e) {
+      console.error('❌ Failed to load token:', e);
+      setLoading(false);
+    }
+  };
 
   // Fetch devices from API - uses authenticatedFetch for token refresh
   const fetchDevices = async () => {
@@ -193,12 +363,13 @@ const InventoryScan = ({ navigation }) => {
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
-    if (authToken) {
+    if (authToken && isOnline) {
       fetchDevices();
+      processPendingDevices();
     } else {
       setRefreshing(false);
     }
-  }, [authToken]);
+  }, [authToken, isOnline]);
 
   // 🔍 Extract clean serial number - strips prefixes like "Device_" and handles URLs
   const extractSerialNumber = (rawValue) => {
@@ -338,11 +509,35 @@ const InventoryScan = ({ navigation }) => {
     setErrorDetails(null);
 
     try {
-      if (!authToken) {
-        console.log('⚠️ No auth token - skipping API sync (local mode)');
-        setResultMessage(t('inventory_scan.status.saved_locally_offline', { defaultValue: 'Saved locally (offline mode)' }));
+      // ========== OFFLINE: Check if online ==========
+      const online = await NetworkMonitorService.isOnline();
+
+      if (!online || !authToken) {
+        console.log('⚠️ Offline or no auth token - saving device for later sync');
+        const isJointTech = serialNo.length === 10;
+        const deviceData = {
+          name: serialNo,
+          serialNo: serialNo,
+          yearOfManufacture: new Date().getFullYear(),
+          make: '',
+          model: '',
+          imei: '',
+          sim1Number: '',
+          sim2Number: '',
+          warrantyNumber: '',
+          warrantyPeriodMonths: 12,
+          firmwareVersion: '',
+          notes: 'Auto-registered via mobile scanner',
+          password: '',
+          manufacturerId: isJointTech ? 2 : 1,
+          deviceTypeId: 1,
+          warrantyStartDate: new Date().toISOString().split('T')[0],
+        };
+        await saveDeviceOffline(deviceData, serialNo);
+        setResultMessage(t('inventory_scan.status.saved_locally_offline', { defaultValue: 'Saved locally (offline mode) - Will sync when online' }));
         return;
       }
+      // ========== END OFFLINE CHECK ==========
 
       const isJointTech = serialNo.length === 10;
       const deviceData = {
@@ -388,6 +583,8 @@ const InventoryScan = ({ navigation }) => {
         }
       } else if (response.status === 401) {
         console.warn('⚠️ API 401 - token expired');
+        // Save offline for later sync
+        await saveDeviceOffline(deviceData, serialNo);
         setResultMessage(t('inventory_scan.status.saved_locally_login_to_sync', { defaultValue: 'Saved locally (login to sync)' }));
       } else if (response.status === 409) {
         console.log('ℹ️ Device already exists on server');
@@ -395,11 +592,36 @@ const InventoryScan = ({ navigation }) => {
       } else {
         const text = await response.text();
         console.warn('⚠️ API error:', response.status, text);
+        // Save offline for later sync
+        await saveDeviceOffline(deviceData, serialNo);
         setResultMessage(t('inventory_scan.status.saved_locally_server_error', { defaultValue: 'Saved locally (server error)' }));
       }
     } catch (error) {
       console.error('❌ API sync failed:', error.message);
-      setResultMessage(t('inventory_scan.status.saved_locally_network_error', { defaultValue: 'Saved locally (network error)' }));
+
+      // ========== OFFLINE: Save device for later sync on error ==========
+      const isJointTech = serialNo.length === 10;
+      const deviceData = {
+        name: serialNo,
+        serialNo: serialNo,
+        yearOfManufacture: new Date().getFullYear(),
+        make: '',
+        model: '',
+        imei: '',
+        sim1Number: '',
+        sim2Number: '',
+        warrantyNumber: '',
+        warrantyPeriodMonths: 12,
+        firmwareVersion: '',
+        notes: 'Auto-registered via mobile scanner',
+        password: '',
+        manufacturerId: isJointTech ? 2 : 1,
+        deviceTypeId: 1,
+        warrantyStartDate: new Date().toISOString().split('T')[0],
+      };
+      await saveDeviceOffline(deviceData, serialNo);
+      setResultMessage(t('inventory_scan.status.saved_locally_network_error', { defaultValue: 'Saved locally (network error) - Will sync when online' }));
+      // ========== END OFFLINE SAVE ==========
     } finally {
       setIsLoading(false);
       // Close scanner after brief delay regardless of API result
@@ -417,6 +639,40 @@ const InventoryScan = ({ navigation }) => {
     setIsLoading(false);
     setScanned(false);
   };
+
+  // ========== OFFLINE: Manual sync for pending devices ==========
+  const manualSync = async () => {
+    if (!isOnline) {
+      Snackbar.show({
+        text: t('inventory_scan.cannot_sync_offline', { defaultValue: 'Cannot sync while offline' }),
+        duration: 3000,
+        backgroundColor: '#FF6B6B',
+      });
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      await OfflineSyncService.syncAll();
+      await processPendingDevices();
+      await fetchDevices();
+      Snackbar.show({
+        text: t('inventory_scan.sync_complete', { defaultValue: 'Sync completed successfully!' }),
+        duration: 3000,
+        backgroundColor: '#4CAF50',
+      });
+    } catch (error) {
+      console.error('Manual sync error:', error);
+      Snackbar.show({
+        text: t('inventory_scan.sync_failed', { defaultValue: 'Sync failed' }),
+        duration: 3000,
+        backgroundColor: '#FF6B6B',
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+  // ========== END OFFLINE MANUAL SYNC ==========
 
   const renderDeviceCard = ({ item, index }) => {
     const isJointTech = item.manufacturerId === 2 || item.serialNo?.length === 10;
@@ -478,10 +734,29 @@ const InventoryScan = ({ navigation }) => {
 
       <View style={styles.header}>
         <Text style={styles.headerTitle}>{t('inventory_scan.title', { defaultValue: 'Device Inventory' })}</Text>
-        <Text style={styles.headerSubtitle}>
-          {devices.length} {t('inventory_scan.devices_count', { defaultValue: 'devices' })} {!authToken && t('inventory_scan.local_mode', { defaultValue: '🔓 Local Mode' })}
-        </Text>
+        <View style={styles.headerSubtitleRow}>
+          <Text style={styles.headerSubtitle}>
+            {devices.length} {t('inventory_scan.devices_count', { defaultValue: 'devices' })} {!authToken && t('inventory_scan.local_mode', { defaultValue: '🔓 Local Mode' })}
+          </Text>
+          {/* ========== OFFLINE: Pending sync indicator ========== */}
+          {pendingSyncCount > 0 && isOnline && (
+            <TouchableOpacity onPress={manualSync} style={styles.syncBadge}>
+              <Ionicons name="sync" size={14} color="#FF9800" />
+              <Text style={styles.syncBadgeText}>{pendingSyncCount} pending</Text>
+            </TouchableOpacity>
+          )}
+          {/* ========== END OFFLINE PENDING INDICATOR ========== */}
+        </View>
       </View>
+
+      {/* ========== OFFLINE: Network status banner ========== */}
+      {!isOnline && (
+        <View style={styles.offlineBanner}>
+          <Ionicons name="wifi-off" size={16} color="#FFF" />
+          <Text style={styles.offlineBannerText}>📴 Offline Mode - Devices saved locally</Text>
+        </View>
+      )}
+      {/* ========== END OFFLINE BANNER ========== */}
 
       {!scannedData ? (
         <>
@@ -629,7 +904,43 @@ const styles = StyleSheet.create({
     borderBottomColor: '#E5E5E5',
   },
   headerTitle: { fontSize: 28, fontWeight: 'bold', color: '#1A1A1A' },
-  headerSubtitle: { fontSize: 14, color: '#666', marginTop: 4 },
+  headerSubtitleRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  headerSubtitle: { fontSize: 14, color: '#666' },
+  syncBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFF3E0',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    gap: 4,
+  },
+  syncBadgeText: {
+    fontSize: 11,
+    color: '#FF9800',
+    fontWeight: '500',
+  },
+  offlineBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FF9800',
+    padding: 10,
+    marginHorizontal: 16,
+    marginTop: 12,
+    borderRadius: 8,
+    gap: 8,
+  },
+  offlineBannerText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '500',
+    flex: 1,
+  },
   listContainer: { padding: 16, paddingBottom: 80 },
   deviceCard: {
     backgroundColor: '#FFFFFF',

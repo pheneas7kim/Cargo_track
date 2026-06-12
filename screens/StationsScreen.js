@@ -29,6 +29,12 @@ import { useTranslation } from 'react-i18next';
 // ✅ Import global token refresh service
 import { refreshAccessToken, addTokenRefreshListener } from '../services/TokenService';
 
+// ========== OFFLINE MODULE IMPORTS ==========
+import OfflineDatabaseService from '../services/OfflineDatabaseService';
+import NetworkMonitorService from '../services/NetworkMonitorService';
+import OfflineSyncService from '../services/OfflineSyncService';
+// ========== END OFFLINE MODULE IMPORTS ==========
+
 const { width, height } = Dimensions.get('window');
 
 // ✅ Helper function to get language header
@@ -93,6 +99,12 @@ const StationsScreen = () => {
   const [expandedId, setExpandedId] = useState(null);
   const [filterType, setFilterType] = useState('all'); // all, checkpoint, bus_stop
 
+  // ========== OFFLINE MODE STATE VARIABLES ==========
+  const [isOnline, setIsOnline] = useState(true);
+  const [offlineDataAvailable, setOfflineDataAvailable] = useState(false);
+  const [lastSyncTime, setLastSyncTime] = useState(null);
+  // ========== END OFFLINE MODE STATE VARIABLES ==========
+
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(30)).current;
 
@@ -103,6 +115,93 @@ const StationsScreen = () => {
     });
     return () => removeListener();
   }, []);
+
+  // ========== OFFLINE MODE INITIALIZATION ==========
+  useEffect(() => {
+    const initOfflineMode = async () => {
+      try {
+        // Initialize offline database
+        await OfflineDatabaseService.initDatabase();
+        console.log('✅ Offline database initialized for Stations Screen');
+
+        // Initialize network monitor
+        NetworkMonitorService.init();
+
+        // Start auto-sync service
+        await OfflineSyncService.startAutoSync();
+
+        // Listen for network changes
+        NetworkMonitorService.on('connectionChange', (online) => {
+          setIsOnline(online);
+          if (online) {
+            Snackbar.show({
+              text: t('stations.back_online', { defaultValue: 'Back online! Syncing stations...' }),
+              duration: 2000,
+              backgroundColor: '#4CAF50',
+            });
+            fetchStations();
+          } else {
+            Snackbar.show({
+              text: t('stations.offline_mode', { defaultValue: 'Offline mode - Showing cached stations' }),
+              duration: 3000,
+              backgroundColor: '#FF9800',
+            });
+          }
+        });
+
+        // Load cached stations from offline database
+        await loadCachedStations();
+
+        // Load last sync time
+        const lastSync = await OfflineDatabaseService.getUserData('last_stations_sync');
+        if (lastSync) {
+          setLastSyncTime(new Date(lastSync));
+        }
+
+      } catch (error) {
+        console.error('❌ Offline mode init error:', error);
+      }
+    };
+
+    initOfflineMode();
+
+    return () => {
+      // Cleanup
+      NetworkMonitorService.cleanup();
+    };
+  }, []);
+  // ========== END OFFLINE MODE INITIALIZATION ==========
+
+  // ========== OFFLINE: Load cached stations from offline database ==========
+  const loadCachedStations = async () => {
+    try {
+      const cachedStations = await OfflineDatabaseService.getUserData('cached_stations');
+      if (cachedStations && cachedStations.stations && cachedStations.stations.length > 0) {
+        setStations(cachedStations.stations);
+        setOfflineDataAvailable(true);
+        console.log(`📦 Loaded ${cachedStations.stations.length} stations from offline cache`);
+      }
+    } catch (error) {
+      console.error('Error loading cached stations:', error);
+    }
+  };
+  // ========== END OFFLINE LOAD CACHED STATIONS ==========
+
+  // ========== OFFLINE: Save stations to offline database ==========
+  const saveStationsToOfflineCache = async (stationsList) => {
+    try {
+      await OfflineDatabaseService.saveUserData('cached_stations', {
+        stations: stationsList,
+        timestamp: Date.now(),
+        count: stationsList.length
+      });
+      console.log(`💾 Saved ${stationsList.length} stations to offline cache`);
+      setOfflineDataAvailable(true);
+    } catch (error) {
+      console.error('Error saving stations to cache:', error);
+    }
+  };
+  // ========== END OFFLINE SAVE TO CACHE ==========
 
   useEffect(() => {
     Animated.parallel([
@@ -135,6 +234,18 @@ const StationsScreen = () => {
     try {
       if (!isRefresh) setLoading(true);
 
+      // ========== OFFLINE: Check if online ==========
+      const online = await NetworkMonitorService.isOnline();
+
+      if (!online) {
+        console.log('📴 Offline - using cached stations data');
+        await loadCachedStations();
+        setLoading(false);
+        setRefreshing(false);
+        return;
+      }
+      // ========== END OFFLINE CHECK ==========
+
       // ✅ FIXED: Changed from axios.get to 'get' string method
       const response = await authenticatedAxios(
         'get',  // <-- FIXED: Use string method name
@@ -146,21 +257,77 @@ const StationsScreen = () => {
 
       if (response.data && response.data.content) {
         setStations(response.data.content);
+        // ========== OFFLINE: Save to offline cache ==========
+        await saveStationsToOfflineCache(response.data.content);
+        await OfflineDatabaseService.saveUserData('last_stations_sync', Date.now());
+        setLastSyncTime(new Date());
+        // ========== END OFFLINE SAVE ==========
       } else if (response.data && Array.isArray(response.data)) {
         setStations(response.data);
+        // ========== OFFLINE: Save to offline cache ==========
+        await saveStationsToOfflineCache(response.data);
+        await OfflineDatabaseService.saveUserData('last_stations_sync', Date.now());
+        setLastSyncTime(new Date());
+        // ========== END OFFLINE SAVE ==========
       }
     } catch (error) {
       console.error('Failed to fetch stations:', error);
-      Snackbar.show({
-        text: t('stations.errors.load_failed', { defaultValue: 'Failed to load stations' }),
-        duration: 3000,
-        backgroundColor: '#FF6B6B',
-      });
+
+      // ========== OFFLINE: Fall back to cached data on error ==========
+      const cachedStations = await OfflineDatabaseService.getUserData('cached_stations');
+      if (cachedStations && cachedStations.stations && cachedStations.stations.length > 0) {
+        setStations(cachedStations.stations);
+        setOfflineDataAvailable(true);
+        Snackbar.show({
+          text: t('stations.using_cached_data', { defaultValue: 'Using cached stations (server unavailable)' }),
+          duration: 3000,
+          backgroundColor: '#FF9800',
+        });
+      } else {
+        Snackbar.show({
+          text: t('stations.errors.load_failed', { defaultValue: 'Failed to load stations' }),
+          duration: 3000,
+          backgroundColor: '#FF6B6B',
+        });
+      }
+      // ========== END OFFLINE FALLBACK ==========
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
   };
+
+  // ========== OFFLINE: Manual sync for stations ==========
+  const manualSyncStations = async () => {
+    if (!isOnline) {
+      Snackbar.show({
+        text: t('stations.cannot_sync_offline', { defaultValue: 'Cannot sync while offline' }),
+        duration: 3000,
+        backgroundColor: '#FF6B6B',
+      });
+      return;
+    }
+
+    setLoading(true);
+    try {
+      await fetchStations(false);
+      Snackbar.show({
+        text: t('stations.sync_complete', { defaultValue: 'Stations synchronized!' }),
+        duration: 3000,
+        backgroundColor: '#4CAF50',
+      });
+    } catch (error) {
+      console.error('Manual sync error:', error);
+      Snackbar.show({
+        text: t('stations.sync_failed', { defaultValue: 'Sync failed' }),
+        duration: 3000,
+        backgroundColor: '#FF6B6B',
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+  // ========== END OFFLINE MANUAL SYNC ==========
 
   const onRefresh = () => {
     setRefreshing(true);
@@ -199,6 +366,19 @@ const StationsScreen = () => {
     if (diff < 1440) return t('stations.time.hours_ago', { defaultValue: '{{count}} hr ago' }).replace('{{count}}', Math.floor(diff / 60).toString());
     return date.toLocaleDateString();
   };
+
+  // ========== OFFLINE: Get last update text with offline indicator ==========
+  const getLastUpdateText = () => {
+    if (!lastSyncTime) return t('stations.na', { defaultValue: 'N/A' });
+
+    const now = new Date();
+    const diff = Math.floor((now - lastSyncTime) / 1000 / 60);
+
+    if (diff < 1) return t('stations.time.just_now', { defaultValue: 'Just now' });
+    if (diff < 60) return t('stations.time.minutes_ago', { defaultValue: '{{count}} min ago' }).replace('{{count}}', diff.toString());
+    return t('stations.time.hours_ago', { defaultValue: '{{count}} hr ago' }).replace('{{count}}', Math.floor(diff / 60).toString());
+  };
+  // ========== END OFFLINE LAST UPDATE ==========
 
   const formatCoordinates = (lat, lng) => {
     if (!lat || !lng) return t('stations.na', { defaultValue: 'N/A' });
@@ -438,6 +618,37 @@ const StationsScreen = () => {
           </TouchableOpacity>
         </View>
 
+        {/* ========== OFFLINE: Status bar with sync indicator ========== */}
+        <View style={styles.statusBar}>
+          <View style={styles.statusLeft}>
+            {!isOnline && (
+              <View style={styles.offlineStatusBadge}>
+                <Icon name="wifi-off" size={12} color="#FFF" />
+                <Text style={styles.offlineStatusText}>📴 {t('stations.offline', { defaultValue: 'Offline Mode' })}</Text>
+              </View>
+            )}
+            {isOnline && offlineDataAvailable && !loading && (
+              <Text style={styles.lastUpdateText}>
+                {t('stations.last_update', { defaultValue: 'Updated' })}: {getLastUpdateText()}
+              </Text>
+            )}
+          </View>
+          <View style={styles.statusRight}>
+            {!isOnline && offlineDataAvailable && (
+              <Text style={styles.cachedDataText}>
+                📦 {t('stations.cached_data', { defaultValue: 'Cached Data' })}
+              </Text>
+            )}
+            {isOnline && (
+              <TouchableOpacity onPress={manualSyncStations} style={styles.syncButton}>
+                <Icon name="sync" size={14} color="#FFA500" />
+                <Text style={styles.syncButtonText}>{t('stations.sync', { defaultValue: 'Sync' })}</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        </View>
+        {/* ========== END OFFLINE STATUS BAR ========== */}
+
         <View style={styles.statsContainer}>
           <View style={styles.statCard}>
             <Text style={styles.statNumber}>{stations.length}</Text>
@@ -460,7 +671,7 @@ const StationsScreen = () => {
     );
   };
 
-  if (loading && !refreshing) {
+  if (loading && !refreshing && !offlineDataAvailable) {
     return (
       <SafeAreaView style={styles.container}>
         <StatusBar barStyle="dark-content" backgroundColor="#F8F9FA" />
@@ -740,6 +951,62 @@ const styles = StyleSheet.create({
   activeFilterText: {
     color: '#FFA500',
   },
+  // ========== OFFLINE STYLES ==========
+  statusBar: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 8,
+    marginBottom: 8,
+  },
+  statusLeft: {
+    flex: 1,
+  },
+  statusRight: {
+    alignItems: 'flex-end',
+  },
+  offlineStatusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FF9800',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    alignSelf: 'flex-start',
+    gap: 4,
+  },
+  offlineStatusText: {
+    color: '#FFFFFF',
+    fontSize: 10,
+    fontWeight: '600',
+  },
+  lastUpdateText: {
+    color: '#666',
+    fontSize: 10,
+  },
+  cachedDataText: {
+    color: '#FF9800',
+    fontSize: 10,
+    fontWeight: '500',
+  },
+  syncButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFA50020',
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#FFA500',
+    gap: 4,
+  },
+  syncButtonText: {
+    color: '#FFA500',
+    fontSize: 11,
+    fontWeight: '500',
+  },
+  // ========== END OFFLINE STYLES ==========
   statsContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',

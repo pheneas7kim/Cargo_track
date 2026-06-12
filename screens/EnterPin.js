@@ -18,6 +18,12 @@ import Snackbar from 'react-native-snackbar';
 import { useNavigation } from '@react-navigation/native';
 import * as Animatable from 'react-native-animatable';
 
+// ========== OFFLINE MODULE IMPORTS ==========
+import OfflineDatabaseService from '../services/OfflineDatabaseService';
+import NetworkMonitorService from '../services/NetworkMonitorService';
+import OfflineSyncService from '../services/OfflineSyncService';
+// ========== END OFFLINE MODULE IMPORTS ==========
+
 const { width } = Dimensions.get('window');
 const MAX_TRIES = 5; // Define the missing constant
 
@@ -28,6 +34,147 @@ function EnterPin() {
 
   const navigation = useNavigation();
   const pinRefs = useRef([]);
+
+  // ========== OFFLINE MODE STATE VARIABLES ==========
+  const [isOnline, setIsOnline] = useState(true);
+  const [offlineTransaction, setOfflineTransaction] = useState(null);
+  // ========== END OFFLINE MODE STATE VARIABLES ==========
+
+  // ========== OFFLINE MODE INITIALIZATION ==========
+  useEffect(() => {
+    const initOfflineMode = async () => {
+      try {
+        // Initialize offline database
+        await OfflineDatabaseService.initDatabase();
+        console.log('✅ Offline database initialized for Enter PIN Screen');
+
+        // Initialize network monitor
+        NetworkMonitorService.init();
+
+        // Start auto-sync service
+        await OfflineSyncService.startAutoSync();
+
+        // Listen for network changes
+        NetworkMonitorService.on('connectionChange', (online) => {
+          setIsOnline(online);
+          if (online) {
+            console.log('🌐 Back online in EnterPin');
+            // Check for pending transactions when coming online
+            checkPendingTransactions();
+          } else {
+            Snackbar.show({
+              text: 'Offline mode - Transactions will be saved locally',
+              duration: 3000,
+              backgroundColor: '#FF9800',
+            });
+          }
+        });
+
+        // Load pending transactions
+        await checkPendingTransactions();
+      } catch (error) {
+        console.error('❌ Offline mode init error:', error);
+      }
+    };
+
+    initOfflineMode();
+
+    return () => {
+      // Cleanup
+      OfflineSyncService.stopAutoSync();
+      NetworkMonitorService.cleanup();
+    };
+  }, []);
+  // ========== END OFFLINE MODE INITIALIZATION ==========
+
+  // ========== OFFLINE: Check pending transactions ==========
+  const checkPendingTransactions = async () => {
+    try {
+      const pending = await OfflineDatabaseService.getUserData('pending_payments');
+      if (pending && pending.length > 0) {
+        setOfflineTransaction(pending[0]);
+        console.log('📦 Found pending transaction:', pending[0]);
+      }
+    } catch (error) {
+      console.error('Error checking pending transactions:', error);
+    }
+  };
+  // ========== END OFFLINE CHECK PENDING ==========
+
+  // ========== OFFLINE: Save payment offline ==========
+  const savePaymentOffline = async (pinValue, salesOrderId, phoneNumber) => {
+    try {
+      const offlinePayment = {
+        id: Date.now(),
+        pin: pinValue,
+        salesOrderId: salesOrderId,
+        phoneNumber: phoneNumber,
+        timestamp: new Date().toISOString(),
+        status: 'PENDING',
+        syncStatus: 'PENDING'
+      };
+
+      const existingPayments = await OfflineDatabaseService.getUserData('pending_payments') || [];
+      existingPayments.push(offlinePayment);
+      await OfflineDatabaseService.saveUserData('pending_payments', existingPayments);
+      setOfflineTransaction(offlinePayment);
+
+      // Also add to sync queue
+      await OfflineDatabaseService.addToSyncQueue('PAYMENT', '/SalesOrder/paySupplier', {
+        salesOrderId: salesOrderId,
+        phoneNumber: phoneNumber,
+        pin: pinValue
+      });
+
+      return true;
+    } catch (error) {
+      console.error('Error saving payment offline:', error);
+      return false;
+    }
+  };
+  // ========== END OFFLINE SAVE PAYMENT ==========
+
+  // ========== OFFLINE: Process pending payments ==========
+  const processPendingPayments = async () => {
+    if (!isOnline) return;
+
+    const pendingPayments = await OfflineDatabaseService.getUserData('pending_payments');
+    if (!pendingPayments || pendingPayments.length === 0) return;
+
+    console.log(`🔄 Processing ${pendingPayments.length} pending payments...`);
+
+    for (const payment of pendingPayments) {
+      try {
+        const token = await AsyncStorage.getItem('accessToken');
+        const url = `${serverUrl}/SalesOrder/paySupplier?id=${payment.salesOrderId}&phoneNumber=${payment.phoneNumber}&PIN=${payment.pin}`;
+
+        const response = await fetch(url, {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
+          },
+        });
+
+        const result = await response.json();
+
+        if (response.ok) {
+          console.log(`✅ Processed pending payment for order ${payment.salesOrderId}`);
+          // Start requery for this payment
+          handleSuccess(result.sales_order_id);
+        } else {
+          console.log(`❌ Failed to process payment for order ${payment.salesOrderId}`);
+        }
+      } catch (error) {
+        console.error(`Error processing payment:`, error);
+      }
+    }
+
+    // Clear processed payments
+    await OfflineDatabaseService.saveUserData('pending_payments', []);
+    setOfflineTransaction(null);
+  };
+  // ========== END OFFLINE PROCESS PENDING ==========
 
   useEffect(() => {
     setTimeout(() => pinRefs.current[0]?.focus(), 100);
@@ -99,6 +246,34 @@ function EnterPin() {
       const phoneNumber = await AsyncStorage.getItem('phoneNumber2');
       const token = await AsyncStorage.getItem('accessToken');
 
+      // ========== OFFLINE: Check if online ==========
+      const online = await NetworkMonitorService.isOnline();
+
+      if (!online) {
+        // Save payment offline
+        const saved = await savePaymentOffline(pinValue, salesOrderId, phoneNumber);
+        if (saved) {
+          Snackbar.show({
+            text: 'Payment saved offline. Will process when online.',
+            duration: 4000,
+            backgroundColor: '#FF9800',
+          });
+          setIsLoading(false);
+          navigation.replace('Dashboard');
+        } else {
+          Snackbar.show({
+            text: 'Failed to save payment offline. Please try again.',
+            duration: 3000,
+            backgroundColor: '#FF6B6B',
+          });
+          setIsLoading(false);
+          setPin(['', '', '', '']);
+          setTimeout(() => pinRefs.current[0]?.focus(), 1000);
+        }
+        return;
+      }
+      // ========== END OFFLINE CHECK ==========
+
       const url = `${serverUrl}/SalesOrder/paySupplier?id=${salesOrderId}&phoneNumber=${phoneNumber}&PIN=${pinValue}`;
 
       const response = await fetch(url, {
@@ -117,7 +292,7 @@ function EnterPin() {
       } else {
         setIsLoading(false);
         const errorMessage = result.data || result.message || 'Failed to submit. Please try again.';
-        
+
         Snackbar.show({
           text: errorMessage,
           duration: 3000,
@@ -129,18 +304,65 @@ function EnterPin() {
         setTimeout(() => pinRefs.current[0]?.focus(), 1000);
       }
     } catch (error) {
-      setIsLoading(false);
       console.error('❌ Error submitting PIN:', error);
-      
-      Snackbar.show({
-        text: 'Network error. Please try again.',
-        duration: 3000,
-        backgroundColor: '#FF0000',
-      });
 
-      // Reset PIN on error
-      setPin(['', '', '', '']);
-      setTimeout(() => pinRefs.current[0]?.focus(), 1000);
+      // ========== OFFLINE: Offer to save offline on error ==========
+      const isNetworkError = error.message?.includes('network') ||
+                            error.message?.includes('offline') ||
+                            error.code === 'ERR_NETWORK';
+
+      if (isNetworkError) {
+        const salesOrderId = await AsyncStorage.getItem('salesOrderId');
+        const phoneNumber = await AsyncStorage.getItem('phoneNumber2');
+
+        Alert.alert(
+          'Network Error',
+          'Unable to process payment. Would you like to save it offline and try again later?',
+          [
+            {
+              text: 'Cancel',
+              style: 'cancel',
+              onPress: () => {
+                setIsLoading(false);
+                setPin(['', '', '', '']);
+                setTimeout(() => pinRefs.current[0]?.focus(), 1000);
+              }
+            },
+            {
+              text: 'Save Offline',
+              onPress: async () => {
+                const saved = await savePaymentOffline(pinValue, salesOrderId, phoneNumber);
+                if (saved) {
+                  Snackbar.show({
+                    text: 'Payment saved offline. Will process when online.',
+                    duration: 4000,
+                    backgroundColor: '#FF9800',
+                  });
+                  navigation.replace('Dashboard');
+                } else {
+                  Snackbar.show({
+                    text: 'Failed to save payment offline.',
+                    duration: 3000,
+                    backgroundColor: '#FF6B6B',
+                  });
+                }
+                setIsLoading(false);
+              }
+            }
+          ]
+        );
+      } else {
+        Snackbar.show({
+          text: 'Network error. Please try again.',
+          duration: 3000,
+          backgroundColor: '#FF0000',
+        });
+        setIsLoading(false);
+        // Reset PIN on error
+        setPin(['', '', '', '']);
+        setTimeout(() => pinRefs.current[0]?.focus(), 1000);
+      }
+      // ========== END OFFLINE OFFER ==========
     }
   };
 
@@ -150,10 +372,10 @@ function EnterPin() {
 
   const handleSuccess = async (salesOrderId) => {
     console.log('📩 salesOrderId:', salesOrderId);
-    
+
     setTimeout(() => {
       let currentTry = 0;
-      
+
       const requeryPayments = async () => {
         if (currentTry < MAX_TRIES) {
           const response = await requeryPaymentsById(salesOrderId, MAX_TRIES - currentTry, navigation);
@@ -179,9 +401,9 @@ function EnterPin() {
             } else {
               console.log('❗ Max requery attempts reached.');
               setIsLoading(false);
-              
+
               Alert.alert(
-                'Notice', 
+                'Notice',
                 'Payment processing is taking longer than expected. Please check your transaction history.',
                 [
                   {
@@ -204,7 +426,7 @@ function EnterPin() {
 
     try {
       const token = await AsyncStorage.getItem('accessToken');
-      
+
       console.log('➡️ Sending GET request to', url);
 
       const response = await fetch(url, {
@@ -263,9 +485,57 @@ function EnterPin() {
     </View>
   );
 
+  // ========== OFFLINE: Manual retry for pending transactions ==========
+  const retryPendingPayment = async () => {
+    if (!isOnline) {
+      Snackbar.show({
+        text: 'Cannot retry while offline. Please connect to the internet.',
+        duration: 3000,
+        backgroundColor: '#FF6B6B',
+      });
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      await processPendingPayments();
+    } catch (error) {
+      console.error('Retry error:', error);
+      Snackbar.show({
+        text: 'Failed to retry payment',
+        duration: 3000,
+        backgroundColor: '#FF6B6B',
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+  // ========== END OFFLINE RETRY ==========
+
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+
+      {/* ========== OFFLINE: Pending transaction banner ========== */}
+      {offlineTransaction && !isOnline && (
+        <Animatable.View animation="fadeIn" style={styles.pendingBanner}>
+          <Text style={styles.pendingBannerText}>
+            📴 Pending payment detected. Will process when online.
+          </Text>
+          <TouchableOpacity onPress={retryPendingPayment} style={styles.retryButton}>
+            <Text style={styles.retryButtonText}>Retry Now</Text>
+          </TouchableOpacity>
+        </Animatable.View>
+      )}
+      {/* ========== END OFFLINE PENDING BANNER ========== */}
+
+      {/* ========== OFFLINE: Network status banner ========== */}
+      {!isOnline && !offlineTransaction && (
+        <Animatable.View animation="fadeIn" style={styles.offlineBanner}>
+          <Text style={styles.offlineBannerText}>📴 Offline Mode - Transactions will be saved locally</Text>
+        </Animatable.View>
+      )}
+      {/* ========== END OFFLINE BANNER ========== */}
 
       <View style={styles.content}>
         <Animatable.View animation="fadeInDown" style={styles.headerContainer}>
@@ -294,8 +564,8 @@ function EnterPin() {
         )}
 
         <Animatable.View animation="fadeInUp" style={styles.resetContainer}>
-          <TouchableOpacity 
-            style={[styles.resetButton, isLoading && styles.disabledButton]} 
+          <TouchableOpacity
+            style={[styles.resetButton, isLoading && styles.disabledButton]}
             onPress={handleCancel}
             disabled={isLoading}
           >
@@ -313,6 +583,47 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#FFFFFF',
+  },
+  pendingBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#FF9800',
+    padding: 12,
+    marginHorizontal: 16,
+    marginTop: 16,
+    borderRadius: 8,
+  },
+  pendingBannerText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '500',
+    flex: 1,
+  },
+  retryButton: {
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 6,
+    marginLeft: 8,
+  },
+  retryButtonText: {
+    color: '#FF9800',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  offlineBanner: {
+    backgroundColor: '#FF9800',
+    padding: 10,
+    marginHorizontal: 20,
+    marginTop: 16,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  offlineBannerText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '500',
   },
   content: {
     flex: 1,

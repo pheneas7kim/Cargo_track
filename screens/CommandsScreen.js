@@ -29,6 +29,12 @@ import { useTranslation } from 'react-i18next';
 // ✅ Import global token refresh service
 import { refreshAccessToken, addTokenRefreshListener } from '../services/TokenService';
 
+// ========== OFFLINE MODULE IMPORTS ==========
+import OfflineDatabaseService from '../services/OfflineDatabaseService';
+import NetworkMonitorService from '../services/NetworkMonitorService';
+import OfflineSyncService from '../services/OfflineSyncService';
+// ========== END OFFLINE MODULE IMPORTS ==========
+
 const { width } = Dimensions.get('window');
 
 // ✅ Helper function to get language header
@@ -91,6 +97,12 @@ const CommandsScreen = () => {
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(30)).current;
 
+  // ========== OFFLINE MODE STATE VARIABLES ==========
+  const [isOnline, setIsOnline] = useState(true);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [offlineCommandsQueue, setOfflineCommandsQueue] = useState([]);
+  // ========== END OFFLINE MODE STATE VARIABLES ==========
+
   // ✅ Listen for token refresh events
   useEffect(() => {
     const removeListener = addTokenRefreshListener((newToken) => {
@@ -98,6 +110,160 @@ const CommandsScreen = () => {
     });
     return () => removeListener();
   }, []);
+
+  // ========== OFFLINE MODE INITIALIZATION ==========
+  useEffect(() => {
+    const initOfflineMode = async () => {
+      try {
+        // Initialize offline database
+        await OfflineDatabaseService.initDatabase();
+        console.log('✅ Offline database initialized for Commands Screen');
+
+        // Initialize network monitor
+        NetworkMonitorService.init();
+
+        // Start auto-sync service
+        await OfflineSyncService.startAutoSync();
+
+        // Listen for network changes
+        NetworkMonitorService.on('connectionChange', (online) => {
+          setIsOnline(online);
+          if (online) {
+            Snackbar.show({
+              text: t('commands.online', { defaultValue: 'Back online! Syncing data...' }),
+              duration: 2000,
+              backgroundColor: '#4CAF50',
+            });
+            // Auto-refresh when coming back online
+            fetchDevices();
+            // Process pending commands
+            processPendingCommands();
+          } else {
+            Snackbar.show({
+              text: t('commands.offline', { defaultValue: 'Offline mode - using cached devices' }),
+              duration: 3000,
+              backgroundColor: '#FF9800',
+            });
+          }
+        });
+
+        // Load pending commands from storage
+        await loadPendingCommands();
+
+        // Load initial data
+        await fetchDevices();
+      } catch (error) {
+        console.error('❌ Offline mode init error:', error);
+      }
+    };
+
+    initOfflineMode();
+
+    return () => {
+      // Cleanup
+      OfflineSyncService.stopAutoSync();
+      NetworkMonitorService.cleanup();
+    };
+  }, []);
+  // ========== END OFFLINE MODE INITIALIZATION ==========
+
+  // ========== OFFLINE: Load pending commands ==========
+  const loadPendingCommands = async () => {
+    try {
+      const pending = await OfflineDatabaseService.getUserData('pending_commands');
+      if (pending && pending.length > 0) {
+        setOfflineCommandsQueue(pending);
+      }
+    } catch (error) {
+      console.error('Error loading pending commands:', error);
+    }
+  };
+  // ========== END OFFLINE LOAD PENDING ==========
+
+  // ========== OFFLINE: Save pending command ==========
+  const savePendingCommand = async (deviceSn, command, commandName) => {
+    try {
+      const pendingCommand = {
+        id: Date.now(),
+        deviceSn,
+        command,
+        commandName,
+        timestamp: new Date().toISOString(),
+        status: 'PENDING',
+        retryCount: 0
+      };
+
+      const existingCommands = await OfflineDatabaseService.getUserData('pending_commands') || [];
+      existingCommands.push(pendingCommand);
+      await OfflineDatabaseService.saveUserData('pending_commands', existingCommands);
+      setOfflineCommandsQueue(existingCommands);
+
+      // Also add to sync queue
+      await OfflineDatabaseService.addToSyncQueue('COMMAND', '/devices/command/set', {
+        deviceSn,
+        command,
+        commandName
+      });
+
+      return true;
+    } catch (error) {
+      console.error('Error saving pending command:', error);
+      return false;
+    }
+  };
+  // ========== END OFFLINE SAVE PENDING ==========
+
+  // ========== OFFLINE: Process pending commands ==========
+  const processPendingCommands = async () => {
+    if (!isOnline) return;
+
+    const pendingCommands = await OfflineDatabaseService.getUserData('pending_commands');
+    if (!pendingCommands || pendingCommands.length === 0) return;
+
+    console.log(`🔄 Processing ${pendingCommands.length} pending commands...`);
+    let successCount = 0;
+    let failCount = 0;
+
+    for (const pendingCmd of pendingCommands) {
+      try {
+        const response = await authenticatedAxios(
+          axios.post,
+          {
+            url: `${serverUrl}/devices/command/set`,
+            data: {
+              deviceSn: pendingCmd.deviceSn,
+              command: pendingCmd.command
+            },
+            headers: { 'Content-Type': 'application/json' },
+          },
+          i18n
+        );
+
+        if (response.data && response.data.resultCode === 0) {
+          successCount++;
+          console.log(`✅ Pending command sent for ${pendingCmd.deviceSn}`);
+        } else {
+          failCount++;
+        }
+      } catch (error) {
+        console.error(`Failed to send pending command for ${pendingCmd.deviceSn}:`, error);
+        failCount++;
+      }
+    }
+
+    // Clear processed commands
+    await OfflineDatabaseService.saveUserData('pending_commands', []);
+    setOfflineCommandsQueue([]);
+
+    if (successCount > 0) {
+      Snackbar.show({
+        text: t('commands.pending_processed', { defaultValue: 'Processed {{success}} pending commands', success: successCount }).replace('{{success}}', successCount.toString()),
+        duration: 3000,
+        backgroundColor: '#4CAF50',
+      });
+    }
+  };
+  // ========== END OFFLINE PROCESS PENDING ==========
 
   // Command definitions with translations
   const commands = [
@@ -161,14 +327,34 @@ const CommandsScreen = () => {
 
       if (response.data && Array.isArray(response.data)) {
         setDevices(response.data);
+
+        // ========== OFFLINE: Cache devices data ==========
+        await OfflineDatabaseService.saveUserData('commands_devices', {
+          devices: response.data,
+          timestamp: Date.now()
+        });
+        // ========== END OFFLINE CACHE ==========
       }
     } catch (error) {
       console.error('Failed to fetch devices:', error);
-      Snackbar.show({
-        text: t('commands.errors.load_failed', { defaultValue: 'Failed to load devices' }),
-        duration: 3000,
-        backgroundColor: '#FF6B6B',
-      });
+
+      // ========== OFFLINE: Fallback to cached devices ==========
+      const cachedData = await OfflineDatabaseService.getUserData('commands_devices');
+      if (cachedData && cachedData.devices && cachedData.devices.length > 0) {
+        setDevices(cachedData.devices);
+        Snackbar.show({
+          text: t('commands.using_cached', { defaultValue: 'Using cached devices (offline mode)' }),
+          duration: 3000,
+          backgroundColor: '#FF9800',
+        });
+      } else {
+        Snackbar.show({
+          text: t('commands.errors.load_failed', { defaultValue: 'Failed to load devices' }),
+          duration: 3000,
+          backgroundColor: '#FF6B6B',
+        });
+      }
+      // ========== END OFFLINE FALLBACK ==========
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -177,8 +363,48 @@ const CommandsScreen = () => {
 
   const onRefresh = () => {
     setRefreshing(true);
-    fetchDevices(true);
+    // ========== OFFLINE: Manual sync on refresh ==========
+    if (isOnline) {
+      manualSync();
+    } else {
+      fetchDevices(true);
+    }
+    // ========== END OFFLINE MANUAL SYNC ==========
   };
+
+  // ========== OFFLINE: Manual sync function ==========
+  const manualSync = async () => {
+    if (!isOnline) {
+      Snackbar.show({
+        text: t('commands.errors.offline_sync', { defaultValue: 'Cannot sync while offline' }),
+        duration: 3000,
+        backgroundColor: '#FF6B6B',
+      });
+      return;
+    }
+
+    setIsSyncing(true);
+    try {
+      await OfflineSyncService.syncAll();
+      await fetchDevices(true);
+      await processPendingCommands();
+      Snackbar.show({
+        text: t('commands.success.sync_complete', { defaultValue: 'Sync completed successfully!' }),
+        duration: 3000,
+        backgroundColor: '#4CAF50',
+      });
+    } catch (error) {
+      console.error('Manual sync error:', error);
+      Snackbar.show({
+        text: t('commands.errors.sync_failed', { defaultValue: 'Sync failed' }),
+        duration: 3000,
+        backgroundColor: '#FF6B6B',
+      });
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+  // ========== END OFFLINE MANUAL SYNC ==========
 
   const getFilteredDevices = () => {
     let filtered = [...devices];
@@ -228,6 +454,30 @@ const CommandsScreen = () => {
         finalCommand = command.replace(/{}/g, params);
       }
 
+      // ========== OFFLINE: Check if online ==========
+      const online = await NetworkMonitorService.isOnline();
+
+      if (!online) {
+        // Save command for later sync
+        const saved = await savePendingCommand(deviceSn, finalCommand, command);
+        if (saved) {
+          Snackbar.show({
+            text: t('commands.success.command_saved_offline', { defaultValue: 'Command saved offline. Will send when online.' }),
+            duration: 3000,
+            backgroundColor: '#FF9800',
+          });
+          return true;
+        } else {
+          Snackbar.show({
+            text: t('commands.errors.save_failed', { defaultValue: 'Failed to save command offline' }),
+            duration: 3000,
+            backgroundColor: '#FF6B6B',
+          });
+          return false;
+        }
+      }
+      // ========== END OFFLINE CHECK ==========
+
       const response = await authenticatedAxios(
         axios.post,
         {
@@ -259,6 +509,24 @@ const CommandsScreen = () => {
         return false;
       }
     } catch (error) {
+      // ========== OFFLINE: Offer to save offline on error ==========
+      const isNetworkError = error.message?.includes('network') ||
+                            error.message?.includes('offline') ||
+                            error.code === 'ERR_NETWORK';
+
+      if (isNetworkError) {
+        const saved = await savePendingCommand(deviceSn, command, command);
+        if (saved) {
+          Snackbar.show({
+            text: t('commands.success.command_saved_offline', { defaultValue: 'Command saved offline. Will send when online.' }),
+            duration: 3000,
+            backgroundColor: '#FF9800',
+          });
+          return true;
+        }
+      }
+      // ========== END OFFLINE OFFER ==========
+
       Snackbar.show({
         text: t('commands.errors.command_failed', { defaultValue: 'Failed to send command' }),
         duration: 3000,
@@ -846,16 +1114,38 @@ const CommandsScreen = () => {
               <Icon name="arrow-back" size={24} color="#1A1A1A" />
             </TouchableOpacity>
             <Text style={styles.headerTitle}>{t('commands.title', { defaultValue: 'Device Commands' })}</Text>
-            <TouchableOpacity
-              style={[styles.bulkButton, bulkMode && styles.activeBulkButton]}
-              onPress={() => {
-                setBulkMode(!bulkMode);
-                if (bulkMode) setSelectedDevices([]);
-              }}
-            >
-              <Icon name="group-work" size={24} color={bulkMode ? "#FFFFFF" : "#1A1A1A"} />
-            </TouchableOpacity>
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              {/* ========== OFFLINE: Manual sync button ========== */}
+              {isSyncing ? (
+                <ActivityIndicator size="small" color="#FFA500" />
+              ) : (
+                <TouchableOpacity onPress={manualSync} style={styles.syncButton}>
+                  <Icon name="sync" size={20} color={isOnline ? "#4CAF50" : "#999"} />
+                </TouchableOpacity>
+              )}
+              {/* ========== END OFFLINE SYNC BUTTON ========== */}
+              <TouchableOpacity
+                style={[styles.bulkButton, bulkMode && styles.activeBulkButton]}
+                onPress={() => {
+                  setBulkMode(!bulkMode);
+                  if (bulkMode) setSelectedDevices([]);
+                }}
+              >
+                <Icon name="group-work" size={24} color={bulkMode ? "#FFFFFF" : "#1A1A1A"} />
+              </TouchableOpacity>
+            </View>
           </View>
+
+          {/* ========== OFFLINE: Pending commands indicator ========== */}
+          {offlineCommandsQueue.length > 0 && !isOnline && (
+            <View style={styles.pendingBanner}>
+              <Icon name="pending" size={16} color="#FF9800" />
+              <Text style={styles.pendingBannerText}>
+                {t('commands.pending_commands', { defaultValue: '{{count}} command(s) pending. Will send when online.', count: offlineCommandsQueue.length }).replace('{{count}}', offlineCommandsQueue.length.toString())}
+              </Text>
+            </View>
+          )}
+          {/* ========== END OFFLINE PENDING INDICATOR ========== */}
 
           <View style={styles.searchContainer}>
             <Icon name="search" size={20} color="#999" />
@@ -962,7 +1252,7 @@ const CommandsScreen = () => {
           </Animatable.View>
         }
       />
-      
+
       {renderCommandInputModal()}
     </SafeAreaView>
   );
@@ -1005,6 +1295,14 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#1A1A1A',
   },
+  syncButton: {
+    width: 40,
+    height: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 20,
+    backgroundColor: '#F5F5F5',
+  },
   bulkButton: {
     width: 40,
     height: 40,
@@ -1015,6 +1313,21 @@ const styles = StyleSheet.create({
   },
   activeBulkButton: {
     backgroundColor: '#FFA500',
+  },
+  pendingBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFF3E0',
+    marginHorizontal: 20,
+    marginBottom: 12,
+    padding: 10,
+    borderRadius: 8,
+    gap: 8,
+  },
+  pendingBannerText: {
+    fontSize: 12,
+    color: '#FF9800',
+    flex: 1,
   },
   searchContainer: {
     flexDirection: 'row',

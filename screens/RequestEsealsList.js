@@ -24,6 +24,12 @@ import { useTranslation } from 'react-i18next';
 // ✅ Import global token refresh service
 import { refreshAccessToken, addTokenRefreshListener } from '../services/TokenService';
 
+// ========== OFFLINE MODULE IMPORTS ==========
+import OfflineDatabaseService from '../services/OfflineDatabaseService';
+import NetworkMonitorService from '../services/NetworkMonitorService';
+import OfflineSyncService from '../services/OfflineSyncService';
+// ========== END OFFLINE MODULE IMPORTS ==========
+
 // ✅ Helper function to get language header
 const getLanguageHeader = async (i18n) => {
   try {
@@ -83,6 +89,11 @@ const RequestEsealsList = () => {
   const [selectedRequest, setSelectedRequest] = useState(null);
   const [modalVisible, setModalVisible] = useState(false);
 
+  // ========== OFFLINE MODE STATE VARIABLES ==========
+  const [isOnline, setIsOnline] = useState(true);
+  const [isSyncing, setIsSyncing] = useState(false);
+  // ========== END OFFLINE MODE STATE VARIABLES ==========
+
   // ✅ Listen for token refresh events
   React.useEffect(() => {
     const removeListener = addTokenRefreshListener((newToken) => {
@@ -91,8 +102,137 @@ const RequestEsealsList = () => {
     return () => removeListener();
   }, []);
 
+  // ========== OFFLINE MODE INITIALIZATION ==========
+  React.useEffect(() => {
+    const initOfflineMode = async () => {
+      try {
+        // Initialize offline database
+        await OfflineDatabaseService.initDatabase();
+        console.log('✅ Offline database initialized for Request E-Seals List Screen');
+
+        // Initialize network monitor
+        NetworkMonitorService.init();
+
+        // Start auto-sync service
+        await OfflineSyncService.startAutoSync();
+
+        // Listen for network changes
+        NetworkMonitorService.on('connectionChange', (online) => {
+          setIsOnline(online);
+          if (online) {
+            Snackbar.show({
+              text: t('request_eseals_list.back_online', { defaultValue: 'Back online! Syncing data...' }),
+              duration: 2000,
+              backgroundColor: '#4CAF50',
+            });
+            // Auto-refresh when coming back online
+            fetchRequests();
+          } else {
+            Snackbar.show({
+              text: t('request_eseals_list.offline_mode', { defaultValue: 'Offline mode - using cached requests' }),
+              duration: 3000,
+              backgroundColor: '#FF9800',
+            });
+          }
+        });
+
+        // Load initial data
+        await fetchRequests();
+      } catch (error) {
+        console.error('❌ Offline mode init error:', error);
+      }
+    };
+
+    initOfflineMode();
+
+    return () => {
+      // Cleanup
+      OfflineSyncService.stopAutoSync();
+      NetworkMonitorService.cleanup();
+    };
+  }, []);
+  // ========== END OFFLINE MODE INITIALIZATION ==========
+
+  // ========== OFFLINE: Cache requests data ==========
+  const cacheRequestsData = async (requestsData) => {
+    try {
+      await OfflineDatabaseService.saveUserData('eseal_requests_list', {
+        data: requestsData,
+        timestamp: Date.now()
+      });
+      console.log('✅ E-Seal requests cached offline');
+    } catch (error) {
+      console.error('Error caching requests:', error);
+    }
+  };
+  // ========== END OFFLINE CACHE HELPER ==========
+
+  // ========== OFFLINE: Load cached requests ==========
+  const loadCachedRequests = async () => {
+    try {
+      const cached = await OfflineDatabaseService.getUserData('eseal_requests_list');
+      if (cached && cached.data && cached.data.length > 0) {
+        setRequests(cached.data);
+        console.log('📦 Loaded cached e-seal requests');
+        return true;
+      }
+      return false;
+    } catch (error) {
+      console.error('Error loading cached requests:', error);
+      return false;
+    }
+  };
+  // ========== END OFFLINE LOAD CACHED ==========
+
+  // ========== OFFLINE: Manual sync function ==========
+  const manualSync = async () => {
+    if (!isOnline) {
+      Snackbar.show({
+        text: t('request_eseals_list.cannot_sync_offline', { defaultValue: 'Cannot sync while offline' }),
+        duration: 3000,
+        backgroundColor: '#FF6B6B',
+      });
+      return;
+    }
+
+    setIsSyncing(true);
+    try {
+      await OfflineSyncService.syncAll();
+      await fetchRequests();
+      Snackbar.show({
+        text: t('request_eseals_list.sync_complete', { defaultValue: 'Sync completed successfully!' }),
+        duration: 3000,
+        backgroundColor: '#4CAF50',
+      });
+    } catch (error) {
+      console.error('Manual sync error:', error);
+      Snackbar.show({
+        text: t('request_eseals_list.sync_failed', { defaultValue: 'Sync failed' }),
+        duration: 3000,
+        backgroundColor: '#FF6B6B',
+      });
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+  // ========== END OFFLINE MANUAL SYNC ==========
+
   const fetchRequests = async () => {
     setLoading(true);
+
+    // ========== OFFLINE: Check if online ==========
+    const online = await NetworkMonitorService.isOnline();
+
+    if (!online) {
+      const hasCached = await loadCachedRequests();
+      if (hasCached) {
+        setLoading(false);
+        setRefreshing(false);
+        return;
+      }
+    }
+    // ========== END OFFLINE CHECK ==========
+
     try {
       // ✅ FIXED: Changed from axios.get to 'get' string method
       const response = await authenticatedAxios(
@@ -105,18 +245,37 @@ const RequestEsealsList = () => {
 
       console.log('API Response:', response.data);
 
+      let requestsData = [];
       if (response.data && Array.isArray(response.data)) {
-        setRequests(response.data);
+        requestsData = response.data;
+        setRequests(requestsData);
       } else {
         setRequests([]);
+        requestsData = [];
       }
+
+      // ========== OFFLINE: Cache fetched requests ==========
+      await cacheRequestsData(requestsData);
+      // ========== END OFFLINE CACHE ==========
     } catch (error) {
       console.error('Fetch requests error:', error);
-      Snackbar.show({
-        text: error.response?.data?.message || t('request_eseals_list.errors.load_failed', { defaultValue: 'Failed to load requests' }),
-        duration: 3000,
-        backgroundColor: '#FF6B6B',
-      });
+
+      // ========== OFFLINE: Fallback to cached requests on error ==========
+      const hasCached = await loadCachedRequests();
+      if (!hasCached) {
+        Snackbar.show({
+          text: error.response?.data?.message || t('request_eseals_list.errors.load_failed', { defaultValue: 'Failed to load requests' }),
+          duration: 3000,
+          backgroundColor: '#FF6B6B',
+        });
+      } else {
+        Snackbar.show({
+          text: t('request_eseals_list.using_cached', { defaultValue: 'Using cached requests (offline mode)' }),
+          duration: 3000,
+          backgroundColor: '#FF9800',
+        });
+      }
+      // ========== END OFFLINE FALLBACK ==========
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -131,7 +290,13 @@ const RequestEsealsList = () => {
 
   const onRefresh = () => {
     setRefreshing(true);
-    fetchRequests();
+    // ========== OFFLINE: Manual sync on refresh ==========
+    if (isOnline) {
+      manualSync();
+    } else {
+      fetchRequests();
+    }
+    // ========== END OFFLINE MANUAL SYNC ==========
   };
 
   const getStatusStyle = (status) => {
@@ -312,7 +477,7 @@ const RequestEsealsList = () => {
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#F8F9FA" />
 
-      {/* Custom Header with Back Button */}
+      {/* Custom Header with Back Button and Sync Button */}
       <View style={styles.customHeader}>
         <TouchableOpacity
           onPress={() => navigation.goBack()}
@@ -334,7 +499,26 @@ const RequestEsealsList = () => {
             </View>
           </View>
         </View>
+        <View style={styles.headerRight}>
+          {/* ========== OFFLINE: Manual sync button ========== */}
+          {isSyncing ? (
+            <ActivityIndicator size="small" color="#FFA500" style={styles.syncIndicator} />
+          ) : (
+            <TouchableOpacity onPress={manualSync} style={styles.syncButton}>
+              <Ionicons name="sync" size={20} color={isOnline ? "#4CAF50" : "#999"} />
+            </TouchableOpacity>
+          )}
+          {/* ========== END OFFLINE SYNC BUTTON ========== */}
+        </View>
       </View>
+
+      {/* ========== OFFLINE: Network status banner ========== */}
+      {!isOnline && (
+        <View style={styles.offlineBanner}>
+          <Text style={styles.offlineBannerText}>📴 Offline Mode - Using cached requests</Text>
+        </View>
+      )}
+      {/* ========== END OFFLINE BANNER ========== */}
 
       {requests.length === 0 ? (
         <View style={styles.emptyContainer}>
@@ -504,6 +688,29 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
     color: '#FF9800',
+  },
+  headerRight: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  syncButton: {
+    padding: 8,
+  },
+  syncIndicator: {
+    marginHorizontal: 8,
+  },
+  offlineBanner: {
+    backgroundColor: '#FF9800',
+    padding: 10,
+    marginHorizontal: 16,
+    marginTop: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  offlineBannerText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '500',
   },
   listContent: {
     padding: 16,

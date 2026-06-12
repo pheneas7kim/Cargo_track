@@ -25,6 +25,12 @@ import { useTranslation } from 'react-i18next';
 // ✅ Import global token refresh service
 import { refreshAccessToken, addTokenRefreshListener } from '../services/TokenService';
 
+// ========== OFFLINE MODULE IMPORTS ==========
+import OfflineDatabaseService from '../services/OfflineDatabaseService';
+import NetworkMonitorService from '../services/NetworkMonitorService';
+import OfflineSyncService from '../services/OfflineSyncService';
+// ========== END OFFLINE MODULE IMPORTS ==========
+
 const { width } = Dimensions.get('window');
 
 // ✅ Helper function to get language header
@@ -91,6 +97,11 @@ const AssignedEseals = () => {
   const [selectedDevice, setSelectedDevice] = useState(null);
   const [availableCount, setAvailableCount] = useState(0);
 
+  // ========== OFFLINE MODE STATE VARIABLES ==========
+  const [isOnline, setIsOnline] = useState(true);
+  const [isSyncing, setIsSyncing] = useState(false);
+  // ========== END OFFLINE MODE STATE VARIABLES ==========
+
   // ✅ Listen for token refresh events
   useEffect(() => {
     const removeListener = addTokenRefreshListener((newToken) => {
@@ -98,6 +109,57 @@ const AssignedEseals = () => {
     });
     return () => removeListener();
   }, []);
+
+  // ========== OFFLINE MODE INITIALIZATION ==========
+  useEffect(() => {
+    const initOfflineMode = async () => {
+      try {
+        // Initialize offline database
+        await OfflineDatabaseService.initDatabase();
+        console.log('✅ Offline database initialized for Assigned Eseals Screen');
+
+        // Initialize network monitor
+        NetworkMonitorService.init();
+
+        // Start auto-sync service
+        await OfflineSyncService.startAutoSync();
+
+        // Listen for network changes
+        NetworkMonitorService.on('connectionChange', (online) => {
+          setIsOnline(online);
+          if (online) {
+            Snackbar.show({
+              text: t('assigned_eseals.online', { defaultValue: 'Back online! Syncing data...' }),
+              duration: 2000,
+              backgroundColor: '#4CAF50',
+            });
+            // Auto-refresh when coming back online
+            fetchDevices();
+          } else {
+            Snackbar.show({
+              text: t('assigned_eseals.offline', { defaultValue: 'Offline mode - using cached data' }),
+              duration: 3000,
+              backgroundColor: '#FF9800',
+            });
+          }
+        });
+
+        // Load initial data
+        await fetchDevices();
+      } catch (error) {
+        console.error('❌ Offline mode init error:', error);
+      }
+    };
+
+    initOfflineMode();
+
+    return () => {
+      // Cleanup
+      OfflineSyncService.stopAutoSync();
+      NetworkMonitorService.cleanup();
+    };
+  }, []);
+  // ========== END OFFLINE MODE INITIALIZATION ==========
 
   useFocusEffect(
     useCallback(() => {
@@ -115,6 +177,10 @@ const AssignedEseals = () => {
     try {
       setLoading(true);
 
+      // ========== OFFLINE: Check network status ==========
+      const online = await NetworkMonitorService.isOnline();
+      // ========== END OFFLINE CHECK ==========
+
       // ✅ FIXED: Changed from axios.get to 'get' string method
       const response = await authenticatedAxios(
         'get',  // <-- FIXED: Use string method name
@@ -127,14 +193,36 @@ const AssignedEseals = () => {
       if (response.data) {
         setDevices(response.data.devices || []);
         setAvailableCount(response.data.availableCount || 0);
+
+        // ========== OFFLINE: Cache devices data ==========
+        await OfflineDatabaseService.saveUserData('assigned_eseals_devices', {
+          devices: response.data.devices || [],
+          availableCount: response.data.availableCount || 0,
+          timestamp: Date.now()
+        });
+        // ========== END OFFLINE CACHE ==========
       }
     } catch (error) {
       console.error('Failed to fetch devices:', error);
-      Snackbar.show({
-        text: t('assigned_eseals.errors.load_failed', { defaultValue: 'Failed to load assigned eseals' }),
-        duration: 3000,
-        backgroundColor: '#FF6B6B',
-      });
+
+      // ========== OFFLINE: Fallback to cached devices ==========
+      const cachedData = await OfflineDatabaseService.getUserData('assigned_eseals_devices');
+      if (cachedData && cachedData.devices && cachedData.devices.length > 0) {
+        setDevices(cachedData.devices);
+        setAvailableCount(cachedData.availableCount || 0);
+        Snackbar.show({
+          text: t('assigned_eseals.using_cached', { defaultValue: 'Using cached data (offline mode)' }),
+          duration: 3000,
+          backgroundColor: '#FF9800',
+        });
+      } else {
+        Snackbar.show({
+          text: t('assigned_eseals.errors.load_failed', { defaultValue: 'Failed to load assigned eseals' }),
+          duration: 3000,
+          backgroundColor: '#FF6B6B',
+        });
+      }
+      // ========== END OFFLINE FALLBACK ==========
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -143,8 +231,47 @@ const AssignedEseals = () => {
 
   const onRefresh = () => {
     setRefreshing(true);
-    fetchDevices();
+    // ========== OFFLINE: Manual sync on refresh ==========
+    if (isOnline) {
+      manualSync();
+    } else {
+      fetchDevices();
+    }
+    // ========== END OFFLINE MANUAL SYNC ==========
   };
+
+  // ========== OFFLINE: Manual sync function ==========
+  const manualSync = async () => {
+    if (!isOnline) {
+      Snackbar.show({
+        text: t('assigned_eseals.errors.offline_sync', { defaultValue: 'Cannot sync while offline' }),
+        duration: 3000,
+        backgroundColor: '#FF6B6B',
+      });
+      return;
+    }
+
+    setIsSyncing(true);
+    try {
+      await OfflineSyncService.syncAll();
+      await fetchDevices();
+      Snackbar.show({
+        text: t('assigned_eseals.success.sync_complete', { defaultValue: 'Sync completed successfully!' }),
+        duration: 3000,
+        backgroundColor: '#4CAF50',
+      });
+    } catch (error) {
+      console.error('Manual sync error:', error);
+      Snackbar.show({
+        text: t('assigned_eseals.errors.sync_failed', { defaultValue: 'Sync failed' }),
+        duration: 3000,
+        backgroundColor: '#FF6B6B',
+      });
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+  // ========== END OFFLINE MANUAL SYNC ==========
 
   const filterDevices = () => {
     let filtered = [...devices];
@@ -297,7 +424,20 @@ const AssignedEseals = () => {
           <Icon name="arrow-back" size={24} color="#1A1A1A" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>{t('assigned_eseals.title', { defaultValue: 'Assigned E-Seals' })}</Text>
-        <View style={{ width: 40 }} />
+        <View style={{ flexDirection: 'row', gap: 8 }}>
+          {/* ========== OFFLINE: Manual sync button ========== */}
+          {isSyncing ? (
+            <ActivityIndicator size="small" color="#FFA500" />
+          ) : (
+            <TouchableOpacity onPress={manualSync} style={styles.syncButton}>
+              <Icon name="sync" size={20} color={isOnline ? "#4CAF50" : "#999"} />
+              <Text style={[styles.syncButtonText, { color: isOnline ? "#4CAF50" : "#999" }]}>
+                {t('assigned_eseals.sync', { defaultValue: 'Sync' })}
+              </Text>
+            </TouchableOpacity>
+          )}
+          {/* ========== END OFFLINE SYNC BUTTON ========== */}
+        </View>
       </View>
 
       <View style={styles.statsCard}>
@@ -477,6 +617,19 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: '600',
     color: '#1A1A1A',
+  },
+  syncButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    backgroundColor: '#F5F5F5',
+    borderRadius: 20,
+    gap: 4,
+  },
+  syncButtonText: {
+    fontSize: 12,
+    fontWeight: '500',
   },
   statsCard: {
     flexDirection: 'row',

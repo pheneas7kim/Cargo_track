@@ -26,6 +26,12 @@ import serverUrl from '../config';
 import { useTranslation } from 'react-i18next';
 import { refreshAccessToken, addTokenRefreshListener } from '../services/TokenService';
 
+// ========== OFFLINE MODULE IMPORTS ==========
+import OfflineDatabaseService from '../services/OfflineDatabaseService';
+import NetworkMonitorService from '../services/NetworkMonitorService';
+import OfflineSyncService from '../services/OfflineSyncService';
+// ========== END OFFLINE MODULE IMPORTS ==========
+
 const { width } = Dimensions.get('window');
 
 // Helper function to get language header
@@ -104,6 +110,12 @@ const RandomStopScreen = () => {
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(30)).current;
 
+  // ========== OFFLINE MODE STATE VARIABLES ==========
+  const [isOnline, setIsOnline] = useState(true);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [pendingStops, setPendingStops] = useState([]);
+  // ========== END OFFLINE MODE STATE VARIABLES ==========
+
   // Listen for token refresh events
   useEffect(() => {
     const removeListener = addTokenRefreshListener((newToken) => {
@@ -111,6 +123,223 @@ const RandomStopScreen = () => {
     });
     return () => removeListener();
   }, []);
+
+  // ========== OFFLINE MODE INITIALIZATION ==========
+  useEffect(() => {
+    const initOfflineMode = async () => {
+      try {
+        // Initialize offline database
+        await OfflineDatabaseService.initDatabase();
+        console.log('✅ Offline database initialized for Random Stop Screen');
+
+        // Initialize network monitor
+        NetworkMonitorService.init();
+
+        // Start auto-sync service
+        await OfflineSyncService.startAutoSync();
+
+        // Listen for network changes
+        NetworkMonitorService.on('connectionChange', (online) => {
+          setIsOnline(online);
+          if (online) {
+            Snackbar.show({
+              text: t('random_stop.back_online', { defaultValue: 'Back online! Syncing data...' }),
+              duration: 2000,
+              backgroundColor: '#4CAF50',
+            });
+            // Auto-refresh when coming back online
+            fetchStops();
+            processPendingStops();
+          } else {
+            Snackbar.show({
+              text: t('random_stop.offline_mode', { defaultValue: 'Offline mode - using cached stops' }),
+              duration: 3000,
+              backgroundColor: '#FF9800',
+            });
+          }
+        });
+
+        // Load pending stops from storage
+        await loadPendingStops();
+
+        // Load initial data
+        await fetchStops();
+        await fetchIncidentTypes();
+      } catch (error) {
+        console.error('❌ Offline mode init error:', error);
+      }
+    };
+
+    initOfflineMode();
+
+    return () => {
+      // Cleanup
+      OfflineSyncService.stopAutoSync();
+      NetworkMonitorService.cleanup();
+    };
+  }, []);
+  // ========== END OFFLINE MODE INITIALIZATION ==========
+
+  // ========== OFFLINE: Cache stops data ==========
+  const cacheStopsData = async (stopsData) => {
+    try {
+      await OfflineDatabaseService.saveUserData('random_stops_list', {
+        data: stopsData,
+        timestamp: Date.now()
+      });
+      console.log('✅ Random stops cached offline');
+    } catch (error) {
+      console.error('Error caching stops:', error);
+    }
+  };
+  // ========== END OFFLINE CACHE HELPER ==========
+
+  // ========== OFFLINE: Load cached stops ==========
+  const loadCachedStops = async () => {
+    try {
+      const cached = await OfflineDatabaseService.getUserData('random_stops_list');
+      if (cached && cached.data && cached.data.length > 0) {
+        setStops(cached.data);
+        console.log('📦 Loaded cached random stops');
+        return true;
+      }
+      return false;
+    } catch (error) {
+      console.error('Error loading cached stops:', error);
+      return false;
+    }
+  };
+  // ========== END OFFLINE LOAD CACHED ==========
+
+  // ========== OFFLINE: Cache incident types ==========
+  const cacheIncidentTypes = async (typesData) => {
+    try {
+      await OfflineDatabaseService.saveUserData('incident_types_cache', {
+        data: typesData,
+        timestamp: Date.now()
+      });
+      console.log('✅ Incident types cached offline');
+    } catch (error) {
+      console.error('Error caching incident types:', error);
+    }
+  };
+  // ========== END OFFLINE CACHE TYPES ==========
+
+  // ========== OFFLINE: Load cached incident types ==========
+  const loadCachedIncidentTypes = async () => {
+    try {
+      const cached = await OfflineDatabaseService.getUserData('incident_types_cache');
+      if (cached && cached.data && cached.data.length > 0) {
+        setIncidentTypes(cached.data);
+        console.log('📦 Loaded cached incident types');
+        return true;
+      }
+      return false;
+    } catch (error) {
+      console.error('Error loading cached incident types:', error);
+      return false;
+    }
+  };
+  // ========== END OFFLINE LOAD CACHED TYPES ==========
+
+  // ========== OFFLINE: Save stop offline ==========
+  const saveStopOffline = async (stopData) => {
+    try {
+      const offlineStop = {
+        id: Date.now(),
+        ...stopData,
+        timestamp: new Date().toISOString(),
+        status: 'PENDING_SYNC',
+        syncStatus: 'PENDING',
+        offlineId: Date.now()
+      };
+
+      const existingStops = await OfflineDatabaseService.getUserData('pending_random_stops') || [];
+      existingStops.push(offlineStop);
+      await OfflineDatabaseService.saveUserData('pending_random_stops', existingStops);
+      setPendingStops(existingStops);
+
+      // Also add to sync queue
+      await OfflineDatabaseService.addToSyncQueue('RANDOM_STOP', '/random-stops', stopData);
+
+      console.log('📦 Random stop saved offline for later sync');
+      return true;
+    } catch (error) {
+      console.error('Error saving stop offline:', error);
+      return false;
+    }
+  };
+  // ========== END OFFLINE SAVE STOP ==========
+
+  // ========== OFFLINE: Load pending stops ==========
+  const loadPendingStops = async () => {
+    try {
+      const pending = await OfflineDatabaseService.getUserData('pending_random_stops');
+      if (pending && pending.length > 0) {
+        setPendingStops(pending);
+        console.log('📦 Found pending random stops:', pending.length);
+      }
+    } catch (error) {
+      console.error('Error loading pending stops:', error);
+    }
+  };
+  // ========== END OFFLINE LOAD PENDING ==========
+
+  // ========== OFFLINE: Process pending stops ==========
+  const processPendingStops = async () => {
+    if (!isOnline) return;
+
+    const pending = await OfflineDatabaseService.getUserData('pending_random_stops');
+    if (!pending || pending.length === 0) return;
+
+    console.log(`🔄 Processing ${pending.length} pending random stops...`);
+    let successCount = 0;
+    let failCount = 0;
+
+    for (const stop of pending) {
+      try {
+        const postData = {
+          plateNumber: stop.plateNumber,
+          reason: stop.reason,
+          incidentTypeId: stop.incidentTypeId
+        };
+
+        const response = await authenticatedAxios(
+          'post',
+          {
+            url: `${serverUrl}random-stops`,
+            data: postData,
+            headers: { 'Content-Type': 'application/json' },
+          },
+          i18n
+        );
+
+        if (response.status === 200 || response.status === 201) {
+          successCount++;
+          console.log(`✅ Synced random stop for plate ${stop.plateNumber}`);
+        } else {
+          failCount++;
+        }
+      } catch (error) {
+        console.error(`Failed to sync random stop:`, error);
+        failCount++;
+      }
+    }
+
+    // Clear processed stops from storage
+    await OfflineDatabaseService.saveUserData('pending_random_stops', []);
+    setPendingStops([]);
+
+    if (successCount > 0) {
+      Snackbar.show({
+        text: t('random_stop.synced_stops', { defaultValue: 'Synced {{count}} pending stop(s)', count: successCount }).replace('{{count}}', successCount.toString()),
+        duration: 3000,
+        backgroundColor: '#4CAF50',
+      });
+      await fetchStops();
+    }
+  };
+  // ========== END OFFLINE PROCESS PENDING ==========
 
   // Memoized filtered stops to prevent unnecessary re-renders
   const filteredStops = useMemo(() => {
@@ -131,13 +360,26 @@ const RandomStopScreen = () => {
       Animated.timing(fadeAnim, { toValue: 1, duration: 600, useNativeDriver: true }),
       Animated.timing(slideAnim, { toValue: 0, duration: 500, useNativeDriver: true }),
     ]).start();
-    fetchIncidentTypes();
+
+    // Don't call fetchIncidentTypes again here, it will be called in initOfflineMode
   }, []);
 
   const fetchIncidentTypes = async () => {
     console.log('\n=== FETCHING INCIDENT TYPES ===');
     console.log('Request started at:', new Date().toISOString());
     setLoadingIncidentTypes(true);
+
+    // ========== OFFLINE: Check if online ==========
+    const online = await NetworkMonitorService.isOnline();
+
+    if (!online) {
+      const hasCached = await loadCachedIncidentTypes();
+      if (hasCached) {
+        setLoadingIncidentTypes(false);
+        return;
+      }
+    }
+    // ========== END OFFLINE CHECK ==========
 
     try {
       // FIXED: Changed from axios.get to 'get' string method
@@ -221,47 +463,56 @@ const RandomStopScreen = () => {
 
       setIncidentTypes(incidentTypesData);
 
+      // ========== OFFLINE: Cache incident types ==========
+      await cacheIncidentTypes(incidentTypesData);
+      // ========== END OFFLINE CACHE ==========
+
     } catch (error) {
       console.error('❌ Error fetching incident types:', error.message);
 
-      // Detailed error logging
-      if (error.response) {
-        console.error('Response status:', error.response.status);
-        console.error('Response headers:', error.response.headers);
-        console.error('Response data:', JSON.stringify(error.response.data, null, 2));
+      // ========== OFFLINE: Fallback to cached types on error ==========
+      const hasCached = await loadCachedIncidentTypes();
+      if (!hasCached) {
+        // Detailed error logging
+        if (error.response) {
+          console.error('Response status:', error.response.status);
+          console.error('Response headers:', error.response.headers);
+          console.error('Response data:', JSON.stringify(error.response.data, null, 2));
 
-        // Check if error response is a map/object
-        if (typeof error.response.data === 'object') {
-          console.error('Error data is an object with keys:', Object.keys(error.response.data));
-          const errorMessage = error.response.data.message ||
-                              error.response.data.error ||
-                              error.response.data.msg ||
-                              'Failed to load incident types';
+          // Check if error response is a map/object
+          if (typeof error.response.data === 'object') {
+            console.error('Error data is an object with keys:', Object.keys(error.response.data));
+            const errorMessage = error.response.data.message ||
+                                error.response.data.error ||
+                                error.response.data.msg ||
+                                'Failed to load incident types';
 
+            Snackbar.show({
+              text: errorMessage,
+              backgroundColor: '#FF6B6B',
+              duration: 3000,
+            });
+          } else {
+            Snackbar.show({
+              text: `Failed to load incident types: ${error.message}`,
+              backgroundColor: '#FF6B6B',
+              duration: 3000,
+            });
+          }
+        } else if (error.request) {
+          console.error('No response received:', error.request);
           Snackbar.show({
-            text: errorMessage,
+            text: 'Network error - Could not connect to server',
             backgroundColor: '#FF6B6B',
             duration: 3000,
           });
         } else {
-          Snackbar.show({
-            text: `Failed to load incident types: ${error.message}`,
-            backgroundColor: '#FF6B6B',
-            duration: 3000,
-          });
+          console.error('Error:', error.message);
         }
-      } else if (error.request) {
-        console.error('No response received:', error.request);
-        Snackbar.show({
-          text: 'Network error - Could not connect to server',
-          backgroundColor: '#FF6B6B',
-          duration: 3000,
-        });
       } else {
-        console.error('Error:', error.message);
+        console.log('📦 Using cached incident types (offline mode)');
       }
-
-      setIncidentTypes([]);
+      // ========== END OFFLINE FALLBACK ==========
     } finally {
       setLoadingIncidentTypes(false);
       console.log('Incident types fetch completed\n');
@@ -283,6 +534,20 @@ const RandomStopScreen = () => {
   const fetchStops = async (isRefresh = false) => {
     console.log('\n=== FETCHING RANDOM STOPS ===');
     console.log('Fetch type:', isRefresh ? 'REFRESH' : 'INITIAL LOAD');
+
+    // ========== OFFLINE: Check if online ==========
+    const online = await NetworkMonitorService.isOnline();
+
+    if (!online) {
+      const hasCached = await loadCachedStops();
+      if (hasCached) {
+        setLoading(false);
+        setRefreshing(false);
+        console.log('📦 Using cached stops (offline mode)');
+        return;
+      }
+    }
+    // ========== END OFFLINE CHECK ==========
 
     try {
       if (!isRefresh) setLoading(true);
@@ -348,37 +613,55 @@ const RandomStopScreen = () => {
         // Log status distribution
         const statuses = [...new Set(stopsData.map(s => s.status))];
         console.log('📊 Status distribution:', statuses);
-      }
 
-      setStops(stopsData);
+        setStops(stopsData);
+
+        // ========== OFFLINE: Cache fetched stops ==========
+        await cacheStopsData(stopsData);
+        // ========== END OFFLINE CACHE ==========
+      } else {
+        setStops([]);
+      }
     } catch (error) {
       console.error('❌ ERROR FETCHING STOPS:', error.message);
 
-      if (error.response) {
-        console.error('Response status:', error.response.status);
-        console.error('Response data:', error.response.data);
+      // ========== OFFLINE: Fallback to cached stops on error ==========
+      const hasCached = await loadCachedStops();
+      if (!hasCached) {
+        if (error.response) {
+          console.error('Response status:', error.response.status);
+          console.error('Response data:', error.response.data);
 
-        if (error.response.status === 401) {
-          console.error('🔐 Authentication failed - token may be expired');
-        } else if (error.response.status === 403) {
-          console.error('🚫 Forbidden - insufficient permissions');
-        } else if (error.response.status === 404) {
-          console.error('🔍 Endpoint not found - check server URL');
+          if (error.response.status === 401) {
+            console.error('🔐 Authentication failed - token may be expired');
+          } else if (error.response.status === 403) {
+            console.error('🚫 Forbidden - insufficient permissions');
+          } else if (error.response.status === 404) {
+            console.error('🔍 Endpoint not found - check server URL');
+          }
+        } else if (error.request) {
+          console.error('No response received from server');
+        } else {
+          console.error('Error setting up request:', error.message);
         }
-      } else if (error.request) {
-        console.error('No response received from server');
+
+        Snackbar.show({
+          text: t('random_stop.errors.load_stops', { defaultValue: 'Failed to load stops' }),
+          duration: 3000,
+          backgroundColor: '#FF6B6B'
+        });
+
+        // Set empty array to avoid rendering errors
+        setStops([]);
       } else {
-        console.error('Error setting up request:', error.message);
+        console.log('📦 Using cached stops due to error');
+        Snackbar.show({
+          text: t('random_stop.using_cached', { defaultValue: 'Using cached stops (offline mode)' }),
+          duration: 3000,
+          backgroundColor: '#FF9800',
+        });
       }
-
-      Snackbar.show({
-        text: t('random_stop.errors.load_stops', { defaultValue: 'Failed to load stops' }),
-        duration: 3000,
-        backgroundColor: '#FF6B6B'
-      });
-
-      // Set empty array to avoid rendering errors
-      setStops([]);
+      // ========== END OFFLINE FALLBACK ==========
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -420,6 +703,55 @@ const RandomStopScreen = () => {
     }
 
     setSubmitting(true);
+
+    // ========== OFFLINE: Check if online ==========
+    const online = await NetworkMonitorService.isOnline();
+
+    if (!online) {
+      // Save stop offline
+      const saved = await saveStopOffline({
+        plateNumber: normalizedPlateNumber,
+        reason: newStop.reason,
+        incidentTypeId: newStop.incidentTypeId
+      });
+
+      if (saved) {
+        Snackbar.show({
+          text: t('random_stop.success.saved_offline', { defaultValue: 'Request saved offline. Will submit when online.' }),
+          duration: 4000,
+          backgroundColor: '#FF9800',
+        });
+
+        // Add to local list optimistically
+        const offlineStopItem = {
+          id: Date.now(),
+          vehiclePlateNumber: normalizedPlateNumber,
+          reason: newStop.reason,
+          status: 'PENDING',
+          requestedByName: 'You (Offline)',
+          createdAt: new Date().toISOString(),
+          isOffline: true
+        };
+
+        setStops(prev => [offlineStopItem, ...prev]);
+        setCreateModalVisible(false);
+        setNewStop({
+          plateNumber: '',
+          reason: '',
+          incidentTypeId: null,
+          incidentTypeName: ''
+        });
+      } else {
+        Snackbar.show({
+          text: t('random_stop.errors.save_offline_failed', { defaultValue: 'Failed to save request offline' }),
+          duration: 3000,
+          backgroundColor: '#FF6B6B',
+        });
+      }
+      setSubmitting(false);
+      return;
+    }
+    // ========== END OFFLINE CHECK ==========
 
     try {
       const postData = {
@@ -467,26 +799,119 @@ const RandomStopScreen = () => {
     } catch (error) {
       console.error('❌ ERROR SUBMITTING STOP:', error.message);
 
-      let errorMessage = t('random_stop.errors.submission_failed', { defaultValue: 'Submission failed' });
+      // ========== OFFLINE: Offer to save offline on error ==========
+      const isNetworkError = error.message?.includes('network') ||
+                            error.message?.includes('offline') ||
+                            error.code === 'ERR_NETWORK';
 
-      if (error.response) {
-        console.error('Response status:', error.response.status);
-        console.error('Response data:', error.response.data);
+      if (isNetworkError) {
+        const saved = await saveStopOffline({
+          plateNumber: normalizedPlateNumber,
+          reason: newStop.reason,
+          incidentTypeId: newStop.incidentTypeId
+        });
 
-        if (error.response.status === 404) {
-          errorMessage = t('random_stop.errors.vehicle_not_found_message', { defaultValue: 'Vehicle plate number not found in system' });
-        } else if (error.response.status === 401) {
-          errorMessage = t('random_stop.errors.auth_failed', { defaultValue: 'Authentication failed - please login again' });
-        } else if (error.response.data && error.response.data.message) {
-          errorMessage = error.response.data.message;
+        if (saved) {
+          Snackbar.show({
+            text: t('random_stop.success.saved_offline', { defaultValue: 'Request saved offline. Will submit when online.' }),
+            duration: 4000,
+            backgroundColor: '#FF9800',
+          });
+
+          // Add to local list optimistically
+          const offlineStopItem = {
+            id: Date.now(),
+            vehiclePlateNumber: normalizedPlateNumber,
+            reason: newStop.reason,
+            status: 'PENDING',
+            requestedByName: 'You (Offline)',
+            createdAt: new Date().toISOString(),
+            isOffline: true
+          };
+
+          setStops(prev => [offlineStopItem, ...prev]);
+          setCreateModalVisible(false);
+          setNewStop({
+            plateNumber: '',
+            reason: '',
+            incidentTypeId: null,
+            incidentTypeName: ''
+          });
+        } else {
+          let errorMessage = t('random_stop.errors.submission_failed', { defaultValue: 'Submission failed' });
+
+          if (error.response) {
+            console.error('Response status:', error.response.status);
+            console.error('Response data:', error.response.data);
+
+            if (error.response.status === 404) {
+              errorMessage = t('random_stop.errors.vehicle_not_found_message', { defaultValue: 'Vehicle plate number not found in system' });
+            } else if (error.response.status === 401) {
+              errorMessage = t('random_stop.errors.auth_failed', { defaultValue: 'Authentication failed - please login again' });
+            } else if (error.response.data && error.response.data.message) {
+              errorMessage = error.response.data.message;
+            }
+          }
+
+          Snackbar.show({ text: errorMessage, duration: 3000, backgroundColor: '#FF6B6B' });
         }
-      }
+      } else {
+        let errorMessage = t('random_stop.errors.submission_failed', { defaultValue: 'Submission failed' });
 
-      Snackbar.show({ text: errorMessage, duration: 3000, backgroundColor: '#FF6B6B' });
+        if (error.response) {
+          console.error('Response status:', error.response.status);
+          console.error('Response data:', error.response.data);
+
+          if (error.response.status === 404) {
+            errorMessage = t('random_stop.errors.vehicle_not_found_message', { defaultValue: 'Vehicle plate number not found in system' });
+          } else if (error.response.status === 401) {
+            errorMessage = t('random_stop.errors.auth_failed', { defaultValue: 'Authentication failed - please login again' });
+          } else if (error.response.data && error.response.data.message) {
+            errorMessage = error.response.data.message;
+          }
+        }
+
+        Snackbar.show({ text: errorMessage, duration: 3000, backgroundColor: '#FF6B6B' });
+      }
+      // ========== END OFFLINE OFFER ==========
     } finally {
       setSubmitting(false);
     }
   };
+
+  // ========== OFFLINE: Manual sync function ==========
+  const manualSync = async () => {
+    if (!isOnline) {
+      Snackbar.show({
+        text: t('random_stop.cannot_sync_offline', { defaultValue: 'Cannot sync while offline' }),
+        duration: 3000,
+        backgroundColor: '#FF6B6B',
+      });
+      return;
+    }
+
+    setIsSyncing(true);
+    try {
+      await OfflineSyncService.syncAll();
+      await processPendingStops();
+      await fetchStops();
+      Snackbar.show({
+        text: t('random_stop.sync_complete', { defaultValue: 'Sync completed successfully!' }),
+        duration: 3000,
+        backgroundColor: '#4CAF50',
+      });
+    } catch (error) {
+      console.error('Manual sync error:', error);
+      Snackbar.show({
+        text: t('random_stop.sync_failed', { defaultValue: 'Sync failed' }),
+        duration: 3000,
+        backgroundColor: '#FF6B6B',
+      });
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+  // ========== END OFFLINE MANUAL SYNC ==========
 
   const getStatusColor = (status) => {
     return status === 'APPROVED' ? '#4CAF50' : '#FFA500';
@@ -575,10 +1000,40 @@ const RandomStopScreen = () => {
               <Icon name="arrow-back" size={24} color="#1A1A1A" />
             </TouchableOpacity>
             <Text style={styles.headerTitle}>{t('random_stop.title', { defaultValue: 'Random Stops' })}</Text>
-            <TouchableOpacity style={styles.createButton} onPress={() => setCreateModalVisible(true)}>
-              <Text style={styles.createButtonText}>{t('random_stop.report_button', { defaultValue: '+ Report' })}</Text>
-            </TouchableOpacity>
+            <View style={styles.headerRight}>
+              {/* ========== OFFLINE: Manual sync button ========== */}
+              {isSyncing ? (
+                <ActivityIndicator size="small" color="#FFA500" style={styles.syncIndicator} />
+              ) : (
+                <TouchableOpacity onPress={manualSync} style={styles.syncButton}>
+                  <Icon name="sync" size={20} color={isOnline ? "#4CAF50" : "#999"} />
+                </TouchableOpacity>
+              )}
+              {/* ========== END OFFLINE SYNC BUTTON ========== */}
+              <TouchableOpacity style={styles.createButton} onPress={() => setCreateModalVisible(true)}>
+                <Text style={styles.createButtonText}>{t('random_stop.report_button', { defaultValue: '+ Report' })}</Text>
+              </TouchableOpacity>
+            </View>
           </View>
+
+          {/* ========== OFFLINE: Network status banner ========== */}
+          {!isOnline && (
+            <View style={styles.offlineBanner}>
+              <Text style={styles.offlineBannerText}>📴 Offline Mode - Using cached stops</Text>
+            </View>
+          )}
+          {/* ========== END OFFLINE BANNER ========== */}
+
+          {/* ========== OFFLINE: Pending stops banner ========== */}
+          {pendingStops.length > 0 && isOnline && (
+            <TouchableOpacity style={styles.pendingBanner} onPress={processPendingStops}>
+              <Icon name="pending" size={16} color="#FF9800" />
+              <Text style={styles.pendingBannerText}>
+                {pendingStops.length} pending stop(s) to sync. Tap to sync now.
+              </Text>
+            </TouchableOpacity>
+          )}
+          {/* ========== END OFFLINE PENDING BANNER ========== */}
 
           <View style={styles.searchContainer}>
             <Icon name="search" size={20} color="#999" style={styles.searchIcon} />
@@ -681,7 +1136,9 @@ const RandomStopScreen = () => {
                 {submitting ? (
                   <ActivityIndicator color="#FFF" />
                 ) : (
-                  <Text style={styles.submitButtonText}>{t('random_stop.buttons.submit', { defaultValue: 'Submit Request' })}</Text>
+                  <Text style={styles.submitButtonText}>
+                    {!isOnline ? t('random_stop.buttons.save_offline', { defaultValue: 'Save Offline' }) : t('random_stop.buttons.submit', { defaultValue: 'Submit Request' })}
+                  </Text>
                 )}
               </TouchableOpacity>
             </ScrollView>
@@ -855,6 +1312,23 @@ const styles = StyleSheet.create({
     height: 40,
     justifyContent: 'center'
   },
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  syncButton: {
+    width: 36,
+    height: 36,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 18,
+    backgroundColor: '#F5F5F5',
+  },
+  syncIndicator: {
+    width: 36,
+    height: 36,
+  },
   createButton: {
     backgroundColor: '#FFA500',
     paddingHorizontal: 15,
@@ -864,6 +1338,34 @@ const styles = StyleSheet.create({
   createButtonText: {
     color: '#FFF',
     fontWeight: 'bold'
+  },
+  offlineBanner: {
+    backgroundColor: '#FF9800',
+    padding: 10,
+    marginHorizontal: 20,
+    marginBottom: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  offlineBannerText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  pendingBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFF3E0',
+    marginHorizontal: 20,
+    marginBottom: 12,
+    padding: 12,
+    borderRadius: 8,
+    gap: 8,
+  },
+  pendingBannerText: {
+    fontSize: 12,
+    color: '#FF9800',
+    flex: 1,
   },
   searchContainer: {
     flexDirection: 'row',

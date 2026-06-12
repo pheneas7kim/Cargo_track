@@ -20,11 +20,92 @@ import axios from 'axios';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import serverUrl from '../config';
 
+// ========== OFFLINE MODULE IMPORTS ==========
+import OfflineDatabaseService from '../services/OfflineDatabaseService';
+import NetworkMonitorService from '../services/NetworkMonitorService';
+import OfflineSyncService from '../services/OfflineSyncService';
+// ========== END OFFLINE MODULE IMPORTS ==========
+
 const RequestEseals = () => {
   const navigation = useNavigation();
   const [quantity, setQuantity] = useState('');
   const [reason, setReason] = useState('');
   const [loading, setLoading] = useState(false);
+
+  // ========== OFFLINE MODE STATE VARIABLES ==========
+  const [isOnline, setIsOnline] = useState(true);
+  // ========== END OFFLINE MODE STATE VARIABLES ==========
+
+  // ========== OFFLINE MODE INITIALIZATION ==========
+  React.useEffect(() => {
+    const initOfflineMode = async () => {
+      try {
+        // Initialize offline database
+        await OfflineDatabaseService.initDatabase();
+        console.log('✅ Offline database initialized for Request E-Seals Screen');
+
+        // Initialize network monitor
+        NetworkMonitorService.init();
+
+        // Start auto-sync service
+        await OfflineSyncService.startAutoSync();
+
+        // Listen for network changes
+        NetworkMonitorService.on('connectionChange', (online) => {
+          setIsOnline(online);
+          if (!online) {
+            Snackbar.show({
+              text: 'Offline mode - Request will be saved locally',
+              duration: 3000,
+              backgroundColor: '#FF9800',
+            });
+          }
+        });
+      } catch (error) {
+        console.error('❌ Offline mode init error:', error);
+      }
+    };
+
+    initOfflineMode();
+
+    return () => {
+      // Cleanup
+      OfflineSyncService.stopAutoSync();
+      NetworkMonitorService.cleanup();
+    };
+  }, []);
+  // ========== END OFFLINE MODE INITIALIZATION ==========
+
+  // ========== OFFLINE: Save request offline ==========
+  const saveRequestOffline = async (quantityValue, reasonValue) => {
+    try {
+      const offlineRequest = {
+        id: Date.now(),
+        quantity: quantityValue,
+        reason: reasonValue,
+        timestamp: new Date().toISOString(),
+        status: 'PENDING',
+        syncStatus: 'PENDING'
+      };
+
+      const existingRequests = await OfflineDatabaseService.getUserData('pending_eseal_requests') || [];
+      existingRequests.push(offlineRequest);
+      await OfflineDatabaseService.saveUserData('pending_eseal_requests', existingRequests);
+
+      // Also add to sync queue
+      await OfflineDatabaseService.addToSyncQueue('ESEAL_REQUEST', '/rru-inventory/replenishment/request', {
+        quantity: quantityValue,
+        reason: reasonValue
+      });
+
+      console.log('📦 E-Seal request saved offline');
+      return true;
+    } catch (error) {
+      console.error('Error saving request offline:', error);
+      return false;
+    }
+  };
+  // ========== END OFFLINE SAVE REQUEST ==========
 
   useFocusEffect(
     useCallback(() => {
@@ -54,6 +135,36 @@ const RequestEseals = () => {
     }
 
     setLoading(true);
+
+    // ========== OFFLINE: Check if online ==========
+    const online = await NetworkMonitorService.isOnline();
+
+    if (!online) {
+      // Save request offline
+      const saved = await saveRequestOffline(qty, reason.trim());
+      if (saved) {
+        Snackbar.show({
+          text: 'Request saved offline. Will submit when online.',
+          duration: 4000,
+          backgroundColor: '#FF9800',
+        });
+        setQuantity('');
+        setReason('');
+        setTimeout(() => {
+          navigation.goBack();
+        }, 1500);
+      } else {
+        Snackbar.show({
+          text: 'Failed to save request offline. Please try again.',
+          duration: 3000,
+          backgroundColor: '#FF6B6B',
+        });
+      }
+      setLoading(false);
+      return;
+    }
+    // ========== END OFFLINE CHECK ==========
+
     try {
       const token = await AsyncStorage.getItem('accessToken');
       if (!token) {
@@ -62,6 +173,7 @@ const RequestEseals = () => {
           duration: 3000,
           backgroundColor: '#FF6B6B',
         });
+        setLoading(false);
         return;
       }
 
@@ -98,11 +210,40 @@ const RequestEseals = () => {
       }
     } catch (error) {
       console.error('Request error:', error);
-      Snackbar.show({
-        text: error.response?.data?.message || 'Failed to submit request. Please try again.',
-        duration: 3000,
-        backgroundColor: '#FF6B6B',
-      });
+
+      // ========== OFFLINE: Offer to save offline on error ==========
+      const isNetworkError = error.message?.includes('network') ||
+                            error.message?.includes('offline') ||
+                            error.code === 'ERR_NETWORK';
+
+      if (isNetworkError && !online) {
+        const saved = await saveRequestOffline(qty, reason.trim());
+        if (saved) {
+          Snackbar.show({
+            text: 'Request saved offline. Will submit when online.',
+            duration: 4000,
+            backgroundColor: '#FF9800',
+          });
+          setQuantity('');
+          setReason('');
+          setTimeout(() => {
+            navigation.goBack();
+          }, 1500);
+        } else {
+          Snackbar.show({
+            text: error.response?.data?.message || 'Failed to submit request. Please try again.',
+            duration: 3000,
+            backgroundColor: '#FF6B6B',
+          });
+        }
+      } else {
+        Snackbar.show({
+          text: error.response?.data?.message || 'Failed to submit request. Please try again.',
+          duration: 3000,
+          backgroundColor: '#FF6B6B',
+        });
+      }
+      // ========== END OFFLINE OFFER ==========
     } finally {
       setLoading(false);
     }
@@ -129,6 +270,14 @@ const RequestEseals = () => {
             <Text style={styles.headerTitle}>Request E-Seals</Text>
             <View style={{ width: 40 }} />
           </View>
+
+          {/* ========== OFFLINE: Network status banner ========== */}
+          {!isOnline && (
+            <View style={styles.offlineBanner}>
+              <Text style={styles.offlineBannerText}>📴 Offline Mode - Request will be saved locally</Text>
+            </View>
+          )}
+          {/* ========== END OFFLINE BANNER ========== */}
 
           {/* Form Card */}
           <View style={styles.formCard}>
@@ -177,7 +326,9 @@ const RequestEseals = () => {
               {loading ? (
                 <ActivityIndicator color="#FFFFFF" size="small" />
               ) : (
-                <Text style={styles.submitButtonText}>Submit Request</Text>
+                <Text style={styles.submitButtonText}>
+                  {!isOnline ? 'Save Offline' : 'Submit Request'}
+                </Text>
               )}
             </TouchableOpacity>
           </View>
@@ -231,6 +382,19 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: '600',
     color: '#1A1A1A',
+  },
+  offlineBanner: {
+    backgroundColor: '#FF9800',
+    padding: 10,
+    marginHorizontal: 20,
+    marginTop: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  offlineBannerText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '500',
   },
   formCard: {
     backgroundColor: '#FFFFFF',

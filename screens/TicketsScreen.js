@@ -29,6 +29,12 @@ import { useTranslation } from 'react-i18next';
 // ✅ Import global token refresh service
 import { refreshAccessToken, addTokenRefreshListener } from '../services/TokenService';
 
+// ========== OFFLINE MODULE IMPORTS ==========
+import OfflineDatabaseService from '../services/OfflineDatabaseService';
+import NetworkMonitorService from '../services/NetworkMonitorService';
+import OfflineSyncService from '../services/OfflineSyncService';
+// ========== END OFFLINE MODULE IMPORTS ==========
+
 const { width } = Dimensions.get('window');
 
 // Priority order for sorting
@@ -159,6 +165,12 @@ const TicketsScreen = () => {
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(30)).current;
 
+  // ========== OFFLINE MODE STATE VARIABLES ==========
+  const [isOnline, setIsOnline] = useState(true);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [pendingActions, setPendingActions] = useState([]);
+  // ========== END OFFLINE MODE STATE VARIABLES ==========
+
   // ✅ Listen for token refresh events
   useEffect(() => {
     const removeListener = addTokenRefreshListener((newToken) => {
@@ -166,6 +178,296 @@ const TicketsScreen = () => {
     });
     return () => removeListener();
   }, []);
+
+  // ========== OFFLINE MODE INITIALIZATION ==========
+  useEffect(() => {
+    const initOfflineMode = async () => {
+      try {
+        // Initialize offline database
+        await OfflineDatabaseService.initDatabase();
+        console.log('✅ Offline database initialized for Tickets Screen');
+
+        // Initialize network monitor
+        NetworkMonitorService.init();
+
+        // Start auto-sync service
+        await OfflineSyncService.startAutoSync();
+
+        // Listen for network changes
+        NetworkMonitorService.on('connectionChange', (online) => {
+          setIsOnline(online);
+          if (online) {
+            Snackbar.show({
+              text: t('tickets.back_online', { defaultValue: 'Back online! Syncing data...' }),
+              duration: 2000,
+              backgroundColor: '#4CAF50',
+            });
+            // Auto-refresh when coming back online
+            fetchTickets();
+            fetchShipments();
+            processPendingActions();
+          } else {
+            Snackbar.show({
+              text: t('tickets.offline_mode', { defaultValue: 'Offline mode - using cached tickets' }),
+              duration: 3000,
+              backgroundColor: '#FF9800',
+            });
+          }
+        });
+
+        // Load pending actions from storage
+        await loadPendingActions();
+
+        // Load initial data
+        await fetchTickets();
+        await fetchShipments();
+      } catch (error) {
+        console.error('❌ Offline mode init error:', error);
+      }
+    };
+
+    initOfflineMode();
+
+    return () => {
+      // Cleanup
+      OfflineSyncService.stopAutoSync();
+      NetworkMonitorService.cleanup();
+    };
+  }, []);
+  // ========== END OFFLINE MODE INITIALIZATION ==========
+
+  // ========== OFFLINE: Cache tickets data ==========
+  const cacheTicketsData = async (ticketsData) => {
+    try {
+      await OfflineDatabaseService.saveUserData('tickets_list', {
+        data: ticketsData,
+        timestamp: Date.now()
+      });
+      console.log('✅ Tickets data cached offline');
+    } catch (error) {
+      console.error('Error caching tickets:', error);
+    }
+  };
+  // ========== END OFFLINE CACHE HELPER ==========
+
+  // ========== OFFLINE: Load cached tickets ==========
+  const loadCachedTickets = async () => {
+    try {
+      const cached = await OfflineDatabaseService.getUserData('tickets_list');
+      if (cached && cached.data && cached.data.length > 0) {
+        setTickets(cached.data);
+        console.log('📦 Loaded cached tickets');
+        return true;
+      }
+      return false;
+    } catch (error) {
+      console.error('Error loading cached tickets:', error);
+      return false;
+    }
+  };
+  // ========== END OFFLINE LOAD CACHED ==========
+
+  // ========== OFFLINE: Cache shipments data ==========
+  const cacheShipmentsData = async (shipmentsData) => {
+    try {
+      await OfflineDatabaseService.saveUserData('shipments_list', {
+        data: shipmentsData,
+        timestamp: Date.now()
+      });
+      console.log('✅ Shipments data cached offline');
+    } catch (error) {
+      console.error('Error caching shipments:', error);
+    }
+  };
+  // ========== END OFFLINE CACHE HELPER ==========
+
+  // ========== OFFLINE: Load cached shipments ==========
+  const loadCachedShipments = async () => {
+    try {
+      const cached = await OfflineDatabaseService.getUserData('shipments_list');
+      if (cached && cached.data && cached.data.length > 0) {
+        setShipments(cached.data);
+        console.log('📦 Loaded cached shipments');
+        return true;
+      }
+      return false;
+    } catch (error) {
+      console.error('Error loading cached shipments:', error);
+      return false;
+    }
+  };
+  // ========== END OFFLINE LOAD CACHED ==========
+
+  // ========== OFFLINE: Load pending actions ==========
+  const loadPendingActions = async () => {
+    try {
+      const pending = await OfflineDatabaseService.getUserData('pending_ticket_actions');
+      if (pending && pending.length > 0) {
+        setPendingActions(pending);
+        console.log('📦 Found pending ticket actions:', pending.length);
+      }
+    } catch (error) {
+      console.error('Error loading pending actions:', error);
+    }
+  };
+  // ========== END OFFLINE LOAD PENDING ==========
+
+  // ========== OFFLINE: Save ticket action offline ==========
+  const saveTicketActionOffline = async (action, ticketId, data = {}) => {
+    try {
+      const offlineAction = {
+        id: Date.now(),
+        action: action,
+        ticketId: ticketId,
+        data: data,
+        timestamp: new Date().toISOString(),
+        status: 'PENDING',
+        syncStatus: 'PENDING'
+      };
+
+      const existingActions = await OfflineDatabaseService.getUserData('pending_ticket_actions') || [];
+      // Avoid duplicates
+      const exists = existingActions.some(a => a.ticketId === ticketId && a.action === action);
+      if (!exists) {
+        existingActions.push(offlineAction);
+        await OfflineDatabaseService.saveUserData('pending_ticket_actions', existingActions);
+        setPendingActions(existingActions);
+
+        // Also add to sync queue
+        if (action === 'ACKNOWLEDGE') {
+          await OfflineDatabaseService.addToSyncQueue('ACKNOWLEDGE', `/tickets/acknowledge`, {
+            ticketId: Number(ticketId),
+            content: t('tickets.acknowledge_content', { defaultValue: 'Acknowledged from mobile app' })
+          });
+        } else if (action === 'RESOLVE') {
+          await OfflineDatabaseService.addToSyncQueue('RESOLVE', `/tickets/${ticketId}/resolve`, {
+            notes: t('tickets.resolve_notes', { defaultValue: 'Resolved from mobile app' })
+          });
+        } else if (action === 'COMMENT') {
+          await OfflineDatabaseService.addToSyncQueue('COMMENT', `/tickets/${ticketId}/comments`, {
+            content: data.content
+          });
+        }
+
+        console.log(`📦 ${action} action saved offline for ticket ${ticketId}`);
+      }
+      return true;
+    } catch (error) {
+      console.error('Error saving ticket action offline:', error);
+      return false;
+    }
+  };
+  // ========== END OFFLINE SAVE ACTION ==========
+
+  // ========== OFFLINE: Process pending actions ==========
+  const processPendingActions = async () => {
+    if (!isOnline) return;
+
+    const pending = await OfflineDatabaseService.getUserData('pending_ticket_actions');
+    if (!pending || pending.length === 0) return;
+
+    console.log(`🔄 Processing ${pending.length} pending ticket actions...`);
+    let successCount = 0;
+    let failCount = 0;
+
+    for (const action of pending) {
+      try {
+        if (action.action === 'ACKNOWLEDGE') {
+          await authenticatedAxios(
+            'post',
+            {
+              url: `${serverUrl}/tickets/acknowledge`,
+              data: { ticketId: Number(action.ticketId), content: t('tickets.acknowledge_content', { defaultValue: 'Acknowledged from mobile app' }) },
+              headers: { 'Content-Type': 'application/json' },
+            },
+            i18n
+          );
+          successCount++;
+          console.log(`✅ Synced ACKNOWLEDGE for ticket ${action.ticketId}`);
+        } else if (action.action === 'RESOLVE') {
+          const formData = new FormData();
+          formData.append('notes', t('tickets.resolve_notes', { defaultValue: 'Resolved from mobile app' }));
+
+          const response = await authenticatedFetch(
+            `${serverUrl}/tickets/${action.ticketId}/resolve`,
+            { method: 'POST', body: formData },
+            i18n
+          );
+
+          if (response.ok) {
+            successCount++;
+            console.log(`✅ Synced RESOLVE for ticket ${action.ticketId}`);
+          } else {
+            failCount++;
+          }
+        } else if (action.action === 'COMMENT') {
+          await authenticatedAxios(
+            'post',
+            {
+              url: `${serverUrl}/tickets/${action.ticketId}/comments`,
+              data: { content: action.data.content },
+              headers: { 'Content-Type': 'application/json' },
+            },
+            i18n
+          );
+          successCount++;
+          console.log(`✅ Synced COMMENT for ticket ${action.ticketId}`);
+        }
+      } catch (error) {
+        console.error(`Failed to sync action for ticket ${action.ticketId}:`, error);
+        failCount++;
+      }
+    }
+
+    // Clear processed actions from storage
+    await OfflineDatabaseService.saveUserData('pending_ticket_actions', []);
+    setPendingActions([]);
+
+    if (successCount > 0) {
+      Snackbar.show({
+        text: t('tickets.synced_actions', { defaultValue: 'Synced {{count}} ticket action(s)', count: successCount }).replace('{{count}}', successCount.toString()),
+        duration: 3000,
+        backgroundColor: '#4CAF50',
+      });
+      await fetchTickets();
+    }
+  };
+  // ========== END OFFLINE PROCESS PENDING ==========
+
+  // ========== OFFLINE: Manual sync function ==========
+  const manualSync = async () => {
+    if (!isOnline) {
+      Snackbar.show({
+        text: t('tickets.cannot_sync_offline', { defaultValue: 'Cannot sync while offline' }),
+        duration: 3000,
+        backgroundColor: '#FF6B6B',
+      });
+      return;
+    }
+
+    setIsSyncing(true);
+    try {
+      await OfflineSyncService.syncAll();
+      await processPendingActions();
+      await fetchTickets();
+      await fetchShipments();
+      Snackbar.show({
+        text: t('tickets.sync_complete', { defaultValue: 'Sync completed successfully!' }),
+        duration: 3000,
+        backgroundColor: '#4CAF50',
+      });
+    } catch (error) {
+      console.error('Manual sync error:', error);
+      Snackbar.show({
+        text: t('tickets.sync_failed', { defaultValue: 'Sync failed' }),
+        duration: 3000,
+        backgroundColor: '#FF6B6B',
+      });
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+  // ========== END OFFLINE MANUAL SYNC ==========
 
   useEffect(() => {
     Animated.parallel([
@@ -198,6 +500,17 @@ const TicketsScreen = () => {
   // Fetch shipments for tracking
   const fetchShipments = async () => {
     try {
+      // ========== OFFLINE: Check if online ==========
+      const online = await NetworkMonitorService.isOnline();
+
+      if (!online) {
+        const hasCached = await loadCachedShipments();
+        if (hasCached) {
+          return;
+        }
+      }
+      // ========== END OFFLINE CHECK ==========
+
       // ✅ FIXED: Changed from axios.get to 'get' string method
       const response = await authenticatedAxios(
         'get',  // <-- FIXED: Use string method name
@@ -209,9 +522,15 @@ const TicketsScreen = () => {
 
       if (response.data) {
         setShipments(response.data);
+        // ========== OFFLINE: Cache fetched shipments ==========
+        await cacheShipmentsData(response.data);
+        // ========== END OFFLINE CACHE ==========
       }
     } catch (error) {
       console.error('Failed to fetch shipments:', error);
+      // ========== OFFLINE: Fallback to cached shipments on error ==========
+      await loadCachedShipments();
+      // ========== END OFFLINE FALLBACK ==========
     }
   };
 
@@ -262,6 +581,32 @@ const TicketsScreen = () => {
       return;
     }
 
+    // ========== OFFLINE: Check if online ==========
+    const online = await NetworkMonitorService.isOnline();
+
+    if (!online) {
+      // Save comment offline
+      const saved = await saveTicketActionOffline('COMMENT', selectedTicket.id, { content: commentText });
+      if (saved) {
+        Snackbar.show({
+          text: t('tickets.success.comment_saved_offline', { defaultValue: 'Comment saved offline. Will sync when online.' }),
+          duration: 3000,
+          backgroundColor: '#FF9800',
+        });
+        setCommentText('');
+        // Refresh tickets to show optimistic update?
+        await fetchTickets();
+      } else {
+        Snackbar.show({
+          text: t('tickets.errors.comment_failed', { defaultValue: 'Failed to add comment' }),
+          duration: 3000,
+          backgroundColor: '#FF6B6B',
+        });
+      }
+      return;
+    }
+    // ========== END OFFLINE CHECK ==========
+
     setSubmitting(true);
     try {
       await authenticatedAxios(
@@ -291,11 +636,33 @@ const TicketsScreen = () => {
       });
     } catch (error) {
       console.error('Failed to add comment:', error);
-      Snackbar.show({
-        text: t('tickets.errors.comment_failed', { defaultValue: 'Failed to add comment' }),
-        duration: 3000,
-        backgroundColor: '#FF6B6B',
-      });
+
+      // ========== OFFLINE: Offer to save offline on error ==========
+      if (!isOnline) {
+        const saved = await saveTicketActionOffline('COMMENT', selectedTicket.id, { content: commentText });
+        if (saved) {
+          Snackbar.show({
+            text: t('tickets.success.comment_saved_offline', { defaultValue: 'Comment saved offline. Will sync when online.' }),
+            duration: 3000,
+            backgroundColor: '#FF9800',
+          });
+          setCommentText('');
+          await fetchTickets();
+        } else {
+          Snackbar.show({
+            text: t('tickets.errors.comment_failed', { defaultValue: 'Failed to add comment' }),
+            duration: 3000,
+            backgroundColor: '#FF6B6B',
+          });
+        }
+      } else {
+        Snackbar.show({
+          text: t('tickets.errors.comment_failed', { defaultValue: 'Failed to add comment' }),
+          duration: 3000,
+          backgroundColor: '#FF6B6B',
+        });
+      }
+      // ========== END OFFLINE OFFER ==========
     } finally {
       setSubmitting(false);
     }
@@ -304,6 +671,19 @@ const TicketsScreen = () => {
   const fetchTickets = async (isRefresh = false) => {
     try {
       if (!isRefresh) setLoading(true);
+
+      // ========== OFFLINE: Check if online ==========
+      const online = await NetworkMonitorService.isOnline();
+
+      if (!online) {
+        const hasCached = await loadCachedTickets();
+        if (hasCached) {
+          setLoading(false);
+          setRefreshing(false);
+          return;
+        }
+      }
+      // ========== END OFFLINE CHECK ==========
 
       const userObj = await AsyncStorage.getItem('user');
       const user = userObj ? JSON.parse(userObj) : null;
@@ -381,14 +761,30 @@ const TicketsScreen = () => {
         });
 
         setTickets(ticketsData);
+
+        // ========== OFFLINE: Cache fetched tickets ==========
+        await cacheTicketsData(ticketsData);
+        // ========== END OFFLINE CACHE ==========
       }
     } catch (error) {
       console.error('Failed to fetch tickets:', error);
-      Snackbar.show({
-        text: t('tickets.errors.load_failed', { defaultValue: 'Failed to load tickets' }),
-        duration: 3000,
-        backgroundColor: '#FF6B6B',
-      });
+
+      // ========== OFFLINE: Fallback to cached tickets on error ==========
+      const hasCached = await loadCachedTickets();
+      if (!hasCached) {
+        Snackbar.show({
+          text: t('tickets.errors.load_failed', { defaultValue: 'Failed to load tickets' }),
+          duration: 3000,
+          backgroundColor: '#FF6B6B',
+        });
+      } else {
+        Snackbar.show({
+          text: t('tickets.using_cached', { defaultValue: 'Using cached tickets (offline mode)' }),
+          duration: 3000,
+          backgroundColor: '#FF9800',
+        });
+      }
+      // ========== END OFFLINE FALLBACK ==========
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -397,7 +793,13 @@ const TicketsScreen = () => {
 
   const onRefresh = () => {
     setRefreshing(true);
-    fetchTickets(true);
+    // ========== OFFLINE: Manual sync on refresh ==========
+    if (isOnline) {
+      manualSync();
+    } else {
+      fetchTickets(true);
+    }
+    // ========== END OFFLINE MANUAL SYNC ==========
   };
 
   const getPriorityColor = (priority) => {
@@ -492,6 +894,38 @@ const TicketsScreen = () => {
 
   const handleAcknowledge = async (ticketId) => {
     if (acknowledgingTicketId) return;
+
+    // ========== OFFLINE: Check if online ==========
+    const online = await NetworkMonitorService.isOnline();
+
+    if (!online) {
+      // Save acknowledge action offline
+      const saved = await saveTicketActionOffline('ACKNOWLEDGE', ticketId);
+      if (saved) {
+        Snackbar.show({
+          text: t('tickets.success.acknowledged_offline', { defaultValue: 'Acknowledgment saved offline. Will sync when online.' }),
+          duration: 3000,
+          backgroundColor: '#FF9800',
+        });
+        setModalVisible(false);
+        setSelectedTicket(null);
+        // Optimistically update local state
+        const updatedTickets = tickets.map(t =>
+          t.id === ticketId ? { ...t, status: 'ACKNOWLEDGED' } : t
+        );
+        setTickets(updatedTickets);
+        await cacheTicketsData(updatedTickets);
+      } else {
+        Snackbar.show({
+          text: t('tickets.errors.acknowledge_failed', { defaultValue: 'Failed to acknowledge ticket' }),
+          duration: 3000,
+          backgroundColor: '#FF6B6B',
+        });
+      }
+      return;
+    }
+    // ========== END OFFLINE CHECK ==========
+
     setAcknowledgingTicketId(ticketId);
     try {
       await acknowledgeTicket(ticketId);
@@ -508,6 +942,38 @@ const TicketsScreen = () => {
 
   const handleResolve = async (ticketId) => {
     if (resolvingTicketId) return;
+
+    // ========== OFFLINE: Check if online ==========
+    const online = await NetworkMonitorService.isOnline();
+
+    if (!online) {
+      // Save resolve action offline
+      const saved = await saveTicketActionOffline('RESOLVE', ticketId);
+      if (saved) {
+        Snackbar.show({
+          text: t('tickets.success.resolved_offline', { defaultValue: 'Resolution saved offline. Will sync when online.' }),
+          duration: 3000,
+          backgroundColor: '#FF9800',
+        });
+        setModalVisible(false);
+        setSelectedTicket(null);
+        // Optimistically update local state
+        const updatedTickets = tickets.map(t =>
+          t.id === ticketId ? { ...t, status: 'RESOLVED' } : t
+        );
+        setTickets(updatedTickets);
+        await cacheTicketsData(updatedTickets);
+      } else {
+        Snackbar.show({
+          text: t('tickets.errors.resolve_failed', { defaultValue: 'Failed to resolve ticket' }),
+          duration: 3000,
+          backgroundColor: '#FF6B6B',
+        });
+      }
+      return;
+    }
+    // ========== END OFFLINE CHECK ==========
+
     setResolvingTicketId(ticketId);
     try {
       await resolveTicket(ticketId);
@@ -612,13 +1078,43 @@ const TicketsScreen = () => {
               <Icon name="arrow-back" size={24} color="#1A1A1A" />
             </TouchableOpacity>
             <Text style={styles.headerTitle}>{t('tickets.header_title', { defaultValue: 'Tickets' })}</Text>
-            <TouchableOpacity
-              style={styles.createButton}
-              onPress={() => navigation.navigate('CreateTicket')}
-            >
-              <Text style={styles.createButtonText}>{t('tickets.new_button', { defaultValue: '+ New' })}</Text>
-            </TouchableOpacity>
+            <View style={styles.headerRight}>
+              {/* ========== OFFLINE: Manual sync button ========== */}
+              {isSyncing ? (
+                <ActivityIndicator size="small" color="#FFA500" style={styles.syncIndicator} />
+              ) : (
+                <TouchableOpacity onPress={manualSync} style={styles.syncButton}>
+                  <Icon name="sync" size={20} color={isOnline ? "#4CAF50" : "#999"} />
+                </TouchableOpacity>
+              )}
+              {/* ========== END OFFLINE SYNC BUTTON ========== */}
+              <TouchableOpacity
+                style={styles.createButton}
+                onPress={() => navigation.navigate('CreateTicket')}
+              >
+                <Text style={styles.createButtonText}>{t('tickets.new_button', { defaultValue: '+ New' })}</Text>
+              </TouchableOpacity>
+            </View>
           </View>
+
+          {/* ========== OFFLINE: Network status banner ========== */}
+          {!isOnline && (
+            <View style={styles.offlineBanner}>
+              <Text style={styles.offlineBannerText}>📴 Offline Mode - Using cached tickets</Text>
+            </View>
+          )}
+          {/* ========== END OFFLINE BANNER ========== */}
+
+          {/* ========== OFFLINE: Pending actions banner ========== */}
+          {pendingActions.length > 0 && isOnline && (
+            <TouchableOpacity style={styles.pendingBanner} onPress={processPendingActions}>
+              <Icon name="pending" size={16} color="#FF9800" />
+              <Text style={styles.pendingBannerText}>
+                {pendingActions.length} pending action(s) to sync. Tap to sync now.
+              </Text>
+            </TouchableOpacity>
+          )}
+          {/* ========== END OFFLINE PENDING BANNER ========== */}
 
           <View style={styles.searchContainer}>
             <Text style={styles.searchIcon}>🔍</Text>
@@ -1012,6 +1508,23 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#1A1A1A',
   },
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  syncButton: {
+    width: 36,
+    height: 36,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 18,
+    backgroundColor: '#F5F5F5',
+  },
+  syncIndicator: {
+    width: 36,
+    height: 36,
+  },
   createButton: {
     paddingVertical: 6,
     paddingHorizontal: 12,
@@ -1022,6 +1535,34 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#FFFFFF',
     fontWeight: '500',
+  },
+  offlineBanner: {
+    backgroundColor: '#FF9800',
+    padding: 10,
+    marginHorizontal: 20,
+    marginBottom: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  offlineBannerText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  pendingBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFF3E0',
+    marginHorizontal: 20,
+    marginBottom: 12,
+    padding: 12,
+    borderRadius: 8,
+    gap: 8,
+  },
+  pendingBannerText: {
+    fontSize: 12,
+    color: '#FF9800',
+    flex: 1,
   },
   searchContainer: {
     flexDirection: 'row',

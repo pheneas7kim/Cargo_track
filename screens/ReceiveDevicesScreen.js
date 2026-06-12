@@ -24,6 +24,12 @@ import { useTranslation } from 'react-i18next';
 // ✅ Import global token refresh service
 import { refreshAccessToken, addTokenRefreshListener } from '../services/TokenService';
 
+// ========== OFFLINE MODULE IMPORTS ==========
+import OfflineDatabaseService from '../services/OfflineDatabaseService';
+import NetworkMonitorService from '../services/NetworkMonitorService';
+import OfflineSyncService from '../services/OfflineSyncService';
+// ========== END OFFLINE MODULE IMPORTS ==========
+
 const { width } = Dimensions.get('window');
 const SCAN_SIZE = width * 0.7;
 const API_BASE = 'https://demo2.bsl.co.ke';
@@ -98,6 +104,12 @@ const ReceiveDevicesScreen = () => {
   const [selectedCondition, setSelectedCondition] = useState(null);
   const [pendingSerialNumber, setPendingSerialNumber] = useState(null);
 
+  // ========== OFFLINE MODE STATE VARIABLES ==========
+  const [isOnline, setIsOnline] = useState(true);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [pendingReceives, setPendingReceives] = useState([]);
+  // ========== END OFFLINE MODE STATE VARIABLES ==========
+
   // Device condition options
   const conditionOptions = [
     { id: 1, label: t('receive_devices.conditions.good', { defaultValue: 'Good' }) },
@@ -118,6 +130,201 @@ const ReceiveDevicesScreen = () => {
     });
     return () => removeListener();
   }, []);
+
+  // ========== OFFLINE MODE INITIALIZATION ==========
+  useEffect(() => {
+    const initOfflineMode = async () => {
+      try {
+        // Initialize offline database
+        await OfflineDatabaseService.initDatabase();
+        console.log('✅ Offline database initialized for Receive Devices Screen');
+
+        // Initialize network monitor
+        NetworkMonitorService.init();
+
+        // Start auto-sync service
+        await OfflineSyncService.startAutoSync();
+
+        // Listen for network changes
+        NetworkMonitorService.on('connectionChange', (online) => {
+          setIsOnline(online);
+          if (online) {
+            Snackbar.show({
+              text: t('receive_devices.back_online', { defaultValue: 'Back online! Syncing data...' }),
+              duration: 2000,
+              backgroundColor: '#4CAF50',
+            });
+            // Auto-refresh when coming back online
+            processPendingReceives();
+          } else {
+            Snackbar.show({
+              text: t('receive_devices.offline_mode', { defaultValue: 'Offline mode - Devices will be saved locally' }),
+              duration: 3000,
+              backgroundColor: '#FF9800',
+            });
+          }
+        });
+
+        // Load pending receives from storage
+        await loadPendingReceives();
+      } catch (error) {
+        console.error('❌ Offline mode init error:', error);
+      }
+    };
+
+    initOfflineMode();
+
+    return () => {
+      // Cleanup
+      OfflineSyncService.stopAutoSync();
+      NetworkMonitorService.cleanup();
+    };
+  }, []);
+  // ========== END OFFLINE MODE INITIALIZATION ==========
+
+  // ========== OFFLINE: Save receive batch offline ==========
+  const saveReceiveOffline = async (storeIdValue, devices) => {
+    try {
+      const offlineReceive = {
+        id: Date.now(),
+        storeId: storeIdValue,
+        devices: devices,
+        timestamp: new Date().toISOString(),
+        status: 'PENDING',
+        syncStatus: 'PENDING'
+      };
+
+      const existingReceives = await OfflineDatabaseService.getUserData('pending_device_receives') || [];
+      existingReceives.push(offlineReceive);
+      await OfflineDatabaseService.saveUserData('pending_device_receives', existingReceives);
+      setPendingReceives(existingReceives);
+
+      // Also add to sync queue
+      await OfflineDatabaseService.addToSyncQueue('RECEIVE_DEVICES', '/api/v1/store-stock/receive-devices', {
+        storeId: storeIdValue,
+        devices: devices
+      });
+
+      console.log(`📦 Device receive batch saved offline (${devices.length} devices)`);
+      return true;
+    } catch (error) {
+      console.error('Error saving receive batch offline:', error);
+      return false;
+    }
+  };
+  // ========== END OFFLINE SAVE RECEIVE ==========
+
+  // ========== OFFLINE: Load pending receives ==========
+  const loadPendingReceives = async () => {
+    try {
+      const pending = await OfflineDatabaseService.getUserData('pending_device_receives');
+      if (pending && pending.length > 0) {
+        setPendingReceives(pending);
+        console.log('📦 Found pending device receives:', pending.length);
+      }
+    } catch (error) {
+      console.error('Error loading pending receives:', error);
+    }
+  };
+  // ========== END OFFLINE LOAD PENDING ==========
+
+  // ========== OFFLINE: Process pending receives ==========
+  const processPendingReceives = async () => {
+    if (!isOnline) return;
+
+    const pending = await OfflineDatabaseService.getUserData('pending_device_receives');
+    if (!pending || pending.length === 0) return;
+
+    console.log(`🔄 Processing ${pending.length} pending device receives...`);
+    let successCount = 0;
+    let failCount = 0;
+
+    for (const receive of pending) {
+      try {
+        const requestBody = {
+          storeId: receive.storeId,
+          devices: receive.devices
+        };
+
+        const response = await authenticatedAxios(
+          'post',
+          {
+            url: `${API_BASE}/api/v1/store-stock/receive-devices`,
+            data: requestBody,
+            headers: { 'Content-Type': 'application/json' },
+          },
+          i18n
+        );
+
+        const data = response.data;
+        if (response.status === 200 || response.status === 201) {
+          const successDeviceCount = data.successfulDeviceIds?.length || 0;
+          successCount += successDeviceCount;
+          console.log(`✅ Synced receive batch with ${successDeviceCount} devices`);
+        } else {
+          failCount += receive.devices.length;
+          console.log(`❌ Failed to sync receive batch`);
+        }
+      } catch (error) {
+        console.error(`Failed to sync receive batch:`, error);
+        failCount += receive.devices.length;
+      }
+    }
+
+    // Clear processed receives from storage
+    await OfflineDatabaseService.saveUserData('pending_device_receives', []);
+    setPendingReceives([]);
+
+    if (successCount > 0) {
+      Snackbar.show({
+        text: t('receive_devices.synced_receives', { defaultValue: 'Synced {{count}} device(s) successfully', count: successCount }).replace('{{count}}', successCount.toString()),
+        duration: 3000,
+        backgroundColor: '#4CAF50',
+      });
+    }
+
+    if (failCount > 0) {
+      Snackbar.show({
+        text: t('receive_devices.sync_partial_failed', { defaultValue: '{{count}} device(s) failed to sync', count: failCount }).replace('{{count}}', failCount.toString()),
+        duration: 3000,
+        backgroundColor: '#FF9800',
+      });
+    }
+  };
+  // ========== END OFFLINE PROCESS PENDING ==========
+
+  // ========== OFFLINE: Manual sync function ==========
+  const manualSync = async () => {
+    if (!isOnline) {
+      Snackbar.show({
+        text: t('receive_devices.cannot_sync_offline', { defaultValue: 'Cannot sync while offline' }),
+        duration: 3000,
+        backgroundColor: '#FF6B6B',
+      });
+      return;
+    }
+
+    setIsSyncing(true);
+    try {
+      await OfflineSyncService.syncAll();
+      await processPendingReceives();
+      Snackbar.show({
+        text: t('receive_devices.sync_complete', { defaultValue: 'Sync completed successfully!' }),
+        duration: 3000,
+        backgroundColor: '#4CAF50',
+      });
+    } catch (error) {
+      console.error('Manual sync error:', error);
+      Snackbar.show({
+        text: t('receive_devices.sync_failed', { defaultValue: 'Sync failed' }),
+        duration: 3000,
+        backgroundColor: '#FF6B6B',
+      });
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+  // ========== END OFFLINE MANUAL SYNC ==========
 
   useEffect(() => {
     loadStoreData();
@@ -299,6 +506,31 @@ const ReceiveDevicesScreen = () => {
 
     setSubmitting(true);
 
+    // ========== OFFLINE: Check if online ==========
+    const online = await NetworkMonitorService.isOnline();
+
+    if (!online) {
+      // Save receive batch offline
+      const saved = await saveReceiveOffline(parseInt(storeId, 10), devicesList);
+      if (saved) {
+        Snackbar.show({
+          text: t('receive_devices.success.saved_offline', { defaultValue: '{{count}} device(s) saved offline. Will submit when online.', count: devicesList.length }).replace('{{count}}', devicesList.length.toString()),
+          duration: 4000,
+          backgroundColor: '#FF9800',
+        });
+        setDevicesList([]);
+      } else {
+        Snackbar.show({
+          text: t('receive_devices.errors.save_offline_failed', { defaultValue: 'Failed to save devices offline' }),
+          duration: 3000,
+          backgroundColor: '#FF6B6B',
+        });
+      }
+      setSubmitting(false);
+      return;
+    }
+    // ========== END OFFLINE CHECK ==========
+
     try {
       const requestBody = {
         storeId: parseInt(storeId, 10),
@@ -351,7 +583,28 @@ const ReceiveDevicesScreen = () => {
     } catch (error) {
       console.error('Error submitting devices:', error);
 
-      if (error.response?.status === 401) {
+      // ========== OFFLINE: Offer to save offline on error ==========
+      const isNetworkError = error.message?.includes('network') ||
+                            error.message?.includes('offline') ||
+                            error.code === 'ERR_NETWORK';
+
+      if (isNetworkError && !online) {
+        const saved = await saveReceiveOffline(parseInt(storeId, 10), devicesList);
+        if (saved) {
+          Snackbar.show({
+            text: t('receive_devices.success.saved_offline', { defaultValue: '{{count}} device(s) saved offline. Will submit when online.', count: devicesList.length }).replace('{{count}}', devicesList.length.toString()),
+            duration: 4000,
+            backgroundColor: '#FF9800',
+          });
+          setDevicesList([]);
+        } else {
+          Snackbar.show({
+            text: error.response?.data?.message || error.message || t('receive_devices.errors.submit_failed', { defaultValue: 'Failed to submit devices. Please try again.' }),
+            duration: 3000,
+            backgroundColor: '#FF6B6B',
+          });
+        }
+      } else if (error.response?.status === 401) {
         Snackbar.show({
           text: t('receive_devices.errors.session_expired', { defaultValue: 'Session expired. Please log in again.' }),
           duration: 3000,
@@ -359,13 +612,14 @@ const ReceiveDevicesScreen = () => {
         });
         navigation.replace('Login');
         return;
+      } else {
+        Snackbar.show({
+          text: error.response?.data?.message || error.message || t('receive_devices.errors.submit_failed', { defaultValue: 'Failed to submit devices. Please try again.' }),
+          duration: 3000,
+          backgroundColor: '#FF6B6B',
+        });
       }
-
-      Snackbar.show({
-        text: error.response?.data?.message || error.message || t('receive_devices.errors.submit_failed', { defaultValue: 'Failed to submit devices. Please try again.' }),
-        duration: 3000,
-        backgroundColor: '#FF6B6B',
-      });
+      // ========== END OFFLINE OFFER ==========
     } finally {
       setSubmitting(false);
     }
@@ -401,8 +655,36 @@ const ReceiveDevicesScreen = () => {
             <Text style={styles.storeNameText}>{storeName}</Text>
           )}
         </View>
-        <View style={{ width: 40 }} />
+        <View style={styles.headerRight}>
+          {/* ========== OFFLINE: Manual sync button ========== */}
+          {isSyncing ? (
+            <ActivityIndicator size="small" color="#FFD700" style={styles.syncIndicator} />
+          ) : (
+            <TouchableOpacity onPress={manualSync} style={styles.syncButton}>
+              <Text style={styles.syncButtonText}>↻</Text>
+            </TouchableOpacity>
+          )}
+          {/* ========== END OFFLINE SYNC BUTTON ========== */}
+        </View>
       </View>
+
+      {/* ========== OFFLINE: Network status banner ========== */}
+      {!isOnline && (
+        <View style={styles.offlineBanner}>
+          <Text style={styles.offlineBannerText}>📴 Offline Mode - Devices will be saved locally</Text>
+        </View>
+      )}
+      {/* ========== END OFFLINE BANNER ========== */}
+
+      {/* ========== OFFLINE: Pending receives banner ========== */}
+      {pendingReceives.length > 0 && isOnline && (
+        <TouchableOpacity style={styles.pendingBanner} onPress={processPendingReceives}>
+          <Text style={styles.pendingBannerText}>
+            ⏳ {pendingReceives.reduce((sum, r) => sum + r.devices.length, 0)} pending device(s) to sync. Tap to sync now.
+          </Text>
+        </TouchableOpacity>
+      )}
+      {/* ========== END OFFLINE PENDING BANNER ========== */}
 
       <View style={styles.scannerContainer}>
         <Text style={styles.scannerTitle}>{t('receive_devices.scan_title', { defaultValue: 'Scan Device QR Code' })}</Text>
@@ -459,7 +741,9 @@ const ReceiveDevicesScreen = () => {
             <ActivityIndicator size="small" color="#000" />
           ) : (
             <Text style={styles.submitButtonText}>
-              {t('receive_devices.submit_button', { defaultValue: 'Submit {{count}} Device', count: devicesList.length }).replace('{{count}}', devicesList.length.toString())}{devicesList.length !== 1 ? 's' : ''}
+              {!isOnline ? t('receive_devices.save_offline_button', { defaultValue: 'Save {{count}} Device', count: devicesList.length }).replace('{{count}}', devicesList.length.toString()) :
+                t('receive_devices.submit_button', { defaultValue: 'Submit {{count}} Device', count: devicesList.length }).replace('{{count}}', devicesList.length.toString())}
+              {devicesList.length !== 1 ? 's' : ''}
             </Text>
           )}
         </TouchableOpacity>
@@ -562,6 +846,50 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#FFD700',
     marginTop: 2,
+    fontWeight: '500',
+  },
+  headerRight: {
+    width: 40,
+    alignItems: 'center',
+  },
+  syncButton: {
+    width: 40,
+    height: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  syncButtonText: {
+    fontSize: 24,
+    color: '#FFD700',
+  },
+  syncIndicator: {
+    width: 40,
+    height: 40,
+  },
+  offlineBanner: {
+    backgroundColor: '#FF9800',
+    padding: 10,
+    marginHorizontal: 16,
+    marginTop: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  offlineBannerText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  pendingBanner: {
+    backgroundColor: '#FFF3E0',
+    padding: 10,
+    marginHorizontal: 16,
+    marginTop: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  pendingBannerText: {
+    color: '#FF9800',
+    fontSize: 12,
     fontWeight: '500',
   },
   scannerContainer: {

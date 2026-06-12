@@ -24,6 +24,12 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
 import serverUrl from '../config';
 
+// ========== OFFLINE MODULE IMPORTS ==========
+import OfflineDatabaseService from '../services/OfflineDatabaseService';
+import NetworkMonitorService from '../services/NetworkMonitorService';
+import OfflineSyncService from '../services/OfflineSyncService';
+// ========== END OFFLINE MODULE IMPORTS ==========
+
 const { width, height } = Dimensions.get('window');
 
 // Dynamically import MapView to avoid issues
@@ -59,7 +65,13 @@ const DeviceMapScreen = () => {
   const [lastUpdate, setLastUpdate] = useState(null);
   const [mapReady, setMapReady] = useState(false);
   const [mapError, setMapError] = useState(false);
-  
+
+  // ========== OFFLINE MODE STATE VARIABLES ==========
+  const [isOnline, setIsOnline] = useState(true);
+  const [offlineDataAvailable, setOfflineDataAvailable] = useState(false);
+  const [lastSyncTime, setLastSyncTime] = useState(null);
+  // ========== END OFFLINE MODE STATE VARIABLES ==========
+
   const mapRef = useRef(null);
   const intervalRef = useRef(null);
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -80,8 +92,102 @@ const DeviceMapScreen = () => {
     ]).start();
   }, []);
 
+  // ========== OFFLINE MODE INITIALIZATION ==========
   useEffect(() => {
-    if (autoRefresh) {
+    const initOfflineMode = async () => {
+      try {
+        // Initialize offline database
+        await OfflineDatabaseService.initDatabase();
+        console.log('✅ Offline database initialized for Device Map Screen');
+
+        // Initialize network monitor
+        NetworkMonitorService.init();
+
+        // Start auto-sync service
+        await OfflineSyncService.startAutoSync();
+
+        // Listen for network changes
+        NetworkMonitorService.on('connectionChange', (online) => {
+          setIsOnline(online);
+          if (online) {
+            Snackbar.show({
+              text: 'Back online! Syncing device locations...',
+              duration: 2000,
+              backgroundColor: '#4CAF50',
+            });
+            // Auto-refresh when coming back online
+            fetchDevices();
+          } else {
+            Snackbar.show({
+              text: 'Offline mode - Showing cached device locations',
+              duration: 3000,
+              backgroundColor: '#FF9800',
+            });
+          }
+        });
+
+        // Load cached devices from offline database
+        await loadCachedDevices();
+
+        // Load last sync time
+        const lastSync = await OfflineDatabaseService.getUserData('last_device_map_sync');
+        if (lastSync) {
+          setLastSyncTime(new Date(lastSync));
+        }
+
+      } catch (error) {
+        console.error('❌ Offline mode init error:', error);
+      }
+    };
+
+    initOfflineMode();
+
+    return () => {
+      // Cleanup
+      NetworkMonitorService.cleanup();
+    };
+  }, []);
+  // ========== END OFFLINE MODE INITIALIZATION ==========
+
+  // ========== OFFLINE: Load cached devices from offline database ==========
+  const loadCachedDevices = async () => {
+    try {
+      const cachedDevices = await OfflineDatabaseService.getUserData('cached_map_devices');
+      if (cachedDevices && cachedDevices.devices && cachedDevices.devices.length > 0) {
+        setDevices(cachedDevices.devices);
+        setOfflineDataAvailable(true);
+        setLastUpdate(new Date(cachedDevices.timestamp));
+        console.log(`📦 Loaded ${cachedDevices.devices.length} devices from offline cache`);
+
+        // Fit map to cached markers
+        if (cachedDevices.devices.length > 0 && mapRef.current && mapReady) {
+          fitMapToMarkers(cachedDevices.devices);
+        }
+      }
+    } catch (error) {
+      console.error('Error loading cached devices:', error);
+    }
+  };
+  // ========== END OFFLINE LOAD CACHED DEVICES ==========
+
+  // ========== OFFLINE: Save devices to offline database ==========
+  const saveDevicesToOfflineCache = async (devicesList) => {
+    try {
+      await OfflineDatabaseService.saveUserData('cached_map_devices', {
+        devices: devicesList,
+        timestamp: Date.now(),
+        deviceCount: devicesList.length
+      });
+      console.log(`💾 Saved ${devicesList.length} devices to offline cache`);
+      setOfflineDataAvailable(true);
+    } catch (error) {
+      console.error('Error saving devices to cache:', error);
+    }
+  };
+  // ========== END OFFLINE SAVE TO CACHE ==========
+
+  useEffect(() => {
+    if (autoRefresh && isOnline) {
       intervalRef.current = setInterval(() => {
         fetchDevices(true);
       }, 30000);
@@ -91,12 +197,12 @@ const DeviceMapScreen = () => {
         clearInterval(intervalRef.current);
       }
     };
-  }, [autoRefresh]);
+  }, [autoRefresh, isOnline]);
 
   useFocusEffect(
     React.useCallback(() => {
       fetchDevices();
-      
+
       const backAction = () => {
         return false;
       };
@@ -108,10 +214,33 @@ const DeviceMapScreen = () => {
   const fetchDevices = async (isAutoRefresh = false) => {
     try {
       if (!isAutoRefresh) setLoading(true);
-      
+
+      // ========== OFFLINE: Check if online ==========
+      const online = await NetworkMonitorService.isOnline();
+
+      if (!online) {
+        console.log('📴 Offline - using cached device data');
+        await loadCachedDevices();
+        if (!isAutoRefresh) {
+          Snackbar.show({
+            text: 'Offline - Showing cached device locations',
+            duration: 3000,
+            backgroundColor: '#FF9800',
+          });
+        }
+        setLoading(false);
+        setRefreshing(false);
+        return;
+      }
+      // ========== END OFFLINE CHECK ==========
+
       const token = await AsyncStorage.getItem('accessToken');
       if (!token) {
         console.error('No token found');
+        // Try to load from cache
+        await loadCachedDevices();
+        setLoading(false);
+        setRefreshing(false);
         return;
       }
 
@@ -127,18 +256,41 @@ const DeviceMapScreen = () => {
       if (response.data && Array.isArray(response.data)) {
         setDevices(response.data);
         setLastUpdate(new Date());
-        
+        setLastSyncTime(new Date());
+        setOfflineDataAvailable(true);
+
+        // ========== OFFLINE: Save to offline cache ==========
+        await saveDevicesToOfflineCache(response.data);
+        await OfflineDatabaseService.saveUserData('last_device_map_sync', Date.now());
+        // ========== END OFFLINE SAVE ==========
+
         if (!selectedDeviceMarker && response.data.length > 0 && mapRef.current && mapReady) {
           fitMapToMarkers(response.data);
         }
       }
     } catch (error) {
       console.error('Failed to fetch device locations:', error);
-      Snackbar.show({
-        text: 'Failed to load device locations',
-        duration: 3000,
-        backgroundColor: '#FF6B6B',
-      });
+
+      // ========== OFFLINE: Fall back to cached data on error ==========
+      const cachedDevices = await OfflineDatabaseService.getUserData('cached_map_devices');
+      if (cachedDevices && cachedDevices.devices && cachedDevices.devices.length > 0) {
+        setDevices(cachedDevices.devices);
+        setOfflineDataAvailable(true);
+        if (!isAutoRefresh) {
+          Snackbar.show({
+            text: 'Using cached data (server unavailable)',
+            duration: 3000,
+            backgroundColor: '#FF9800',
+          });
+        }
+      } else {
+        Snackbar.show({
+          text: 'Failed to load device locations',
+          duration: 3000,
+          backgroundColor: '#FF6B6B',
+        });
+      }
+      // ========== END OFFLINE FALLBACK ==========
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -150,27 +302,59 @@ const DeviceMapScreen = () => {
     fetchDevices();
   };
 
+  // ========== OFFLINE: Manual sync for device data ==========
+  const manualSync = async () => {
+    if (!isOnline) {
+      Snackbar.show({
+        text: 'Cannot sync while offline',
+        duration: 3000,
+        backgroundColor: '#FF6B6B',
+      });
+      return;
+    }
+
+    setLoading(true);
+    try {
+      await fetchDevices(false);
+      Snackbar.show({
+        text: 'Device locations synchronized!',
+        duration: 3000,
+        backgroundColor: '#4CAF50',
+      });
+    } catch (error) {
+      console.error('Manual sync error:', error);
+      Snackbar.show({
+        text: 'Sync failed',
+        duration: 3000,
+        backgroundColor: '#FF6B6B',
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+  // ========== END OFFLINE MANUAL SYNC ==========
+
   const fitMapToMarkers = (devicesList) => {
     if (!devicesList || devicesList.length === 0) return;
-    
+
     const validDevices = devicesList.filter(d => d.latitude && d.longitude);
     if (validDevices.length === 0) return;
-    
+
     const latitudes = validDevices.map(d => parseFloat(d.latitude));
     const longitudes = validDevices.map(d => parseFloat(d.longitude));
-    
+
     const minLat = Math.min(...latitudes);
     const maxLat = Math.max(...latitudes);
     const minLng = Math.min(...longitudes);
     const maxLng = Math.max(...longitudes);
-    
+
     const region = {
       latitude: (minLat + maxLat) / 2,
       longitude: (minLng + maxLng) / 2,
       latitudeDelta: Math.max((maxLat - minLat) * 1.5, 0.5),
       longitudeDelta: Math.max((maxLng - minLng) * 1.5, 0.5),
     };
-    
+
     setMapRegion(region);
     if (mapRef.current && mapReady) {
       try {
@@ -183,14 +367,14 @@ const DeviceMapScreen = () => {
 
   const centerOnDevice = (device) => {
     if (!device.latitude || !device.longitude) return;
-    
+
     const region = {
       latitude: parseFloat(device.latitude),
       longitude: parseFloat(device.longitude),
       latitudeDelta: 0.01,
       longitudeDelta: 0.01,
     };
-    
+
     setMapRegion(region);
     if (mapRef.current && mapReady) {
       try {
@@ -204,22 +388,22 @@ const DeviceMapScreen = () => {
 
   const getFilteredDevices = () => {
     let filtered = [...devices];
-    
+
     if (filter === 'moving') {
       filtered = filtered.filter(d => (d.speedKmh || 0) > 5);
     } else if (filter === 'stationary') {
       filtered = filtered.filter(d => (d.speedKmh || 0) <= 5);
     }
-    
+
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
-      filtered = filtered.filter(d => 
+      filtered = filtered.filter(d =>
         d.deviceName?.toLowerCase().includes(query) ||
         d.deviceSn?.toLowerCase().includes(query) ||
         d.t1Number?.toLowerCase().includes(query)
       );
     }
-    
+
     return filtered;
   };
 
@@ -252,9 +436,22 @@ const DeviceMapScreen = () => {
     return '#2196F3';
   };
 
+  // ========== OFFLINE: Get last update text with offline indicator ==========
+  const getLastUpdateText = () => {
+    if (!lastUpdate) return 'N/A';
+
+    const now = new Date();
+    const diff = Math.floor((now - lastUpdate) / 1000 / 60);
+
+    if (diff < 1) return 'Just now';
+    if (diff < 60) return `${diff} min ago`;
+    return `${Math.floor(diff / 60)} hr ago`;
+  };
+  // ========== END OFFLINE LAST UPDATE ==========
+
   const renderDeviceList = () => {
     const filteredDevices = getFilteredDevices();
-    
+
     return (
       <Animated.View style={[styles.deviceListPanel, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
         <View style={styles.panelHeader}>
@@ -263,7 +460,7 @@ const DeviceMapScreen = () => {
             <Text style={styles.closePanelText}>✕</Text>
           </TouchableOpacity>
         </View>
-        
+
         <ScrollView showsVerticalScrollIndicator={false}>
           {filteredDevices.map((device, index) => (
             <TouchableOpacity
@@ -312,7 +509,7 @@ const DeviceMapScreen = () => {
 
   const renderHeader = () => {
     const stats = getStats();
-    
+
     return (
       <Animated.View style={[styles.header, { opacity: fadeAnim }]}>
         <View style={styles.headerTop}>
@@ -341,28 +538,28 @@ const DeviceMapScreen = () => {
           )}
         </View>
 
-        <ScrollView 
-          horizontal 
-          showsHorizontalScrollIndicator={false} 
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.statsContainer}
         >
-          <TouchableOpacity 
+          <TouchableOpacity
             style={[styles.statCard, filter === 'all' && styles.activeStatCard]}
             onPress={() => setFilter('all')}
           >
             <Text style={styles.statNumber}>{stats.total}</Text>
             <Text style={styles.statLabel}>All</Text>
           </TouchableOpacity>
-          
-          <TouchableOpacity 
+
+          <TouchableOpacity
             style={[styles.statCard, filter === 'moving' && styles.activeStatCard]}
             onPress={() => setFilter('moving')}
           >
             <Text style={[styles.statNumber, { color: '#4CAF50' }]}>{stats.moving}</Text>
             <Text style={styles.statLabel}>Moving</Text>
           </TouchableOpacity>
-          
-          <TouchableOpacity 
+
+          <TouchableOpacity
             style={[styles.statCard, filter === 'stationary' && styles.activeStatCard]}
             onPress={() => setFilter('stationary')}
           >
@@ -371,26 +568,54 @@ const DeviceMapScreen = () => {
           </TouchableOpacity>
         </ScrollView>
 
+        {/* ========== OFFLINE: Status bar with sync indicator ========== */}
+        <View style={styles.statusBar}>
+          <View style={styles.statusLeft}>
+            {!isOnline && (
+              <View style={styles.offlineStatusBadge}>
+                <Text style={styles.offlineStatusText}>📴 Offline Mode</Text>
+              </View>
+            )}
+            {isOnline && offlineDataAvailable && !loading && (
+              <Text style={styles.lastUpdateText}>
+                Updated: {getLastUpdateText()}
+              </Text>
+            )}
+            {lastUpdate && isOnline && !offlineDataAvailable && (
+              <Text style={styles.lastUpdateText}>
+                Updated: {lastUpdate.toLocaleTimeString()}
+              </Text>
+            )}
+          </View>
+          <View style={styles.statusRight}>
+            {!isOnline && offlineDataAvailable && (
+              <Text style={styles.cachedDataText}>
+                📦 Cached Data
+              </Text>
+            )}
+            {isOnline && (
+              <TouchableOpacity onPress={manualSync} style={styles.syncButton}>
+                <Text style={styles.syncButtonText}>🔄 Sync</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        </View>
+        {/* ========== END OFFLINE STATUS BAR ========== */}
+
         <View style={styles.controlsContainer}>
-          <TouchableOpacity 
+          <TouchableOpacity
             style={[styles.controlButton, showTraffic && styles.activeControl]}
             onPress={() => setShowTraffic(!showTraffic)}
           >
             <Text style={styles.controlButtonText}>🚦 Traffic</Text>
           </TouchableOpacity>
-          
-          <TouchableOpacity 
+
+          <TouchableOpacity
             style={[styles.controlButton, autoRefresh && styles.activeControl]}
             onPress={() => setAutoRefresh(!autoRefresh)}
           >
             <Text style={styles.controlButtonText}>🔄 Auto {autoRefresh ? 'ON' : 'OFF'}</Text>
           </TouchableOpacity>
-          
-          {lastUpdate && (
-            <Text style={styles.lastUpdateText}>
-              Updated: {lastUpdate.toLocaleTimeString()}
-            </Text>
-          )}
         </View>
       </Animated.View>
     );
@@ -407,7 +632,7 @@ const DeviceMapScreen = () => {
           <Text style={styles.emptyText}>
             Please install react-native-maps properly.
           </Text>
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.retryButton}
             onPress={() => navigation.goBack()}
           >
@@ -418,7 +643,7 @@ const DeviceMapScreen = () => {
     );
   }
 
-  if (loading && !refreshing) {
+  if (loading && !refreshing && !offlineDataAvailable) {
     return (
       <SafeAreaView style={styles.container}>
         <StatusBar barStyle="dark-content" backgroundColor="#F8F9FA" />
@@ -433,9 +658,9 @@ const DeviceMapScreen = () => {
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#F8F9FA" />
-      
+
       {renderHeader()}
-      
+
       <View style={styles.mapContainer}>
         <MapView
           ref={mapRef}
@@ -461,12 +686,12 @@ const DeviceMapScreen = () => {
         >
           {getFilteredDevices().map((device, index) => {
             if (!device.latitude || !device.longitude) return null;
-            
+
             const latitude = parseFloat(device.latitude);
             const longitude = parseFloat(device.longitude);
-            
+
             if (isNaN(latitude) || isNaN(longitude)) return null;
-            
+
             return (
               <Marker
                 key={device.id || index}
@@ -490,7 +715,7 @@ const DeviceMapScreen = () => {
                       <Text style={styles.calloutText}>Speed: {formatSpeed(device.speedKmh)}</Text>
                       <Text style={styles.calloutText}>Mileage: {Math.round(device.mileageKm || 0)} km</Text>
                       <Text style={styles.calloutText}>Updated: {formatDate(device.timestamp)}</Text>
-                      <TouchableOpacity 
+                      <TouchableOpacity
                         style={styles.calloutButton}
                         onPress={() => {
                           setSelectedDevice(device);
@@ -507,7 +732,7 @@ const DeviceMapScreen = () => {
           })}
         </MapView>
       </View>
-      
+
       {renderDeviceList()}
 
       {/* Device Detail Modal */}
@@ -525,7 +750,7 @@ const DeviceMapScreen = () => {
                 <Text style={styles.closeButtonText}>✕</Text>
               </TouchableOpacity>
             </View>
-            
+
             {selectedDevice && (
               <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
                 <View style={styles.modalStatusContainer}>
@@ -538,23 +763,23 @@ const DeviceMapScreen = () => {
                 <Text style={styles.modalDeviceName}>
                   {selectedDevice.deviceName || selectedDevice.deviceSn}
                 </Text>
-                
+
                 <View style={styles.infoGrid}>
                   <View style={styles.infoItem}>
                     <Text style={styles.infoLabel}>Serial Number</Text>
                     <Text style={styles.infoValue}>{selectedDevice.deviceSn || 'N/A'}</Text>
                   </View>
-                  
+
                   <View style={styles.infoItem}>
                     <Text style={styles.infoLabel}>T1 Number</Text>
                     <Text style={styles.infoValue}>{selectedDevice.t1Number || 'N/A'}</Text>
                   </View>
-                  
+
                   <View style={styles.infoItem}>
                     <Text style={styles.infoLabel}>Speed</Text>
                     <Text style={styles.infoValue}>{formatSpeed(selectedDevice.speedKmh)}</Text>
                   </View>
-                  
+
                   <View style={styles.infoItem}>
                     <Text style={styles.infoLabel}>Mileage</Text>
                     <Text style={styles.infoValue}>{Math.round(selectedDevice.mileageKm || 0)} km</Text>
@@ -580,8 +805,16 @@ const DeviceMapScreen = () => {
                   </View>
                 </View>
 
+                {/* ========== OFFLINE: Data source indicator ========== */}
+                {!isOnline && (
+                  <View style={styles.offlineDataBadge}>
+                    <Text style={styles.offlineDataBadgeText}>📴 Cached location data</Text>
+                  </View>
+                )}
+                {/* ========== END OFFLINE DATA INDICATOR ========== */}
+
                 <View style={styles.actionButtons}>
-                  <TouchableOpacity 
+                  <TouchableOpacity
                     style={styles.centerButton}
                     onPress={() => {
                       centerOnDevice(selectedDevice);
@@ -592,7 +825,7 @@ const DeviceMapScreen = () => {
                   </TouchableOpacity>
                 </View>
 
-                <TouchableOpacity 
+                <TouchableOpacity
                   style={styles.closeModalButton}
                   onPress={() => setModalVisible(false)}
                 >
@@ -716,6 +949,65 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: '#666',
   },
+  // ========== OFFLINE STYLES ==========
+  statusBar: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 8,
+    marginBottom: 4,
+  },
+  statusLeft: {
+    flex: 1,
+  },
+  statusRight: {
+    alignItems: 'flex-end',
+  },
+  offlineStatusBadge: {
+    backgroundColor: '#FF9800',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    alignSelf: 'flex-start',
+  },
+  offlineStatusText: {
+    color: '#FFFFFF',
+    fontSize: 10,
+    fontWeight: '600',
+  },
+  cachedDataText: {
+    color: '#FF9800',
+    fontSize: 10,
+    fontWeight: '500',
+  },
+  syncButton: {
+    backgroundColor: '#FFA50020',
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#FFA500',
+  },
+  syncButtonText: {
+    color: '#FFA500',
+    fontSize: 11,
+    fontWeight: '500',
+  },
+  offlineDataBadge: {
+    backgroundColor: '#FFF3E0',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    marginBottom: 16,
+    alignItems: 'center',
+  },
+  offlineDataBadgeText: {
+    color: '#FF9800',
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  // ========== END OFFLINE STYLES ==========
   controlsContainer: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -742,7 +1034,6 @@ const styles = StyleSheet.create({
   lastUpdateText: {
     fontSize: 10,
     color: '#999',
-    marginLeft: 'auto',
   },
   mapContainer: {
     flex: 1,

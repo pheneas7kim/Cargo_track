@@ -14,6 +14,12 @@ import setNavigationColor from 'react-native-navigation-bar-color';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from './UI/type';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+// ========== OFFLINE MODULE IMPORTS ==========
+import OfflineDatabaseService from '../services/OfflineDatabaseService';
+import NetworkMonitorService from '../services/NetworkMonitorService';
+// ========== END OFFLINE MODULE IMPORTS ==========
 
 const slides = [
     {
@@ -39,20 +45,92 @@ const OnboardingScreen = () => {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const [currentIndex, setCurrentIndex] = useState(0);
 
+  // ========== OFFLINE MODE STATE VARIABLES ==========
+  const [isOnline, setIsOnline] = useState(true);
+  const [hasSeenOnboarding, setHasSeenOnboarding] = useState(false);
+  // ========== END OFFLINE MODE STATE VARIABLES ==========
+
   useEffect(() => {
     if (Platform.OS === 'android') {
       setNavigationColor('transparent', false, true);
     }
   }, []);
 
+  // ========== OFFLINE MODE INITIALIZATION ==========
+  useEffect(() => {
+    const initOfflineMode = async () => {
+      try {
+        // Initialize offline database
+        await OfflineDatabaseService.initDatabase();
+        console.log('✅ Offline database initialized for Onboarding Screen');
+
+        // Initialize network monitor
+        NetworkMonitorService.init();
+
+        // Listen for network changes
+        NetworkMonitorService.on('connectionChange', (online) => {
+          setIsOnline(online);
+          if (!online) {
+            console.log('📴 Offline mode in Onboarding');
+          }
+        });
+
+        // Check if user has already seen onboarding
+        const onboardingCompleted = await AsyncStorage.getItem('onboardingCompleted');
+        if (onboardingCompleted === 'true') {
+          setHasSeenOnboarding(true);
+          // Auto-navigate to Login if onboarding already seen
+          navigation.replace('Login');
+        }
+      } catch (error) {
+        console.error('❌ Offline mode init error:', error);
+      }
+    };
+
+    initOfflineMode();
+
+    return () => {
+      // Cleanup
+      NetworkMonitorService.cleanup();
+    };
+  }, []);
+  // ========== END OFFLINE MODE INITIALIZATION ==========
+
+  // ========== OFFLINE: Mark onboarding as completed ==========
+  const completeOnboarding = async () => {
+    try {
+      await AsyncStorage.setItem('onboardingCompleted', 'true');
+      console.log('✅ Onboarding marked as completed');
+    } catch (error) {
+      console.error('Error saving onboarding status:', error);
+    }
+  };
+  // ========== END OFFLINE MARK COMPLETED ==========
+
+  const handleGetStarted = async () => {
+    // Mark onboarding as completed
+    await completeOnboarding();
+
+    // Navigate to Login screen
+    navigation.replace('Login');
+  };
+
   return (
     <View style={styles.container}>
       <StatusBar translucent backgroundColor="transparent" barStyle="light-content" />
 
+      {/* ========== OFFLINE: Network status indicator ========== */}
+      {!isOnline && (
+        <View style={styles.offlineIndicator}>
+          <Text style={styles.offlineIndicatorText}>📴 Offline Mode</Text>
+        </View>
+      )}
+      {/* ========== END OFFLINE INDICATOR ========== */}
+
       {/* Swiper with logo and dynamic subtitle */}
       <Swiper
         loop={false}
-        
+
         onIndexChanged={(index) => setCurrentIndex(index)}
         dotColor="rgba(255,255,255,0.5)"
         activeDotColor="#fff"
@@ -81,9 +159,9 @@ const OnboardingScreen = () => {
 
       {/* Static Sign In Button */}
       <View style={styles.buttonContainer}>
-        <TouchableOpacity style={styles.button} onPress={() => navigation.navigate('Login')}>
+        <TouchableOpacity style={styles.button} onPress={handleGetStarted}>
           <Text style={styles.buttonText}>Get Started</Text>
-         
+
         </TouchableOpacity>
       </View>
     </View>
@@ -100,53 +178,41 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
   },
- overlay: {
-  flex: 1,
-  paddingHorizontal: 20,
-  backgroundColor: 'rgba(0, 0, 0, 0.4)',
-},
-
-
-
-logo: {
-  height: 100,
-  resizeMode: 'contain',
-  top: 30
-},
-
-
-logoContainer: {
-  alignItems: 'center',
-  marginTop: Platform.OS === 'android' ? 60 : 80,  // your existing margin top for logo
-},
-
-
-
-subtitleContainer: {
-  flex: 1,
-  justifyContent: 'center',
-  alignItems: 'center',
-},
-subtitle: {
-  color: '#fff',
-  fontSize: 18,
-  textAlign: 'center',
-  paddingHorizontal: 10,
-       fontWeight: 400,
-          fontFamily: 'Helvetica',
-
-
-},
-
-title: {
-  color: '#fff',
-  fontSize: 24,
-  textAlign: 'center',
-  paddingHorizontal: 10,
-  fontWeight: 'bold',
-   fontFamily: 'Helvetica',
-
-},
+  overlay: {
+    flex: 1,
+    paddingHorizontal: 20,
+    backgroundColor: 'rgba(0, 0, 0, 0.4)',
+  },
+  logo: {
+    height: 100,
+    resizeMode: 'contain',
+    top: 30
+  },
+  logoContainer: {
+    alignItems: 'center',
+    marginTop: Platform.OS === 'android' ? 60 : 80,  // your existing margin top for logo
+  },
+  subtitleContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  subtitle: {
+    color: '#fff',
+    fontSize: 18,
+    textAlign: 'center',
+    paddingHorizontal: 10,
+    fontWeight: 400,
+    fontFamily: 'Helvetica',
+  },
+  title: {
+    color: '#fff',
+    fontSize: 24,
+    textAlign: 'center',
+    paddingHorizontal: 10,
+    fontWeight: 'bold',
+    fontFamily: 'Helvetica',
+  },
   pagination: {
     bottom: 160,
   },
@@ -161,7 +227,7 @@ title: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#edb705',
-    paddingVertical:12,
+    paddingVertical: 12,
     paddingHorizontal: 30,
     borderRadius: 10,
     width: '80%',
@@ -176,6 +242,24 @@ title: {
     marginLeft: 10,
     color: '#fff',
   },
+  // ========== OFFLINE STYLES ==========
+  offlineIndicator: {
+    position: 'absolute',
+    top: Platform.OS === 'ios' ? 50 : 40,
+    left: 0,
+    right: 0,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    alignItems: 'center',
+    zIndex: 10,
+  },
+  offlineIndicatorText: {
+    color: '#FF9800',
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  // ========== END OFFLINE STYLES ==========
 });
 
 export default OnboardingScreen;

@@ -20,6 +20,10 @@ import { BackHandler } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import axios from 'axios';
 
+// ========== OFFLINE MODULE IMPORTS ==========
+import OfflineDatabaseService from '../services/OfflineDatabaseService';
+import NetworkMonitorService from '../services/NetworkMonitorService';
+// ========== END OFFLINE MODULE IMPORTS ==========
 
 const SECRET_KEY = 'KAZIYANGU_TIP_SECRET_2025';
 const BASE_FORM_URL = 'https://kaziyangu.ke/kaziyanguadmin/tip-form.html';
@@ -30,6 +34,10 @@ function MpesaPaybillQRCode() {
   const [isLoading, setIsLoading] = useState(true);
   const [phoneNumber, setPhoneNumber] = useState('');
 
+  // ========== OFFLINE MODE STATE VARIABLES ==========
+  const [isOnline, setIsOnline] = useState(true);
+  const [offlineDataAvailable, setOfflineDataAvailable] = useState(false);
+  // ========== END OFFLINE MODE STATE VARIABLES ==========
 
   useFocusEffect(
     React.useCallback(() => {
@@ -37,10 +45,137 @@ function MpesaPaybillQRCode() {
     }, [])
   );
 
+  // ========== OFFLINE MODE INITIALIZATION ==========
+  useEffect(() => {
+    const initOfflineMode = async () => {
+      try {
+        // Initialize offline database
+        await OfflineDatabaseService.initDatabase();
+        console.log('✅ Offline database initialized for Mpesa QR Screen');
 
+        // Initialize network monitor
+        NetworkMonitorService.init();
 
-const fetchUserDetailsData = async () => {
+        // Listen for network changes
+        NetworkMonitorService.on('connectionChange', (online) => {
+          setIsOnline(online);
+          if (!online) {
+            // Try to load cached QR data when offline
+            loadCachedQRData();
+            Snackbar.show({
+              text: 'Offline mode - Showing cached QR data',
+              duration: 3000,
+              backgroundColor: '#FF9800',
+            });
+          }
+        });
+
+        // Load cached QR data if available
+        await loadCachedQRData();
+
+      } catch (error) {
+        console.error('❌ Offline mode init error:', error);
+      }
+    };
+
+    initOfflineMode();
+
+    return () => {
+      // Cleanup
+      NetworkMonitorService.cleanup();
+    };
+  }, []);
+  // ========== END OFFLINE MODE INITIALIZATION ==========
+
+  // ========== OFFLINE: Load cached QR data from offline database ==========
+  const loadCachedQRData = async () => {
     try {
+      const cachedData = await OfflineDatabaseService.getUserData('cached_qr_data');
+      if (cachedData) {
+        setQrValue(cachedData.qrValue || '');
+        setName(cachedData.name || '');
+        setPhoneNumber(cachedData.phoneNumber || '');
+        setOfflineDataAvailable(true);
+        console.log('📦 Loaded QR data from offline cache');
+      }
+    } catch (error) {
+      console.error('Error loading cached QR data:', error);
+    }
+  };
+  // ========== END OFFLINE LOAD CACHED QR DATA ==========
+
+  // ========== OFFLINE: Save QR data to offline database ==========
+  const saveQRDataToOfflineCache = async (qrValueData, nameData, phoneData) => {
+    try {
+      await OfflineDatabaseService.saveUserData('cached_qr_data', {
+        qrValue: qrValueData,
+        name: nameData,
+        phoneNumber: phoneData,
+        timestamp: Date.now()
+      });
+      console.log('💾 Saved QR data to offline cache');
+      setOfflineDataAvailable(true);
+    } catch (error) {
+      console.error('Error saving QR data to cache:', error);
+    }
+  };
+  // ========== END OFFLINE SAVE TO CACHE ==========
+
+  // ========== OFFLINE: Get cached user details ==========
+  const getCachedUserDetails = async () => {
+    try {
+      const cachedDetails = await OfflineDatabaseService.getUserData('cached_user_details');
+      if (cachedDetails) {
+        return cachedDetails;
+      }
+      return null;
+    } catch (error) {
+      console.error('Error getting cached user details:', error);
+      return null;
+    }
+  };
+  // ========== END OFFLINE GET CACHED DETAILS ==========
+
+  // ========== OFFLINE: Save user details to cache ==========
+  const saveUserDetailsToCache = async (phone, userName) => {
+    try {
+      await OfflineDatabaseService.saveUserData('cached_user_details', {
+        phoneNumber: phone,
+        name: userName,
+        timestamp: Date.now()
+      });
+      console.log('💾 Saved user details to offline cache');
+    } catch (error) {
+      console.error('Error saving user details to cache:', error);
+    }
+  };
+  // ========== END OFFLINE SAVE USER DETAILS ==========
+
+  const fetchUserDetailsData = async () => {
+    try {
+      // ========== OFFLINE: Check if online ==========
+      const online = await NetworkMonitorService.isOnline();
+
+      if (!online) {
+        console.log('📴 Offline - using cached user details');
+        const cachedDetails = await getCachedUserDetails();
+        if (cachedDetails) {
+          setPhoneNumber(cachedDetails.phoneNumber || '');
+          setName(cachedDetails.name || '');
+          await loadCachedQRData();
+          setIsLoading(false);
+        } else {
+          Snackbar.show({
+            text: 'Offline - No cached user data available',
+            duration: 3000,
+            backgroundColor: '#FF9800',
+          });
+          setIsLoading(false);
+        }
+        return;
+      }
+      // ========== END OFFLINE CHECK ==========
+
       const token = await AsyncStorage.getItem('accessToken');
       const userId = await AsyncStorage.getItem('id');
 
@@ -60,23 +195,48 @@ const fetchUserDetailsData = async () => {
 
       const fetchedPhone = response.data?.usedetails?.phoneNo || '';
       setPhoneNumber(fetchedPhone);
-      generateQr(fetchedPhone);
+
+      const storedName = await AsyncStorage.getItem('name');
+      const userName = storedName || response.data?.usedetails?.name || 'Unnamed User';
+      setName(userName);
+
+      // ========== OFFLINE: Save user details to cache ==========
+      await saveUserDetailsToCache(fetchedPhone, userName);
+      // ========== END OFFLINE SAVE ==========
+
+      await generateQr(fetchedPhone, userName);
     } catch (error) {
       console.error('❌ Failed to fetch user details:', error);
-      Snackbar.show({
-        text: 'Could not fetch user details.',
-        duration: 3000,
-        backgroundColor: '#FF6B6B',
-      });
+
+      // ========== OFFLINE: Fall back to cached data on error ==========
+      const cachedDetails = await getCachedUserDetails();
+      if (cachedDetails) {
+        setPhoneNumber(cachedDetails.phoneNumber || '');
+        setName(cachedDetails.name || '');
+        await loadCachedQRData();
+        Snackbar.show({
+          text: 'Using cached user data (server unavailable)',
+          duration: 3000,
+          backgroundColor: '#FF9800',
+        });
+      } else {
+        Snackbar.show({
+          text: 'Could not fetch user details.',
+          duration: 3000,
+          backgroundColor: '#FF6B6B',
+        });
+      }
+      // ========== END OFFLINE FALLBACK ==========
+
       setIsLoading(false);
     }
   };
 
   // ✅ Generate QR code URL
-  const generateQr = async (phoneNo) => {
+  const generateQr = async (phoneNo, userName) => {
     try {
       const token = await AsyncStorage.getItem('accessToken');
-      const storedName = await AsyncStorage.getItem('name');
+      const finalName = userName || name || 'Unnamed User';
 
       if (!token) {
         Snackbar.show({
@@ -90,10 +250,14 @@ const fetchUserDetailsData = async () => {
 
       const fullUrl = `${BASE_FORM_URL}?data=${encodeURIComponent(
         token
-      )}&name=${encodeURIComponent(storedName || 'Unnamed User')}&phonenumber=${encodeURIComponent(phoneNo)}`;
+      )}&name=${encodeURIComponent(finalName)}&phonenumber=${encodeURIComponent(phoneNo)}`;
 
-      setName(storedName || 'Unnamed User');
       setQrValue(fullUrl);
+
+      // ========== OFFLINE: Save QR data to cache ==========
+      await saveQRDataToOfflineCache(fullUrl, finalName, phoneNo);
+      // ========== END OFFLINE SAVE ==========
+
     } catch (error) {
       console.error('❌ Error generating QR:', error);
       Snackbar.show({
@@ -151,7 +315,37 @@ const fetchUserDetailsData = async () => {
   //   generateQr();
   // }, []);
 
+  // ========== OFFLINE: Manual refresh/sync ==========
+  const handleManualRefresh = async () => {
+    if (!isOnline) {
+      Snackbar.show({
+        text: 'Cannot refresh while offline',
+        duration: 3000,
+        backgroundColor: '#FF6B6B',
+      });
+      return;
+    }
 
+    setIsLoading(true);
+    try {
+      await fetchUserDetailsData();
+      Snackbar.show({
+        text: 'QR data refreshed!',
+        duration: 3000,
+        backgroundColor: '#4CAF50',
+      });
+    } catch (error) {
+      console.error('Refresh error:', error);
+      Snackbar.show({
+        text: 'Refresh failed',
+        duration: 3000,
+        backgroundColor: '#FF6B6B',
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+  // ========== END OFFLINE MANUAL REFRESH ==========
 
   // 📋 Copy link
   const handleCopyLink = async () => {
@@ -189,10 +383,27 @@ const fetchUserDetailsData = async () => {
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+
+      {/* ========== OFFLINE: Network status banner ========== */}
+      {!isOnline && (
+        <View style={styles.offlineBanner}>
+          <Text style={styles.offlineBannerText}>📴 Offline Mode - Using cached data</Text>
+        </View>
+      )}
+      {/* ========== END OFFLINE BANNER ========== */}
+
       <View style={styles.content}>
         <Text style={styles.title}>Scan or Share to Tip</Text>
         <Text style={styles.subtitle}>Name : {name}</Text>
         <Text style={styles.subtitle}>Phone Number : {phoneNumber}</Text>
+
+        {/* ========== OFFLINE: Data source indicator ========== */}
+        {offlineDataAvailable && !isOnline && !isLoading && (
+          <View style={styles.cachedIndicator}>
+            <Text style={styles.cachedIndicatorText}>📦 Showing cached QR data</Text>
+          </View>
+        )}
+        {/* ========== END OFFLINE INDICATOR ========== */}
 
         {isLoading ? (
           <ActivityIndicator size="large" color="#FFD700" style={{ marginTop: 10 }} />
@@ -212,6 +423,14 @@ const fetchUserDetailsData = async () => {
                 <Text style={styles.buttonText}>📤 Share</Text>
               </TouchableOpacity>
             </View>
+
+            {/* ========== OFFLINE: Refresh button when online ========== */}
+            {isOnline && (
+              <TouchableOpacity style={styles.refreshButton} onPress={handleManualRefresh}>
+                <Text style={styles.refreshButtonText}>🔄 Refresh QR</Text>
+              </TouchableOpacity>
+            )}
+            {/* ========== END OFFLINE REFRESH BUTTON ========== */}
           </View>
         ) : (
           <Text style={styles.errorText}>QR code could not be generated.</Text>
@@ -276,6 +495,45 @@ const styles = StyleSheet.create({
     fontSize: 16,
     marginTop: 20,
   },
+  // ========== OFFLINE STYLES ==========
+  offlineBanner: {
+    backgroundColor: '#FF9800',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+  },
+  offlineBannerText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  cachedIndicator: {
+    backgroundColor: '#FFF3E0',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    marginTop: 8,
+    marginBottom: 8,
+  },
+  cachedIndicatorText: {
+    color: '#FF9800',
+    fontSize: 11,
+    fontWeight: '500',
+  },
+  refreshButton: {
+    backgroundColor: '#4CAF50',
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 10,
+    marginTop: 16,
+    elevation: 1,
+  },
+  refreshButtonText: {
+    fontWeight: '600',
+    color: '#FFFFFF',
+    fontSize: 14,
+  },
+  // ========== END OFFLINE STYLES ==========
 });
 
 export default MpesaPaybillQRCode;

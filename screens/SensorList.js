@@ -20,6 +20,12 @@ import { useTranslation } from 'react-i18next';
 // ✅ Import global token refresh service
 import { refreshAccessToken, addTokenRefreshListener } from '../services/TokenService';
 
+// ========== OFFLINE MODULE IMPORTS ==========
+import OfflineDatabaseService from '../services/OfflineDatabaseService';
+import NetworkMonitorService from '../services/NetworkMonitorService';
+import OfflineSyncService from '../services/OfflineSyncService';
+// ========== END OFFLINE MODULE IMPORTS ==========
+
 const getAuthToken = async () => {
   try {
     const token = await AsyncStorage.getItem('accessToken');
@@ -79,6 +85,11 @@ const SensorList = ({ navigation }) => {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState(null);
 
+  // ========== OFFLINE MODE STATE VARIABLES ==========
+  const [isOnline, setIsOnline] = useState(true);
+  const [isSyncing, setIsSyncing] = useState(false);
+  // ========== END OFFLINE MODE STATE VARIABLES ==========
+
   // ✅ Listen for token refresh events
   useEffect(() => {
     const removeListener = addTokenRefreshListener((newToken) => {
@@ -86,6 +97,88 @@ const SensorList = ({ navigation }) => {
     });
     return () => removeListener();
   }, []);
+
+  // ========== OFFLINE MODE INITIALIZATION ==========
+  useEffect(() => {
+    const initOfflineMode = async () => {
+      try {
+        // Initialize offline database
+        await OfflineDatabaseService.initDatabase();
+        console.log('✅ Offline database initialized for Sensor List Screen');
+
+        // Initialize network monitor
+        NetworkMonitorService.init();
+
+        // Start auto-sync service
+        await OfflineSyncService.startAutoSync();
+
+        // Listen for network changes
+        NetworkMonitorService.on('connectionChange', (online) => {
+          setIsOnline(online);
+          if (online) {
+            Snackbar.show({
+              text: t('sensor_list.back_online', { defaultValue: 'Back online! Syncing data...' }),
+              duration: 2000,
+              backgroundColor: '#4CAF50',
+            });
+            // Auto-refresh when coming back online
+            loadMastersAndSensors();
+          } else {
+            Snackbar.show({
+              text: t('sensor_list.offline_mode', { defaultValue: 'Offline mode - using cached data' }),
+              duration: 3000,
+              backgroundColor: '#FF9800',
+            });
+          }
+        });
+
+        // Load initial data
+        await loadMastersAndSensors();
+      } catch (error) {
+        console.error('❌ Offline mode init error:', error);
+      }
+    };
+
+    initOfflineMode();
+
+    return () => {
+      // Cleanup
+      OfflineSyncService.stopAutoSync();
+      NetworkMonitorService.cleanup();
+    };
+  }, []);
+  // ========== END OFFLINE MODE INITIALIZATION ==========
+
+  // ========== OFFLINE: Cache sensor data ==========
+  const cacheSensorData = async (masters) => {
+    try {
+      await OfflineDatabaseService.saveUserData('sensor_masters', {
+        data: masters,
+        timestamp: Date.now()
+      });
+      console.log('✅ Sensor masters data cached offline');
+    } catch (error) {
+      console.error('Error caching sensor data:', error);
+    }
+  };
+  // ========== END OFFLINE CACHE HELPER ==========
+
+  // ========== OFFLINE: Load cached sensor data ==========
+  const loadCachedSensorData = async () => {
+    try {
+      const cached = await OfflineDatabaseService.getUserData('sensor_masters');
+      if (cached && cached.data && cached.data.length > 0) {
+        setMastersData(cached.data);
+        console.log('📦 Loaded cached sensor masters data');
+        return true;
+      }
+      return false;
+    } catch (error) {
+      console.error('Error loading cached sensor data:', error);
+      return false;
+    }
+  };
+  // ========== END OFFLINE LOAD CACHED ==========
 
   // Fetch sensors for a specific master from API
   const fetchSensorsForMaster = async (masterSN) => {
@@ -125,6 +218,19 @@ const SensorList = ({ navigation }) => {
     setIsLoading(true);
     setError(null);
 
+    // ========== OFFLINE: Check if online ==========
+    const online = await NetworkMonitorService.isOnline();
+
+    if (!online) {
+      const hasCached = await loadCachedSensorData();
+      if (hasCached) {
+        setIsLoading(false);
+        setIsRefreshing(false);
+        return;
+      }
+    }
+    // ========== END OFFLINE CHECK ==========
+
     try {
       // 1. Get masters from AsyncStorage
       const mastersJSON = await AsyncStorage.getItem('masters');
@@ -154,9 +260,30 @@ const SensorList = ({ navigation }) => {
       );
 
       setMastersData(results);
+
+      // ========== OFFLINE: Cache fetched data ==========
+      await cacheSensorData(results);
+      // ========== END OFFLINE CACHE ==========
     } catch (error) {
       console.error('❌ Error loading masters:', error);
       setError(error.message || t('sensor_list.errors.load_failed', { defaultValue: 'Failed to load masters' }));
+
+      // ========== OFFLINE: Fallback to cached data on error ==========
+      const hasCached = await loadCachedSensorData();
+      if (!hasCached) {
+        Snackbar.show({
+          text: t('sensor_list.errors.load_failed', { defaultValue: 'Failed to load masters' }),
+          duration: 3000,
+          backgroundColor: '#FF6B6B',
+        });
+      } else {
+        Snackbar.show({
+          text: t('sensor_list.using_cached', { defaultValue: 'Using cached data (offline mode)' }),
+          duration: 3000,
+          backgroundColor: '#FF9800',
+        });
+      }
+      // ========== END OFFLINE FALLBACK ==========
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);
@@ -176,8 +303,48 @@ const SensorList = ({ navigation }) => {
 
   const onRefresh = () => {
     setIsRefreshing(true);
-    loadMastersAndSensors();
+    // ========== OFFLINE: Manual sync on refresh ==========
+    if (isOnline) {
+      loadMastersAndSensors();
+    } else {
+      loadCachedSensorData();
+      setIsRefreshing(false);
+    }
+    // ========== END OFFLINE MANUAL SYNC ==========
   };
+
+  // ========== OFFLINE: Manual sync function ==========
+  const manualSync = async () => {
+    if (!isOnline) {
+      Snackbar.show({
+        text: t('sensor_list.cannot_sync_offline', { defaultValue: 'Cannot sync while offline' }),
+        duration: 3000,
+        backgroundColor: '#FF6B6B',
+      });
+      return;
+    }
+
+    setIsSyncing(true);
+    try {
+      await OfflineSyncService.syncAll();
+      await loadMastersAndSensors();
+      Snackbar.show({
+        text: t('sensor_list.sync_complete', { defaultValue: 'Sync completed successfully!' }),
+        duration: 3000,
+        backgroundColor: '#4CAF50',
+      });
+    } catch (error) {
+      console.error('Manual sync error:', error);
+      Snackbar.show({
+        text: t('sensor_list.sync_failed', { defaultValue: 'Sync failed' }),
+        duration: 3000,
+        backgroundColor: '#FF6B6B',
+      });
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+  // ========== END OFFLINE MANUAL SYNC ==========
 
   const formatDate = (dateString) => {
     if (!dateString) return t('sensor_list.unknown', { defaultValue: 'Unknown' });
@@ -342,14 +509,33 @@ const SensorList = ({ navigation }) => {
             {t('sensor_list.total_masters', { defaultValue: 'Total Masters' })}: {mastersData.length} | {t('sensor_list.total_sensors', { defaultValue: 'Total Sensors' })}: {mastersData.reduce((sum, m) => sum + m.sensorCount, 0)}
           </Text>
         </View>
-        <TouchableOpacity
-          onPress={onRefresh}
-          style={styles.refreshButton}
-          activeOpacity={0.7}
-        >
-          <Ionicons name="refresh-outline" size={24} color="#FFA500" />
-        </TouchableOpacity>
+        <View style={styles.headerRight}>
+          {/* ========== OFFLINE: Manual sync button ========== */}
+          {isSyncing ? (
+            <ActivityIndicator size="small" color="#FFA500" style={styles.syncIndicator} />
+          ) : (
+            <TouchableOpacity onPress={manualSync} style={styles.syncButton}>
+              <Ionicons name="sync" size={20} color={isOnline ? "#4CAF50" : "#999"} />
+            </TouchableOpacity>
+          )}
+          {/* ========== END OFFLINE SYNC BUTTON ========== */}
+          <TouchableOpacity
+            onPress={onRefresh}
+            style={styles.refreshButton}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="refresh-outline" size={24} color="#FFA500" />
+          </TouchableOpacity>
+        </View>
       </View>
+
+      {/* ========== OFFLINE: Network status banner ========== */}
+      {!isOnline && (
+        <View style={styles.offlineBanner}>
+          <Text style={styles.offlineBannerText}>📴 Offline Mode - Using cached data</Text>
+        </View>
+      )}
+      {/* ========== END OFFLINE BANNER ========== */}
 
       {/* Master Cards List */}
       {error ? (
@@ -407,8 +593,32 @@ const styles = StyleSheet.create({
     color: '#666',
     marginTop: 4,
   },
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  syncButton: {
+    padding: 8,
+  },
+  syncIndicator: {
+    padding: 8,
+  },
   refreshButton: {
     padding: 8,
+  },
+  offlineBanner: {
+    backgroundColor: '#FF9800',
+    padding: 10,
+    marginHorizontal: 16,
+    marginTop: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  offlineBannerText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '500',
   },
   listContainer: {
     padding: 16,

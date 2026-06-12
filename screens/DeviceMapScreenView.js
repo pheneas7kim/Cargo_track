@@ -30,6 +30,11 @@ import { useTranslation } from 'react-i18next';
 // ✅ Import global token refresh service (for future API calls if needed)
 import { addTokenRefreshListener } from '../services/TokenService';
 
+// ========== OFFLINE MODULE IMPORTS ==========
+import OfflineDatabaseService from '../services/OfflineDatabaseService';
+import NetworkMonitorService from '../services/NetworkMonitorService';
+// ========== END OFFLINE MODULE IMPORTS ==========
+
 const { width, height } = Dimensions.get('window');
 
 // ✅ Helper function to get language header (for potential future API calls)
@@ -64,6 +69,11 @@ const DeviceMapScreenView = () => {
 
   const mapRef = useRef(null);
 
+  // ========== OFFLINE MODE STATE VARIABLES ==========
+  const [isOnline, setIsOnline] = useState(true);
+  const [cachedGeofenceData, setCachedGeofenceData] = useState(null);
+  // ========== END OFFLINE MODE STATE VARIABLES ==========
+
   // ✅ Listen for token refresh events (for future API calls)
   useEffect(() => {
     const removeListener = addTokenRefreshListener((newToken) => {
@@ -72,12 +82,95 @@ const DeviceMapScreenView = () => {
     return () => removeListener();
   }, []);
 
+  // ========== OFFLINE MODE INITIALIZATION ==========
+  useEffect(() => {
+    const initOfflineMode = async () => {
+      try {
+        // Initialize offline database
+        await OfflineDatabaseService.initDatabase();
+        console.log('✅ Offline database initialized for Device Map View Screen');
+
+        // Initialize network monitor
+        NetworkMonitorService.init();
+
+        // Listen for network changes
+        NetworkMonitorService.on('connectionChange', (online) => {
+          setIsOnline(online);
+          if (online) {
+            console.log('🌐 Back online in DeviceMapScreenView');
+          }
+        });
+
+      } catch (error) {
+        console.error('❌ Offline mode init error:', error);
+      }
+    };
+
+    initOfflineMode();
+
+    return () => {
+      // Cleanup
+      NetworkMonitorService.cleanup();
+    };
+  }, []);
+  // ========== END OFFLINE MODE INITIALIZATION ==========
+
+  // ========== OFFLINE: Cache geofence data ==========
+  const cacheGeofenceData = async (data) => {
+    if (!data) return;
+    try {
+      await OfflineDatabaseService.saveUserData(`geofence_view_${data.id || Date.now()}`, {
+        data: data,
+        timestamp: Date.now()
+      });
+      console.log('✅ Geofence data cached offline');
+    } catch (error) {
+      console.error('Error caching geofence data:', error);
+    }
+  };
+  // ========== END OFFLINE CACHE HELPER ==========
+
+  // ========== OFFLINE: Load cached geofence data ==========
+  const loadCachedGeofenceData = async (geofenceId) => {
+    try {
+      const cached = await OfflineDatabaseService.getUserData(`geofence_view_${geofenceId}`);
+      if (cached && cached.data) {
+        console.log('📦 Loaded cached geofence data');
+        return cached.data;
+      }
+      return null;
+    } catch (error) {
+      console.error('Error loading cached geofence data:', error);
+      return null;
+    }
+  };
+  // ========== END OFFLINE LOAD CACHED ==========
+
   useEffect(() => {
     processGeofenceData();
+    // ========== OFFLINE: Cache the data when online ==========
+    if (geofenceData && isOnline) {
+      cacheGeofenceData(geofenceData);
+    }
+    // ========== END OFFLINE CACHE ==========
   }, []);
 
   const processGeofenceData = () => {
-    if (!geofenceData) {
+    let dataToProcess = geofenceData;
+
+    // ========== OFFLINE: If no data and offline, try to load cached ==========
+    if (!dataToProcess && !isOnline) {
+      console.log('📴 Offline mode: No geofence data provided, checking cache...');
+      // Can't load specific cached data without an ID
+      setLoading(false);
+      // Default to Nairobi if no cached data
+      setCenterLat(-1.286389);
+      setCenterLng(36.817223);
+      return;
+    }
+    // ========== END OFFLINE FALLBACK ==========
+
+    if (!dataToProcess) {
       // Default to Nairobi if no data
       setCenterLat(-1.286389);
       setCenterLng(36.817223);
@@ -86,9 +179,9 @@ const DeviceMapScreenView = () => {
     }
 
     // Handle LINE type (polygon/route)
-    if (geofenceData.fenceType === 'LINE' && geofenceData.coordinatesJson) {
+    if (dataToProcess.fenceType === 'LINE' && dataToProcess.coordinatesJson) {
       try {
-        const points = JSON.parse(geofenceData.coordinatesJson);
+        const points = JSON.parse(dataToProcess.coordinatesJson);
         const formattedPoints = points.map(point => ({
           latitude: point.lat,
           longitude: point.lng
@@ -109,16 +202,16 @@ const DeviceMapScreenView = () => {
       }
     }
     // Handle CIRCLE type (point with radius)
-    else if (geofenceData.fenceType === 'CIRCLE' && geofenceData.centerLat && geofenceData.centerLng) {
-      setCenterLat(geofenceData.centerLat);
-      setCenterLng(geofenceData.centerLng);
-      setRadius(geofenceData.radiusMeters);
+    else if (dataToProcess.fenceType === 'CIRCLE' && dataToProcess.centerLat && dataToProcess.centerLng) {
+      setCenterLat(dataToProcess.centerLat);
+      setCenterLng(dataToProcess.centerLng);
+      setRadius(dataToProcess.radiusMeters);
     }
     // Fallback to device location
-    else if (geofenceData.centerLat && geofenceData.centerLng) {
-      setCenterLat(geofenceData.centerLat);
-      setCenterLng(geofenceData.centerLng);
-      setRadius(geofenceData.radiusMeters);
+    else if (dataToProcess.centerLat && dataToProcess.centerLng) {
+      setCenterLat(dataToProcess.centerLat);
+      setCenterLng(dataToProcess.centerLng);
+      setRadius(dataToProcess.radiusMeters);
     }
 
     setLoading(false);
@@ -163,6 +256,14 @@ const DeviceMapScreenView = () => {
           <Text style={styles.headerTitle}>{geofenceData?.name || t('device_map_view.map_view', { defaultValue: 'Map View' })}</Text>
           <View style={styles.placeholder} />
         </View>
+
+        {/* ========== OFFLINE: Network status banner ========== */}
+        {!isOnline && (
+          <View style={styles.offlineBanner}>
+            <Text style={styles.offlineBannerText}>📴 Offline Mode - Using cached data</Text>
+          </View>
+        )}
+        {/* ========== END OFFLINE BANNER ========== */}
 
         <View style={styles.mapControls}>
           <TouchableOpacity
@@ -378,9 +479,9 @@ const DeviceMapScreenView = () => {
             </Marker>
           )}
         </MapView>
-        
+
         {/* My Location Button */}
-        <TouchableOpacity 
+        <TouchableOpacity
           style={styles.myLocationButton}
           onPress={() => {
             if (mapRef.current) {
@@ -396,7 +497,7 @@ const DeviceMapScreenView = () => {
           <Icon name="my-location" size={24} color="#007AFF" />
         </TouchableOpacity>
       </View>
-      
+
       {renderBottomInfo()}
     </SafeAreaView>
   );
@@ -442,6 +543,19 @@ const styles = StyleSheet.create({
   },
   placeholder: {
     width: 40,
+  },
+  offlineBanner: {
+    backgroundColor: '#FF9800',
+    padding: 8,
+    marginHorizontal: 20,
+    marginBottom: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  offlineBannerText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '500',
   },
   mapControls: {
     flexDirection: 'row',

@@ -2,14 +2,52 @@
 export type RootStackParamList = {
   Onboarding: undefined;
   Dashboard: undefined;
-  Login: undefined; // ✅ ADD this line
-  Snackbar: undefined; // ✅ ADD this line
+  Login: undefined;
+  Snackbar: undefined;
   MyWithdrawals: undefined;
   SecretPin: undefined;
-  Withdraw:undefined;
+  Withdraw: undefined;
   Transactions: undefined;
   NewSecretPin: undefined;
-  Register:undefined
-
+  Register: undefined;
+  // ========== ADDITIONAL SCREENS FOR OFFLINE MODE ==========
+  ForgotPassword: undefined;
+  AlarmsNotigicationScreen: undefined;
+  AlertsNotigicationScreen: undefined;
+  AssignedEseals: undefined;
+  AttatchEvidence: { ticketId: number; ticketNumber?: string; onResolveComplete?: (notes: string, files: any[], offline?: boolean) => void };
+  CommandsScreen: undefined;
+  CreateTicket: undefined;
+  DeviceMapScreen: undefined;
+  DeviceMapScreenView: { geofence?: any; hotspot?: any; station?: any; route?: any };
+  DevicesScreen: undefined;
+  EnterPin: undefined;
+  EsealsReplacement: undefined;
+  GeofencesScreen: undefined;
+  HotspotsScreen: undefined;
+  InventoryScan: undefined;
+  MasterSlaveMapper: undefined;
+  NotificationBell: undefined;
+  NotificationsScreen: undefined;
+  ProfilePage: undefined;
+  QrPaymentScanner: undefined;
+  RandomStopScreen: undefined;
+  ReceiveDevicesScreen: { storeId?: number; storeName?: string };
+  RequestEsealsForm: undefined;
+  RequestEsealsList: undefined;
+  RequestEsealsScreen: undefined;
+  ScanAndPayScreen: undefined;
+  SensorList: undefined;
+  SplashScreen: undefined;
+  StationsScreen: undefined;
+  TicketsScreen: undefined;
+  TrackOnMap: { shipment?: any; t1Number?: string };
+  TrackOnMap2: { shipment?: any; t1Number?: string };
+  Withdrawals: undefined;
+  setnewpin: undefined;
+  entersecrepin: undefined;
+  onb: undefined;
+  qrcodepage: undefined;
+  snackbar: undefined;
+  useCameraPermission: undefined;
 };
-  

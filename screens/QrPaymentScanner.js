@@ -18,11 +18,17 @@ import { useTranslation } from 'react-i18next';
 // ✅ Import global token refresh service
 import { refreshAccessToken, addTokenRefreshListener } from '../services/TokenService';
 
+// ========== OFFLINE MODULE IMPORTS ==========
+import OfflineDatabaseService from '../services/OfflineDatabaseService';
+import NetworkMonitorService from '../services/NetworkMonitorService';
+import OfflineSyncService from '../services/OfflineSyncService';
+// ========== END OFFLINE MODULE IMPORTS ==========
+
 const { width } = Dimensions.get('window');
 const SCAN_SIZE = width * 0.7;
 
 // Command constants - FIXED: Removed parentheses for Joint Tech
-const FIXED_COMMAND = '(P43,888888)'; // Joint Tech command (NO parentheses - matches Postman)
+const FIXED_COMMAND = '(P43,888888)'; // Joint Tech command
 const TELEMATICS_COMMAND = '*269#8,888888'; // Telematics command
 
 // ✅ Helper function to get language header
@@ -86,18 +92,47 @@ const getAuthToken = async () => {
   }
 };
 
-// Helper: Extract Telematics SN from combined QR code format (e.g., "021929980001&8052558332")
+// Helper: Extract Telematics SN from various barcode formats
 const extractTelematicsSN = (scannedValue) => {
-  // Check if the value contains '&' separator
-  if (scannedValue && scannedValue.includes('&')) {
-    const parts = scannedValue.split('&');
-    // Return the last part after & (should be the 10-digit Telematics SN)
-    const telematicsSN = parts[parts.length - 1];
-    console.log('📋 Extracted Telematics SN:', telematicsSN);
-    return telematicsSN;
+  if (!scannedValue) return null;
+
+  let cleaned = scannedValue.trim();
+
+  console.log('🔍 Extracting serial from:', cleaned.substring(0, 100));
+
+  // Case 1: Format "DEVICE:11474665 IMEI-1:..." - extract after DEVICE:
+  if (cleaned.includes('DEVICE:')) {
+    const match = cleaned.match(/DEVICE:(\d+)/);
+    if (match && match[1]) {
+      console.log('📋 Extracted from DEVICE: field:', match[1]);
+      return match[1];
+    }
   }
-  // If no separator, return the original value
-  return scannedValue;
+
+  // Case 2: Format contains '&' separator (original logic for combined QR)
+  if (cleaned.includes('&')) {
+    const parts = cleaned.split('&');
+    const telematicsSN = parts[parts.length - 1];
+    if (/^\d+$/.test(telematicsSN)) {
+      console.log('📋 Extracted from & separator:', telematicsSN);
+      return telematicsSN;
+    }
+  }
+
+  // Case 3: Try to find any 8-10 digit number in the string (most reliable)
+  const numericMatch = cleaned.match(/\b\d{8,10}\b/);
+  if (numericMatch && numericMatch[0]) {
+    console.log('📋 Extracted numeric pattern:', numericMatch[0]);
+    return numericMatch[0];
+  }
+
+  // Case 4: If it's already a pure number
+  if (/^\d+$/.test(cleaned)) {
+    return cleaned;
+  }
+
+  console.log('⚠️ Could not extract serial number from:', cleaned);
+  return cleaned;
 };
 
 const QrPaymentScanner = () => {
@@ -108,6 +143,11 @@ const QrPaymentScanner = () => {
   const [deviceType, setDeviceType] = useState(null);
   const [isCommandSuccess, setIsCommandSuccess] = useState(null);
 
+  // ========== OFFLINE MODE STATE VARIABLES ==========
+  const [isOnline, setIsOnline] = useState(true);
+  const [offlineCommandsAvailable, setOfflineCommandsAvailable] = useState(false);
+  // ========== END OFFLINE MODE STATE VARIABLES ==========
+
   // ✅ Listen for token refresh events
   React.useEffect(() => {
     const removeListener = addTokenRefreshListener((newToken) => {
@@ -116,9 +156,193 @@ const QrPaymentScanner = () => {
     return () => removeListener();
   }, []);
 
-  // Send command to Telematics device (10 digits - POST request) - UPDATED to use authenticatedAxios
+  // ========== OFFLINE MODE INITIALIZATION ==========
+  React.useEffect(() => {
+    const initOfflineMode = async () => {
+      try {
+        // Initialize offline database
+        await OfflineDatabaseService.initDatabase();
+        console.log('✅ Offline database initialized for QR Payment Scanner');
+
+        // Initialize network monitor
+        NetworkMonitorService.init();
+
+        // Start auto-sync service
+        await OfflineSyncService.startAutoSync();
+
+        // Listen for network changes
+        NetworkMonitorService.on('connectionChange', (online) => {
+          setIsOnline(online);
+          if (online) {
+            Snackbar.show({
+              text: t('qr_scanner.back_online', { defaultValue: 'Back online! Syncing pending commands...' }),
+              duration: 2000,
+              backgroundColor: '#4CAF50',
+            });
+            // Sync pending commands when back online
+            syncPendingCommands();
+          } else {
+            Snackbar.show({
+              text: t('qr_scanner.offline_mode', { defaultValue: 'Offline mode - Commands will be queued' }),
+              duration: 3000,
+              backgroundColor: '#FF9800',
+            });
+          }
+        });
+
+        // Load cached command history
+        await loadCachedCommands();
+
+      } catch (error) {
+        console.error('❌ Offline mode init error:', error);
+      }
+    };
+
+    initOfflineMode();
+
+    return () => {
+      // Cleanup
+      NetworkMonitorService.cleanup();
+    };
+  }, []);
+  // ========== END OFFLINE MODE INITIALIZATION ==========
+
+  // ========== OFFLINE: Load cached commands from offline database ==========
+  const loadCachedCommands = async () => {
+    try {
+      const cachedCommands = await OfflineDatabaseService.getUserData('cached_commands');
+      if (cachedCommands && cachedCommands.commands && cachedCommands.commands.length > 0) {
+        setOfflineCommandsAvailable(true);
+        console.log(`📦 Loaded ${cachedCommands.commands.length} commands from offline cache`);
+      }
+    } catch (error) {
+      console.error('Error loading cached commands:', error);
+    }
+  };
+  // ========== END OFFLINE LOAD CACHED COMMANDS ==========
+
+  // ========== OFFLINE: Save command to offline queue ==========
+  const saveCommandOffline = async (deviceSn, deviceTypeParam, command, status, message) => {
+    try {
+      const offlineCommand = {
+        id: Date.now().toString(),
+        deviceSn: deviceSn,
+        deviceType: deviceTypeParam,
+        command: command,
+        status: status,
+        message: message,
+        timestamp: new Date().toISOString(),
+        syncStatus: 'PENDING'
+      };
+
+      const existingCommands = await OfflineDatabaseService.getUserData('pending_commands') || [];
+      existingCommands.push(offlineCommand);
+      await OfflineDatabaseService.saveUserData('pending_commands', existingCommands);
+
+      // Also add to sync queue
+      await OfflineDatabaseService.addToSyncQueue('DEVICE_COMMAND',
+        deviceTypeParam === 'TELEMATICS' ? '/devices/command/set' : '/joint-tech/command',
+        { deviceSn: deviceSn, command: command }
+      );
+
+      // Update command history
+      const commandHistory = await OfflineDatabaseService.getUserData('command_history') || [];
+      commandHistory.unshift({
+        id: offlineCommand.id,
+        deviceSn: deviceSn,
+        deviceType: deviceTypeParam,
+        timestamp: offlineCommand.timestamp,
+        status: 'QUEUED'
+      });
+      await OfflineDatabaseService.saveUserData('command_history', commandHistory.slice(0, 100)); // Keep last 100
+
+      console.log(`📦 Command for device ${deviceSn} saved offline for later sync`);
+      return true;
+    } catch (error) {
+      console.error('Error saving command offline:', error);
+      return false;
+    }
+  };
+  // ========== END OFFLINE SAVE COMMAND ==========
+
+  // ========== OFFLINE: Sync pending commands ==========
+  const syncPendingCommands = async () => {
+    if (!isOnline) return;
+
+    const pendingCommands = await OfflineDatabaseService.getUserData('pending_commands');
+    if (!pendingCommands || pendingCommands.length === 0) return;
+
+    console.log(`🔄 Processing ${pendingCommands.length} pending commands...`);
+    let successCount = 0;
+    let failCount = 0;
+
+    for (const command of pendingCommands) {
+      try {
+        let response;
+        if (command.deviceType === 'TELEMATICS') {
+          const url = `${serverURL}devices/command/set`;
+          const formJson = {
+            deviceSn: command.deviceSn,
+            command: command.command || TELEMATICS_COMMAND
+          };
+          response = await authenticatedAxios('post', {
+            url: url,
+            data: formJson,
+            headers: { 'Content-Type': 'application/json' },
+          }, i18n);
+
+          if (response.status === 200 && response.data && response.data.status === 200) {
+            successCount++;
+            console.log(`✅ Synced Telematics command for ${command.deviceSn}`);
+          } else {
+            failCount++;
+          }
+        } else if (command.deviceType === 'JOINT_TECH') {
+          const url = `${serverURL}joint-tech/command/${command.deviceSn}?command=${FIXED_COMMAND}`;
+          response = await authenticatedAxios('get', { url: url }, i18n);
+
+          if (response.status === 200) {
+            successCount++;
+            console.log(`✅ Synced Joint Tech command for ${command.deviceSn}`);
+          } else {
+            failCount++;
+          }
+        }
+      } catch (error) {
+        console.error(`Error syncing command for ${command.deviceSn}:`, error);
+        failCount++;
+      }
+    }
+
+    // Clear processed commands
+    await OfflineDatabaseService.saveUserData('pending_commands', []);
+
+    if (successCount > 0) {
+      Snackbar.show({
+        text: t('qr_scanner.synced_commands', { defaultValue: 'Synced {{count}} command(s) to server', count: successCount }).replace('{{count}}', successCount.toString()),
+        duration: 3000,
+        backgroundColor: '#4CAF50',
+      });
+    }
+  };
+  // ========== END OFFLINE SYNC COMMANDS ==========
+
+  // Send command to Telematics device (8 digits - POST request)
   const sendTelematicsCommand = async (deviceSn, command) => {
     try {
+      // ========== OFFLINE: Check if online ==========
+      const online = await NetworkMonitorService.isOnline();
+
+      if (!online) {
+        console.log('📴 Offline - saving Telematics command for later sync');
+        await saveCommandOffline(deviceSn, 'TELEMATICS', command || TELEMATICS_COMMAND, 'PENDING', 'Command queued for offline sync');
+        return {
+          success: true,
+          message: t('qr_scanner.offline_queued', { defaultValue: 'Command queued - Will execute when online' })
+        };
+      }
+      // ========== END OFFLINE CHECK ==========
+
       const url = `${serverURL}devices/command/set`;
       const formJson = {
         deviceSn: deviceSn,
@@ -133,7 +357,6 @@ const QrPaymentScanner = () => {
       console.log('Request Body:', formJson);
       console.log('==============================');
 
-      // ✅ Use authenticatedAxios instead of raw fetch
       const response = await authenticatedAxios(
         'post',
         {
@@ -154,6 +377,8 @@ const QrPaymentScanner = () => {
           message: response.data.message || t('qr_scanner.success.command_sent', { defaultValue: 'Command sent successfully' })
         };
       } else {
+        await saveCommandOffline(deviceSn, 'TELEMATICS', command || TELEMATICS_COMMAND, 'FAILED', response.data?.message || 'Command failed');
+
         return {
           success: false,
           message: response.data?.message || t('qr_scanner.errors.command_failed', { defaultValue: 'Failed to send command' })
@@ -161,6 +386,8 @@ const QrPaymentScanner = () => {
       }
     } catch (error) {
       console.log('❌ TELEMATICS REQUEST FAILED:', error);
+
+      await saveCommandOffline(deviceSn, 'TELEMATICS', command || TELEMATICS_COMMAND, 'ERROR', error.message);
 
       if (error.response?.status === 401) {
         return {
@@ -176,10 +403,22 @@ const QrPaymentScanner = () => {
     }
   };
 
-  // Send command to Joint Tech device (10 digits - GET request) - UPDATED to use authenticatedAxios
+  // Send command to Joint Tech device (10 digits - GET request)
   const sendJointTechCommand = async (deviceSn) => {
     try {
-      // Don't encode the command - send as plain text
+      // ========== OFFLINE: Check if online ==========
+      const online = await NetworkMonitorService.isOnline();
+
+      if (!online) {
+        console.log('📴 Offline - saving Joint Tech command for later sync');
+        await saveCommandOffline(deviceSn, 'JOINT_TECH', FIXED_COMMAND, 'PENDING', 'Command queued for offline sync');
+        return {
+          success: true,
+          message: t('qr_scanner.offline_queued', { defaultValue: 'Command queued - Will execute when online' })
+        };
+      }
+      // ========== END OFFLINE CHECK ==========
+
       const url = `${serverURL}joint-tech/command/${deviceSn}?command=${FIXED_COMMAND}`;
 
       console.log('==============================');
@@ -189,7 +428,6 @@ const QrPaymentScanner = () => {
       console.log('URL:', url);
       console.log('==============================');
 
-      // ✅ Use authenticatedAxios instead of raw fetch
       const response = await authenticatedAxios(
         'get',
         {
@@ -208,6 +446,8 @@ const QrPaymentScanner = () => {
           message: response.data.message || t('qr_scanner.success.command_sent', { defaultValue: 'Command sent successfully' })
         };
       } else {
+        await saveCommandOffline(deviceSn, 'JOINT_TECH', FIXED_COMMAND, 'FAILED', response.data?.message || 'Command failed');
+
         return {
           success: false,
           message: response.data?.message || t('qr_scanner.errors.command_failed_status', { defaultValue: 'Failed to send command' }) + ` (Status: ${response.status})`
@@ -215,6 +455,8 @@ const QrPaymentScanner = () => {
       }
     } catch (error) {
       console.log('❌ JOINT TECH REQUEST FAILED:', error);
+
+      await saveCommandOffline(deviceSn, 'JOINT_TECH', FIXED_COMMAND, 'ERROR', error.message);
 
       if (error.response?.status === 401) {
         return {
@@ -230,6 +472,38 @@ const QrPaymentScanner = () => {
     }
   };
 
+  // ========== OFFLINE: Manual sync for pending commands ==========
+  const manualSyncCommands = async () => {
+    if (!isOnline) {
+      Snackbar.show({
+        text: t('qr_scanner.cannot_sync_offline', { defaultValue: 'Cannot sync while offline' }),
+        duration: 3000,
+        backgroundColor: '#FF6B6B',
+      });
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      await syncPendingCommands();
+      Snackbar.show({
+        text: t('qr_scanner.sync_complete', { defaultValue: 'Commands synchronized!' }),
+        duration: 3000,
+        backgroundColor: '#4CAF50',
+      });
+    } catch (error) {
+      console.error('Manual sync error:', error);
+      Snackbar.show({
+        text: t('qr_scanner.sync_failed', { defaultValue: 'Sync failed' }),
+        duration: 3000,
+        backgroundColor: '#FF6B6B',
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+  // ========== END OFFLINE MANUAL SYNC ==========
+
   // Process device based on barcode length
   const processDevice = async (rawDeviceSn) => {
     setIsLoading(true);
@@ -238,27 +512,16 @@ const QrPaymentScanner = () => {
 
     try {
       const deviceSn = extractTelematicsSN(rawDeviceSn);
-      let response;
 
-      // Telematics check - 8 digits
-      if (deviceSn.length === 8) {
-        setDeviceType('TELEMATICS');
-        console.log('✅ Detected Telematics device (8 digits)');
-        response = await sendTelematicsCommand(deviceSn, TELEMATICS_COMMAND);
-      }
-      // Joint Tech check - 10 digits
-      else if (deviceSn.length === 10) {
-        setDeviceType('JOINT_TECH');
-        console.log('✅ Detected Joint Tech device (10 digits)');
-        response = await sendJointTechCommand(deviceSn);
-      }
-      else {
-        // Updated error message to reflect new requirements
-        const errorMsg = t('qr_scanner.errors.invalid_barcode', {
-          defaultValue: 'Invalid barcode: Got {{digits}} digits. (Expected 8 for Telematics or 10 for Joint Tech)',
-          digits: deviceSn.length
-        }).replace('{{digits}}', deviceSn.length.toString());
+      console.log('🔍 Extracted Device SN:', deviceSn);
+      console.log('📏 Length:', deviceSn?.length);
 
+      // Validate we got a proper serial number
+      if (!deviceSn || !/^\d+$/.test(deviceSn)) {
+        console.log('❌ Invalid: Extracted SN contains non-numeric characters');
+        const errorMsg = t('qr_scanner.errors.invalid_format', {
+          defaultValue: 'Invalid barcode format. Could not extract device serial number.'
+        });
         Snackbar.show({
           text: errorMsg,
           duration: 4000,
@@ -270,32 +533,77 @@ const QrPaymentScanner = () => {
         return;
       }
 
-      if (response.success) {
-        console.log('✅ COMMAND SUCCESSFUL');
-        setResultMessage(response.message);
-        setIsCommandSuccess(true);
+      // Telematics check - 8 digits
+      if (deviceSn.length === 8) {
+        setDeviceType('TELEMATICS');
+        console.log('✅ Detected Telematics device (8 digits)');
+        const response = await sendTelematicsCommand(deviceSn, TELEMATICS_COMMAND);
 
-        Snackbar.show({
-          text: response.message,
-          duration: 3000,
-          backgroundColor: '#4ECDC4',
-        });
-      } else {
-        console.log('❌ COMMAND FAILED');
-        setResultMessage(response.message);
-        setIsCommandSuccess(false);
+        if (response.success) {
+          console.log('✅ COMMAND SUCCESSFUL');
+          setResultMessage(response.message);
+          setIsCommandSuccess(true);
+          Snackbar.show({
+            text: response.message,
+            duration: 3000,
+            backgroundColor: '#4ECDC4',
+          });
+        } else {
+          console.log('❌ COMMAND FAILED');
+          setResultMessage(response.message);
+          setIsCommandSuccess(false);
+          Snackbar.show({
+            text: response.message,
+            duration: 3000,
+            backgroundColor: '#FF6B6B',
+          });
+        }
+      }
+      // Joint Tech check - 10 digits
+      else if (deviceSn.length === 10) {
+        setDeviceType('JOINT_TECH');
+        console.log('✅ Detected Joint Tech device (10 digits)');
+        const response = await sendJointTechCommand(deviceSn);
 
+        if (response.success) {
+          console.log('✅ COMMAND SUCCESSFUL');
+          setResultMessage(response.message);
+          setIsCommandSuccess(true);
+          Snackbar.show({
+            text: response.message,
+            duration: 3000,
+            backgroundColor: '#4ECDC4',
+          });
+        } else {
+          console.log('❌ COMMAND FAILED');
+          setResultMessage(response.message);
+          setIsCommandSuccess(false);
+          Snackbar.show({
+            text: response.message,
+            duration: 3000,
+            backgroundColor: '#FF6B6B',
+          });
+        }
+      }
+      else {
+        const errorMsg = t('qr_scanner.errors.invalid_barcode', {
+          defaultValue: 'Invalid barcode: Got {{digits}} digits. (Expected 8 for Telematics or 10 for Joint Tech)',
+          digits: deviceSn.length
+        }).replace('{{digits}}', deviceSn.length.toString());
+
+        console.log('❌ Invalid length:', deviceSn.length);
         Snackbar.show({
-          text: response.message,
-          duration: 3000,
+          text: errorMsg,
+          duration: 4000,
           backgroundColor: '#FF6B6B',
         });
+        setResultMessage(errorMsg);
+        setIsCommandSuccess(false);
       }
     } catch (error) {
       console.log('❌ PROCESSING FAILED:', error);
       setResultMessage(t('qr_scanner.errors.command_execution_failed', { defaultValue: 'Failed to send command' }));
       setIsCommandSuccess(false);
-
       Snackbar.show({
         text: t('qr_scanner.errors.command_execution_failed', { defaultValue: 'Failed to execute command' }),
         duration: 3000,
@@ -318,21 +626,6 @@ const QrPaymentScanner = () => {
     const deviceCode = value.trim();
     setScannedData(deviceCode);
 
-    // Extract the Telematics SN for validation
-    const extractedSN = extractTelematicsSN(deviceCode);
-
-    // Validate extracted SN is numeric (allow the combined format to pass through)
-    if (!/^\d+$/.test(extractedSN)) {
-      console.log('❌ Invalid: Extracted SN contains non-numeric characters');
-      Snackbar.show({
-        text: t('qr_scanner.errors.non_numeric', { defaultValue: 'Invalid barcode: Device SN must contain only numbers' }),
-        duration: 3000,
-        backgroundColor: '#FF6B6B',
-      });
-      setScannedData(null);
-      return;
-    }
-
     await processDevice(deviceCode);
   };
 
@@ -348,6 +641,14 @@ const QrPaymentScanner = () => {
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#0B0C10" />
+
+      {/* ========== OFFLINE: Network status banner ========== */}
+      {!isOnline && (
+        <View style={styles.offlineBanner}>
+          <Text style={styles.offlineBannerText}>📴 Offline Mode - Commands will be queued</Text>
+        </View>
+      )}
+      {/* ========== END OFFLINE BANNER ========== */}
 
       {!scannedData ? (
         <>
@@ -376,6 +677,14 @@ const QrPaymentScanner = () => {
             <Text style={styles.noteText}>
               {t('qr_scanner.instructions.supported', { defaultValue: 'Both QR codes and barcodes supported' })}
             </Text>
+
+            {/* ========== OFFLINE: Sync button when online ========== */}
+            {isOnline && offlineCommandsAvailable && (
+              <TouchableOpacity style={styles.syncButton} onPress={manualSyncCommands}>
+                <Text style={styles.syncButtonText}>🔄 Sync Pending Commands</Text>
+              </TouchableOpacity>
+            )}
+            {/* ========== END OFFLINE SYNC BUTTON ========== */}
           </View>
         </>
       ) : (
@@ -580,4 +889,34 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
   },
+  // ========== OFFLINE STYLES ==========
+  offlineBanner: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: '#FF9800',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+    zIndex: 10,
+  },
+  offlineBannerText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  syncButton: {
+    backgroundColor: '#4CAF50',
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 25,
+    marginTop: 15,
+  },
+  syncButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  // ========== END OFFLINE STYLES ==========
 });

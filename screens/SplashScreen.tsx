@@ -20,6 +20,11 @@ import DeviceInfo from 'react-native-device-info';
 import axios from 'axios';
 import { BackHandler } from 'react-native';
 
+// ========== OFFLINE MODULE IMPORTS ==========
+import OfflineDatabaseService from '../services/OfflineDatabaseService';
+import NetworkMonitorService from '../services/NetworkMonitorService';
+// ========== END OFFLINE MODULE IMPORTS ==========
+
 const { width, height } = Dimensions.get('window');
 const GIST_URL =
   'https://gist.githubusercontent.com/koskcom/5c2732d1656cb33d17e8c929ec827d40/raw/app-version.json';
@@ -39,6 +44,36 @@ const pulseScale = {
 const SplashScreen = () => {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
 
+  // ========== OFFLINE MODE INITIALIZATION ==========
+  useEffect(() => {
+    const initOfflineMode = async () => {
+      try {
+        // Initialize offline database
+        await OfflineDatabaseService.initDatabase();
+        console.log('✅ Offline database initialized for Splash Screen');
+
+        // Initialize network monitor
+        NetworkMonitorService.init();
+
+        // Check for any pending operations that need to be processed
+        const hasPendingOperations = await OfflineDatabaseService.getUserData('pending_operations');
+        if (hasPendingOperations && hasPendingOperations.length > 0) {
+          console.log('📦 Found pending operations:', hasPendingOperations.length);
+        }
+      } catch (error) {
+        console.error('❌ Offline mode init error:', error);
+      }
+    };
+
+    initOfflineMode();
+
+    return () => {
+      // Cleanup
+      NetworkMonitorService.cleanup();
+    };
+  }, []);
+  // ========== END OFFLINE MODE INITIALIZATION ==========
+
   // ✅ Navigate only if no forced update is active
   useEffect(() => {
     if (Platform.OS === 'android') {
@@ -46,8 +81,30 @@ const SplashScreen = () => {
     }
 
     const timer = setTimeout(() => {
-      navigation.replace('Login');
-      completeOnboarding();
+      // ========== OFFLINE: Check if user has already completed onboarding ==========
+      const checkAndNavigate = async () => {
+        try {
+          // Check if user has already seen onboarding
+          const onboardingCompleted = await OfflineDatabaseService.getUserData('onboarding_completed');
+          if (onboardingCompleted && onboardingCompleted === true) {
+            // User has already completed onboarding, check if logged in
+            const token = await OfflineDatabaseService.getUserData('accessToken');
+            if (token) {
+              navigation.replace('Dashboard');
+            } else {
+              navigation.replace('Login');
+            }
+          } else {
+            navigation.replace('Login');
+          }
+          completeOnboarding();
+        } catch (error) {
+          console.error('Navigation error:', error);
+          navigation.replace('Login');
+        }
+      };
+
+      checkAndNavigate();
     }, 3000);
 
     return () => clearTimeout(timer);

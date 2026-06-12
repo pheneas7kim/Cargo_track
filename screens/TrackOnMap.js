@@ -16,6 +16,11 @@ import MapView, { Marker, Callout, PROVIDER_GOOGLE, Polyline } from 'react-nativ
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+// ========== OFFLINE MODULE IMPORTS ==========
+import OfflineDatabaseService from '../services/OfflineDatabaseService';
+import NetworkMonitorService from '../services/NetworkMonitorService';
+// ========== END OFFLINE MODULE IMPORTS ==========
+
 const { width, height } = Dimensions.get('window');
 const API_BASE = 'https://demo2.bsl.co.ke';
 
@@ -45,8 +50,120 @@ const TrackOnMap = () => {
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [lastUpdate, setLastUpdate] = useState(null);
 
+  // ========== OFFLINE MODE STATE VARIABLES ==========
+  const [isOnline, setIsOnline] = useState(true);
+  const [offlineDataAvailable, setOfflineDataAvailable] = useState(false);
+  // ========== END OFFLINE MODE STATE VARIABLES ==========
+
   const mapRef = useRef(null);
   let refreshInterval = useRef(null);
+
+  // ========== OFFLINE MODE INITIALIZATION ==========
+  useEffect(() => {
+    const initOfflineMode = async () => {
+      try {
+        // Initialize offline database
+        await OfflineDatabaseService.initDatabase();
+        console.log('✅ Offline database initialized for Track On Map');
+
+        // Initialize network monitor
+        NetworkMonitorService.init();
+
+        // Listen for network changes
+        NetworkMonitorService.on('connectionChange', (online) => {
+          setIsOnline(online);
+          if (online && autoRefresh) {
+            // Restart auto-refresh when coming online
+            startAutoRefresh();
+            refreshLocation();
+          }
+          if (!online) {
+            Snackbar.show({
+              text: 'Offline mode - Showing cached location data',
+              duration: 3000,
+              backgroundColor: '#FF9800',
+            });
+          }
+        });
+
+        // Load cached location data if available
+        if (ticket && ticket.trackingNumber) {
+          await loadCachedLocationData(ticket.trackingNumber);
+        }
+
+      } catch (error) {
+        console.error('❌ Offline mode init error:', error);
+      }
+    };
+
+    initOfflineMode();
+
+    return () => {
+      NetworkMonitorService.cleanup();
+      if (refreshInterval.current) clearInterval(refreshInterval.current);
+    };
+  }, []);
+  // ========== END OFFLINE MODE INITIALIZATION ==========
+
+  // ========== OFFLINE: Load cached location data ==========
+  const loadCachedLocationData = async (trackingNumber) => {
+    try {
+      const cachedData = await OfflineDatabaseService.getUserData(`tracking_${trackingNumber}`);
+      if (cachedData && cachedData.location) {
+        setCurrentLocation(cachedData.location);
+        setLastUpdate(new Date(cachedData.timestamp));
+        setOfflineDataAvailable(true);
+        console.log(`📦 Loaded cached location for ${trackingNumber}`);
+
+        // Update map if ready
+        if (mapRef.current && cachedData.location) {
+          mapRef.current.animateToRegion(
+            {
+              latitude: cachedData.location.latitude,
+              longitude: cachedData.location.longitude,
+              latitudeDelta: 0.01,
+              longitudeDelta: 0.01,
+            },
+            500
+          );
+        }
+      }
+    } catch (error) {
+      console.error('Error loading cached location:', error);
+    }
+  };
+  // ========== END OFFLINE LOAD CACHED ==========
+
+  // ========== OFFLINE: Save location data to cache ==========
+  const saveLocationToCache = async (trackingNumber, location) => {
+    try {
+      await OfflineDatabaseService.saveUserData(`tracking_${trackingNumber}`, {
+        location: location,
+        timestamp: Date.now(),
+        trackingNumber: trackingNumber
+      });
+      console.log(`💾 Saved location for ${trackingNumber} to offline cache`);
+    } catch (error) {
+      console.error('Error saving location to cache:', error);
+    }
+  };
+  // ========== END OFFLINE SAVE TO CACHE ==========
+
+  // ========== OFFLINE: Save route data to cache ==========
+  const saveRouteToCache = async (trackingNumber, routeData) => {
+    try {
+      await OfflineDatabaseService.saveUserData(`route_${trackingNumber}`, {
+        originCoord: routeData.originCoord,
+        destCoord: routeData.destCoord,
+        routePoints: routeData.routePoints,
+        timestamp: Date.now()
+      });
+      console.log(`💾 Saved route data for ${trackingNumber} to offline cache`);
+    } catch (error) {
+      console.error('Error saving route to cache:', error);
+    }
+  };
+  // ========== END OFFLINE SAVE ROUTE ==========
 
   useEffect(() => {
     if (!ticket) {
@@ -79,7 +196,17 @@ const TrackOnMap = () => {
     }
 
     if (originCoord && destCoord) {
-      setRoutePoints([originCoord, destCoord]);
+      const points = [originCoord, destCoord];
+      setRoutePoints(points);
+      // ========== OFFLINE: Save route to cache ==========
+      if (ticket.trackingNumber) {
+        saveRouteToCache(ticket.trackingNumber, {
+          originCoord: originCoord,
+          destCoord: destCoord,
+          routePoints: points
+        });
+      }
+      // ========== END OFFLINE SAVE ==========
     }
 
     setLoading(false);
@@ -98,7 +225,11 @@ const TrackOnMap = () => {
   const startAutoRefresh = () => {
     if (refreshInterval.current) clearInterval(refreshInterval.current);
     refreshInterval.current = setInterval(() => {
-      refreshLocation();
+      // ========== OFFLINE: Only refresh when online ==========
+      if (isOnline) {
+        refreshLocation();
+      }
+      // ========== END OFFLINE CHECK ==========
     }, 10000); // 10 seconds
   };
 
@@ -113,6 +244,22 @@ const TrackOnMap = () => {
     if (!ticket || !ticket.trackingNumber) return;
     setRefreshing(true);
     try {
+      // ========== OFFLINE: Check if online ==========
+      const online = await NetworkMonitorService.isOnline();
+
+      if (!online) {
+        console.log('📴 Offline - using cached location data');
+        await loadCachedLocationData(ticket.trackingNumber);
+        Snackbar.show({
+          text: 'Offline - Showing cached location',
+          duration: 2000,
+          backgroundColor: '#FF9800',
+        });
+        setRefreshing(false);
+        return;
+      }
+      // ========== END OFFLINE CHECK ==========
+
       const token = await getAuthToken();
       if (!token) throw new Error('No token');
 
@@ -132,6 +279,10 @@ const TrackOnMap = () => {
         setCurrentLocation(newLoc);
         setLastUpdate(new Date());
 
+        // ========== OFFLINE: Save to cache ==========
+        await saveLocationToCache(ticket.trackingNumber, newLoc);
+        // ========== END OFFLINE SAVE ==========
+
         // Optionally animate map to new location
         if (mapRef.current) {
           mapRef.current.animateToRegion(
@@ -144,25 +295,21 @@ const TrackOnMap = () => {
             500
           );
         }
-        // Snackbar.show({
-        //   text: 'Location updated',
-        //   duration: 1000,
-        //   backgroundColor: '#4CAF50',
-        // });
       } else {
-        // Snackbar.show({
-        //   text: 'No new location data',
-        //   duration: 1000,
-        //   backgroundColor: '#FFA500',
-        // });
+        // Try to load from cache if device not found
+        await loadCachedLocationData(ticket.trackingNumber);
       }
     } catch (error) {
-    //   console.error('Refresh error:', error);
-    //   Snackbar.show({
-    //     text: 'Failed to refresh location',
-    //     duration: 2000,
-    //     backgroundColor: '#FF6B6B',
-    //   });
+      console.error('Refresh error:', error);
+
+      // ========== OFFLINE: Fall back to cached data on error ==========
+      await loadCachedLocationData(ticket.trackingNumber);
+      Snackbar.show({
+        text: 'Using cached location (server unavailable)',
+        duration: 2000,
+        backgroundColor: '#FF9800',
+      });
+      // ========== END OFFLINE FALLBACK ==========
     } finally {
       setRefreshing(false);
     }
@@ -200,7 +347,7 @@ const TrackOnMap = () => {
   const toggleAutoRefresh = () => {
     setAutoRefresh(prev => {
       const newVal = !prev;
-      if (newVal) {
+      if (newVal && isOnline) {
         startAutoRefresh();
       } else {
         stopAutoRefresh();
@@ -208,6 +355,30 @@ const TrackOnMap = () => {
       return newVal;
     });
   };
+
+  // ========== OFFLINE: Manual sync for location ==========
+  const manualRefreshLocation = async () => {
+    if (!isOnline) {
+      Snackbar.show({
+        text: 'Cannot refresh while offline',
+        duration: 3000,
+        backgroundColor: '#FF6B6B',
+      });
+      return;
+    }
+    await refreshLocation();
+  };
+  // ========== END OFFLINE MANUAL REFRESH ==========
+
+  // ========== OFFLINE: Get cached timestamp display ==========
+  const getLastUpdateDisplay = () => {
+    if (!lastUpdate) return 'N/A';
+    if (!isOnline && offlineDataAvailable) {
+      return `${lastUpdate.toLocaleTimeString()} (cached)`;
+    }
+    return lastUpdate.toLocaleTimeString();
+  };
+  // ========== END OFFLINE TIMESTAMP ==========
 
   const renderHeader = () => (
     <View style={styles.header}>
@@ -218,6 +389,15 @@ const TrackOnMap = () => {
         <Text style={styles.headerTitle}>Track Device</Text>
         <View style={styles.placeholder} />
       </View>
+
+      {/* ========== OFFLINE: Status indicator ========== */}
+      {!isOnline && (
+        <View style={styles.offlineStatusIndicator}>
+          <Icon name="wifi-off" size={14} color="#FF9800" />
+          <Text style={styles.offlineStatusText}>Offline Mode - Showing cached location</Text>
+        </View>
+      )}
+      {/* ========== END OFFLINE INDICATOR ========== */}
 
       <View style={styles.mapControls}>
         <TouchableOpacity
@@ -280,7 +460,7 @@ const TrackOnMap = () => {
           <View style={styles.infoDetail}>
             <Icon name="update" size={16} color="#666" />
             <Text style={styles.infoDetailText}>
-              Last Update: {lastUpdate ? lastUpdate.toLocaleTimeString() : 'N/A'}
+              Last Update: {getLastUpdateDisplay()}
             </Text>
           </View>
           {ticket.speedKmh !== undefined && (
@@ -320,7 +500,7 @@ const TrackOnMap = () => {
             <Text style={styles.centerButtonText}>Destination</Text>
           </TouchableOpacity>
         )}
-        <TouchableOpacity style={[styles.centerButton, styles.refreshButton]} onPress={refreshLocation}>
+        <TouchableOpacity style={[styles.centerButton, styles.refreshButton]} onPress={manualRefreshLocation}>
           <Icon name="refresh" size={20} color="#FFFFFF" />
           <Text style={styles.centerButtonText}>Refresh</Text>
         </TouchableOpacity>
@@ -400,6 +580,11 @@ const TrackOnMap = () => {
                   <Text style={styles.calloutTitle}>{ticket.trackingNumber}</Text>
                   <Text style={styles.calloutText}>Status: {ticket.status}</Text>
                   <Text style={styles.calloutText}>Speed: {ticket.speedKmh} km/h</Text>
+                  {/* ========== OFFLINE: Cache indicator in callout ========== */}
+                  {!isOnline && (
+                    <Text style={styles.cachedCalloutText}>📴 Cached location</Text>
+                  )}
+                  {/* ========== END OFFLINE INDICATOR ========== */}
                 </View>
               </Callout>
             </Marker>
@@ -485,6 +670,24 @@ const styles = StyleSheet.create({
   },
   headerTitle: { fontSize: 18, fontWeight: '600', color: '#1A1A1A' },
   placeholder: { width: 40 },
+  // ========== OFFLINE STYLES ==========
+  offlineStatusIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFF3E0',
+    marginHorizontal: 20,
+    marginBottom: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    gap: 6,
+  },
+  offlineStatusText: {
+    fontSize: 11,
+    color: '#FF9800',
+    fontWeight: '500',
+  },
+  // ========== END OFFLINE STYLES ==========
   mapControls: {
     flexDirection: 'row',
     paddingHorizontal: 20,
@@ -581,6 +784,7 @@ const styles = StyleSheet.create({
   calloutContainer: { padding: 8, minWidth: 150 },
   calloutTitle: { fontSize: 14, fontWeight: '600', color: '#1A1A1A', marginBottom: 4 },
   calloutText: { fontSize: 11, color: '#666', marginBottom: 2 },
+  cachedCalloutText: { fontSize: 10, color: '#FF9800', marginTop: 4, fontStyle: 'italic' },
   loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   loadingText: { marginTop: 12, fontSize: 14, color: '#666' },
 });

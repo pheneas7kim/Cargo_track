@@ -17,6 +17,11 @@ import Snackbar from 'react-native-snackbar';
 import { useNavigation } from '@react-navigation/native';
 import * as Animatable from 'react-native-animatable';
 
+// ========== OFFLINE MODULE IMPORTS ==========
+import OfflineDatabaseService from '../services/OfflineDatabaseService';
+import NetworkMonitorService from '../services/NetworkMonitorService';
+// ========== END OFFLINE MODULE IMPORTS ==========
+
 const { width } = Dimensions.get('window');
 
 function SetNewSecretPin() {
@@ -25,10 +30,153 @@ function SetNewSecretPin() {
   const [step, setStep] = useState(1); // 1 = enter PIN, 2 = confirm PIN
   const [isLoading, setIsLoading] = useState(false);
   const [shake, setShake] = useState(false);
-  
+
+  // ========== OFFLINE MODE STATE VARIABLES ==========
+  const [isOnline, setIsOnline] = useState(true);
+  // ========== END OFFLINE MODE STATE VARIABLES ==========
+
   const navigation = useNavigation();
   const pinRefs = useRef([]);
   const confirmPinRefs = useRef([]);
+
+  // ========== OFFLINE MODE INITIALIZATION ==========
+  useEffect(() => {
+    const initOfflineMode = async () => {
+      try {
+        // Initialize offline database
+        await OfflineDatabaseService.initDatabase();
+        console.log('✅ Offline database initialized for Set New Secret PIN');
+
+        // Initialize network monitor
+        NetworkMonitorService.init();
+
+        // Listen for network changes
+        NetworkMonitorService.on('connectionChange', (online) => {
+          setIsOnline(online);
+          if (!online) {
+            Snackbar.show({
+              text: 'Offline mode - PIN will be saved locally',
+              duration: 3000,
+              backgroundColor: '#FF9800',
+            });
+          }
+        });
+
+        // Check for pending PIN sync
+        await checkPendingPinSync();
+
+      } catch (error) {
+        console.error('❌ Offline mode init error:', error);
+      }
+    };
+
+    initOfflineMode();
+
+    return () => {
+      // Cleanup
+      NetworkMonitorService.cleanup();
+    };
+  }, []);
+  // ========== END OFFLINE MODE INITIALIZATION ==========
+
+  // ========== OFFLINE: Save PIN offline ==========
+  const savePinOffline = async (pinValue) => {
+    try {
+      const offlinePinData = {
+        id: Date.now().toString(),
+        pin: pinValue,
+        timestamp: new Date().toISOString(),
+        status: 'PENDING',
+        syncStatus: 'QUEUED',
+        retryCount: 0
+      };
+
+      await OfflineDatabaseService.saveUserData('pending_pin_setup', offlinePinData);
+
+      // Also add to sync queue
+      await OfflineDatabaseService.addToSyncQueue('PIN_SETUP', '/users/user/changePIN', {
+        pin: pinValue
+      });
+
+      // Save locally to AsyncStorage as well
+      await AsyncStorage.setItem('secretPin', pinValue);
+      await AsyncStorage.setItem('secretPinPendingSync', 'true');
+
+      console.log(`📦 PIN setup saved offline for user`);
+      return true;
+    } catch (error) {
+      console.error('Error saving PIN offline:', error);
+      return false;
+    }
+  };
+  // ========== END OFFLINE SAVE PIN ==========
+
+  // ========== OFFLINE: Check pending PIN sync ==========
+  const checkPendingPinSync = async () => {
+    try {
+      const pendingSync = await AsyncStorage.getItem('secretPinPendingSync');
+      if (pendingSync === 'true') {
+        const pendingPinData = await OfflineDatabaseService.getUserData('pending_pin_setup');
+        if (pendingPinData && isOnline) {
+          Snackbar.show({
+            text: 'Found pending PIN setup. Syncing...',
+            duration: 3000,
+            backgroundColor: '#FF9800',
+          });
+          await syncPendingPin();
+        }
+      }
+    } catch (error) {
+      console.error('Error checking pending PIN sync:', error);
+    }
+  };
+  // ========== END OFFLINE CHECK PENDING PIN ==========
+
+  // ========== OFFLINE: Sync pending PIN ==========
+  const syncPendingPin = async () => {
+    if (!isOnline) return;
+
+    const pendingPinData = await OfflineDatabaseService.getUserData('pending_pin_setup');
+    if (!pendingPinData) return;
+
+    console.log(`🔄 Attempting to sync pending PIN setup...`);
+
+    try {
+      const token = await AsyncStorage.getItem('accessToken');
+      const url = `${serverUrl}/users/user/changePIN?pin=${pendingPinData.pin}`;
+
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: "",
+      });
+
+      if (response.ok) {
+        // Clear pending sync flag
+        await AsyncStorage.removeItem('secretPinPendingSync');
+        await OfflineDatabaseService.saveUserData('pending_pin_setup', null);
+
+        console.log(`✅ PIN setup synced successfully`);
+
+        Snackbar.show({
+          text: 'PIN setup synchronized with server!',
+          duration: 3000,
+          backgroundColor: '#4CAF50',
+        });
+
+        // Navigate to dashboard after successful sync
+        navigation.replace('Dashboard');
+      } else {
+        console.log(`❌ Failed to sync PIN setup: ${response.status}`);
+      }
+    } catch (error) {
+      console.error('Error syncing PIN:', error);
+    }
+  };
+  // ========== END OFFLINE SYNC PENDING PIN ==========
 
   useEffect(() => {
     // Focus first input on mount
@@ -40,7 +188,7 @@ function SetNewSecretPin() {
   const handlePinChange = (value, index, isConfirm = false) => {
     const currentPin = isConfirm ? [...confirmPin] : [...pin];
     const refs = isConfirm ? confirmPinRefs.current : pinRefs.current;
-    
+
     // Handle backspace
     if (value === '' && index > 0) {
       currentPin[index] = '';
@@ -80,10 +228,10 @@ function SetNewSecretPin() {
 
   const handleKeyPress = (e, index, isConfirm = false) => {
     const refs = isConfirm ? confirmPinRefs.current : pinRefs.current;
-    
+
     if (e.nativeEvent.key === 'Backspace') {
       const currentPin = isConfirm ? [...confirmPin] : [...pin];
-      
+
       if (currentPin[index] === '' && index > 0) {
         refs[index - 1]?.focus();
       } else {
@@ -106,7 +254,7 @@ function SetNewSecretPin() {
       Vibration.vibrate(500);
       setShake(true);
       setTimeout(() => setShake(false), 500);
-      
+
       Snackbar.show({
         text: 'PINs do not match. Please try again.',
         duration: 3000,
@@ -130,11 +278,39 @@ function SetNewSecretPin() {
   const handleSavePin = async (pinValue) => {
     setIsLoading(true);
 
+    // ========== OFFLINE: Check if online ==========
+    const online = await NetworkMonitorService.isOnline();
+
+    if (!online) {
+      console.log('📴 Offline - saving PIN setup for later sync');
+      const saved = await savePinOffline(pinValue);
+      if (saved) {
+        Snackbar.show({
+          text: 'PIN saved locally. Will sync when online.',
+          duration: 4000,
+          backgroundColor: '#FF9800',
+        });
+
+        setTimeout(() => {
+          navigation.replace('Dashboard');
+        }, 1500);
+      } else {
+        Snackbar.show({
+          text: 'Failed to save PIN offline. Please try again.',
+          duration: 3000,
+          backgroundColor: '#FF6B6B',
+        });
+      }
+      setIsLoading(false);
+      return;
+    }
+    // ========== END OFFLINE CHECK ==========
+
     try {
       await AsyncStorage.setItem('secretPin', pinValue);
       const token = await AsyncStorage.getItem('accessToken');
       const url = `${serverUrl}/users/user/changePIN?pin=${pinValue}`;
-      
+
       const response = await fetch(url, {
         method: 'POST',
         headers: {
@@ -157,19 +333,56 @@ function SetNewSecretPin() {
       } else {
         const errorText = await response.text();
         console.error('Error Response:', errorText);
+
+        // ========== OFFLINE: Save PIN offline on server error ==========
+        if (response.status === 500 || response.status === 503) {
+          const saved = await savePinOffline(pinValue);
+          if (saved) {
+            Snackbar.show({
+              text: 'Server error. PIN saved locally. Will sync when online.',
+              duration: 4000,
+              backgroundColor: '#FF9800',
+            });
+            setTimeout(() => {
+              navigation.replace('Dashboard');
+            }, 1500);
+          } else {
+            Snackbar.show({
+              text: 'Failed to set PIN. Please try again.',
+              duration: 3000,
+              backgroundColor: '#FF6B6B',
+            });
+          }
+        } else {
+          Snackbar.show({
+            text: 'Failed to set PIN. Please try again.',
+            duration: 3000,
+            backgroundColor: '#FF6B6B',
+          });
+        }
+      }
+    } catch (error) {
+      console.error('Error:', error);
+
+      // ========== OFFLINE: Save PIN offline on network error ==========
+      const saved = await savePinOffline(pinValue);
+      if (saved) {
         Snackbar.show({
-          text: 'Failed to set PIN. Please try again.',
+          text: 'Network error. PIN saved locally. Will sync when online.',
+          duration: 4000,
+          backgroundColor: '#FF9800',
+        });
+        setTimeout(() => {
+          navigation.replace('Dashboard');
+        }, 1500);
+      } else {
+        Snackbar.show({
+          text: 'Something went wrong. Please try again.',
           duration: 3000,
           backgroundColor: '#FF6B6B',
         });
       }
-    } catch (error) {
-      console.error('Error:', error);
-      Snackbar.show({
-        text: 'Something went wrong. Please try again.',
-        duration: 3000,
-        backgroundColor: '#FF6B6B',
-      });
+      // ========== END OFFLINE SAVE ==========
     } finally {
       setIsLoading(false);
     }
@@ -216,7 +429,15 @@ function SetNewSecretPin() {
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
-      
+
+      {/* ========== OFFLINE: Network status banner ========== */}
+      {!isOnline && (
+        <View style={styles.offlineBanner}>
+          <Text style={styles.offlineBannerText}>📴 Offline Mode - PIN will be saved locally</Text>
+        </View>
+      )}
+      {/* ========== END OFFLINE BANNER ========== */}
+
       <View style={styles.content}>
         {/* Header */}
         <Animatable.View animation="fadeInDown" style={styles.headerContainer}>
@@ -227,7 +448,7 @@ function SetNewSecretPin() {
             {step === 1 ? 'Set Your PIN' : 'Confirm Your PIN'}
           </Text>
           <Text style={styles.subtitle}>
-            {step === 1 
+            {step === 1
               ? 'Create a 4-digit PIN to secure your account'
               : 'Please enter your PIN again to confirm'
             }
@@ -243,7 +464,7 @@ function SetNewSecretPin() {
         </Animatable.View>
 
         {/* PIN Input */}
-        <Animatable.View 
+        <Animatable.View
           style={styles.pinSection}
         >
           {step === 1 ? (
@@ -256,7 +477,7 @@ function SetNewSecretPin() {
         {/* Instructions */}
         <Animatable.View  delay={500} style={styles.instructionsContainer}>
           <Text style={styles.instructionsText}>
-            {step === 1 
+            {step === 1
               ? 'Choose a PIN that\'s easy for you to remember but hard for others to guess'
               : 'Make sure both PINs match exactly'
             }
@@ -429,6 +650,19 @@ const styles = StyleSheet.create({
     color: '#666666',
     fontWeight: '500',
   },
+  // ========== OFFLINE STYLES ==========
+  offlineBanner: {
+    backgroundColor: '#FF9800',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+  },
+  offlineBannerText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  // ========== END OFFLINE STYLES ==========
 });
 
 export default SetNewSecretPin;

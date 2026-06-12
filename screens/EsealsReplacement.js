@@ -24,6 +24,12 @@ import { useTranslation } from 'react-i18next';
 // ✅ Import global token refresh service
 import { refreshAccessToken, addTokenRefreshListener } from '../services/TokenService';
 
+// ========== OFFLINE MODULE IMPORTS ==========
+import OfflineDatabaseService from '../services/OfflineDatabaseService';
+import NetworkMonitorService from '../services/NetworkMonitorService';
+import OfflineSyncService from '../services/OfflineSyncService';
+// ========== END OFFLINE MODULE IMPORTS ==========
+
 const serverUrl = 'https://demo2.bsl.co.ke/api/v1';
 
 // ✅ Helper function to get language header
@@ -80,8 +86,10 @@ const EsealsReplacement = () => {
   const { t, i18n } = useTranslation();
   const navigation = useNavigation();
   const [requests, setRequests] = useState([]);
+  const [filteredRequests, setFilteredRequests] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [showOnlyWithT1, setShowOnlyWithT1] = useState(false); // Toggle for T1 filter
 
   // Modal state
   const [modalVisible, setModalVisible] = useState(false);
@@ -93,6 +101,12 @@ const EsealsReplacement = () => {
     oldDeviceConditionId: '',
   });
 
+  // ========== OFFLINE MODE STATE VARIABLES ==========
+  const [isOnline, setIsOnline] = useState(true);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [pendingRequests, setPendingRequests] = useState([]);
+  // ========== END OFFLINE MODE STATE VARIABLES ==========
+
   // ✅ Listen for token refresh events
   React.useEffect(() => {
     const removeListener = addTokenRefreshListener((newToken) => {
@@ -101,8 +115,271 @@ const EsealsReplacement = () => {
     return () => removeListener();
   }, []);
 
+  // ========== OFFLINE MODE INITIALIZATION ==========
+  React.useEffect(() => {
+    const initOfflineMode = async () => {
+      try {
+        // Initialize offline database
+        await OfflineDatabaseService.initDatabase();
+        console.log('✅ Offline database initialized for Eseals Replacement Screen');
+
+        // Initialize network monitor
+        NetworkMonitorService.init();
+
+        // Start auto-sync service
+        await OfflineSyncService.startAutoSync();
+
+        // Listen for network changes
+        NetworkMonitorService.on('connectionChange', (online) => {
+          setIsOnline(online);
+          if (online) {
+            Snackbar.show({
+              text: t('eseals_replacement.back_online', { defaultValue: 'Back online! Syncing data...' }),
+              duration: 2000,
+              backgroundColor: '#4CAF50',
+            });
+            // Auto-refresh when coming back online
+            fetchRequests();
+            processPendingRequests();
+          } else {
+            Snackbar.show({
+              text: t('eseals_replacement.offline_mode', { defaultValue: 'Offline mode - Requests will be saved locally' }),
+              duration: 3000,
+              backgroundColor: '#FF9800',
+            });
+          }
+        });
+
+        // Load pending requests from storage
+        await loadPendingRequests();
+
+        // Load initial data
+        await fetchRequests();
+      } catch (error) {
+        console.error('❌ Offline mode init error:', error);
+      }
+    };
+
+    initOfflineMode();
+
+    return () => {
+      // Cleanup
+      OfflineSyncService.stopAutoSync();
+      NetworkMonitorService.cleanup();
+    };
+  }, []);
+  // ========== END OFFLINE MODE INITIALIZATION ==========
+
+  // ========== OFFLINE: Load pending requests ==========
+  const loadPendingRequests = async () => {
+    try {
+      const pending = await OfflineDatabaseService.getUserData('pending_seal_requests');
+      if (pending && pending.length > 0) {
+        setPendingRequests(pending);
+        console.log('📦 Loaded pending seal requests:', pending.length);
+      }
+    } catch (error) {
+      console.error('Error loading pending requests:', error);
+    }
+  };
+  // ========== END OFFLINE LOAD PENDING ==========
+
+  // ========== OFFLINE: Save request offline ==========
+  const saveRequestOffline = async (payload) => {
+    try {
+      const offlineRequest = {
+        id: Date.now(),
+        ...payload,
+        timestamp: new Date().toISOString(),
+        status: 'PENDING_SYNC',
+        syncStatus: 'PENDING'
+      };
+
+      const existingRequests = await OfflineDatabaseService.getUserData('pending_seal_requests') || [];
+      existingRequests.push(offlineRequest);
+      await OfflineDatabaseService.saveUserData('pending_seal_requests', existingRequests);
+      setPendingRequests(existingRequests);
+
+      // Also add to sync queue
+      await OfflineDatabaseService.addToSyncQueue('SEAL_REQUEST', `/tickets/${payload.ticketId}/seal-replacement/request`, payload);
+
+      return true;
+    } catch (error) {
+      console.error('Error saving request offline:', error);
+      return false;
+    }
+  };
+  // ========== END OFFLINE SAVE REQUEST ==========
+
+  // ========== OFFLINE: Process pending requests ==========
+  const processPendingRequests = async () => {
+    if (!isOnline) return;
+
+    const pending = await OfflineDatabaseService.getUserData('pending_seal_requests');
+    if (!pending || pending.length === 0) return;
+
+    console.log(`🔄 Processing ${pending.length} pending seal requests...`);
+    let successCount = 0;
+    let failCount = 0;
+
+    for (const request of pending) {
+      try {
+        const response = await authenticatedAxios(
+          'post',
+          {
+            url: `${serverUrl}/tickets/${request.ticketId}/seal-replacement/request`,
+            data: {
+              ticketId: request.ticketId,
+              newSealNumber: request.newSealNumber,
+              reason: request.reason,
+              oldDeviceConditionId: request.oldDeviceConditionId,
+            },
+            headers: { 'Content-Type': 'application/json' },
+          },
+          i18n
+        );
+
+        if (response.status === 200 || response.status === 201) {
+          successCount++;
+          console.log(`✅ Synced seal request for ticket ${request.ticketId}`);
+        } else {
+          failCount++;
+        }
+      } catch (error) {
+        console.error(`Failed to sync seal request:`, error);
+        failCount++;
+      }
+    }
+
+    // Clear processed requests from storage
+    await OfflineDatabaseService.saveUserData('pending_seal_requests', []);
+    setPendingRequests([]);
+
+    if (successCount > 0) {
+      Snackbar.show({
+        text: t('eseals_replacement.synced_requests', { defaultValue: 'Synced {{count}} pending request(s)', count: successCount }).replace('{{count}}', successCount.toString()),
+        duration: 3000,
+        backgroundColor: '#4CAF50',
+      });
+      // Refresh the list
+      await fetchRequests();
+    }
+  };
+  // ========== END OFFLINE PROCESS PENDING ==========
+
+  // ========== OFFLINE: Manual sync function ==========
+  const manualSync = async () => {
+    if (!isOnline) {
+      Snackbar.show({
+        text: t('eseals_replacement.cannot_sync_offline', { defaultValue: 'Cannot sync while offline' }),
+        duration: 3000,
+        backgroundColor: '#FF6B6B',
+      });
+      return;
+    }
+
+    setIsSyncing(true);
+    try {
+      await OfflineSyncService.syncAll();
+      await processPendingRequests();
+      await fetchRequests();
+      Snackbar.show({
+        text: t('eseals_replacement.sync_complete', { defaultValue: 'Sync completed successfully!' }),
+        duration: 3000,
+        backgroundColor: '#4CAF50',
+      });
+    } catch (error) {
+      console.error('Manual sync error:', error);
+      Snackbar.show({
+        text: t('eseals_replacement.sync_failed', { defaultValue: 'Sync failed' }),
+        duration: 3000,
+        backgroundColor: '#FF6B6B',
+      });
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+  // ========== END OFFLINE MANUAL SYNC ==========
+
+  // Function to filter tickets with T1 number
+  const applyT1Filter = (data, filterEnabled) => {
+    if (filterEnabled) {
+      // Filter only tickets that have a t1Number and it's not empty/null/undefined
+      const filtered = data.filter(ticket =>
+        ticket.t1Number &&
+        ticket.t1Number.trim() !== '' &&
+        ticket.t1Number !== null &&
+        ticket.t1Number !== undefined
+      );
+      setFilteredRequests(filtered);
+    } else {
+      setFilteredRequests(data);
+    }
+  };
+
+  // Toggle filter handler
+  const toggleT1Filter = () => {
+    const newFilterState = !showOnlyWithT1;
+    setShowOnlyWithT1(newFilterState);
+    applyT1Filter(requests, newFilterState);
+
+    // Optional: Show feedback
+    Snackbar.show({
+      text: newFilterState
+        ? t('eseals_replacement.filter.t1_enabled', { defaultValue: 'Showing only T1 documents' })
+        : t('eseals_replacement.filter.t1_disabled', { defaultValue: 'Showing all requests' }),
+      duration: 2000,
+      backgroundColor: '#4CAF50',
+    });
+  };
+
+  // ========== OFFLINE: Cache requests data ==========
+  const cacheRequestsData = async (data) => {
+    try {
+      await OfflineDatabaseService.saveUserData('seal_requests', {
+        data: data,
+        timestamp: Date.now()
+      });
+      console.log('✅ Seal requests cached offline');
+    } catch (error) {
+      console.error('Error caching seal requests:', error);
+    }
+  };
+  // ========== END OFFLINE CACHE HELPER ==========
+
+  // ========== OFFLINE: Load cached requests ==========
+  const loadCachedRequests = async () => {
+    try {
+      const cached = await OfflineDatabaseService.getUserData('seal_requests');
+      if (cached && cached.data && cached.data.length > 0) {
+        setRequests(cached.data);
+        applyT1Filter(cached.data, showOnlyWithT1);
+        console.log('📦 Loaded cached seal requests');
+        return true;
+      }
+      return false;
+    } catch (error) {
+      console.error('Error loading cached requests:', error);
+      return false;
+    }
+  };
+  // ========== END OFFLINE LOAD CACHED ==========
+
   const fetchRequests = async () => {
     try {
+      // ========== OFFLINE: Check if online ==========
+      const online = await NetworkMonitorService.isOnline();
+
+      if (!online) {
+        const hasCached = await loadCachedRequests();
+        if (hasCached) {
+          setLoading(false);
+          setRefreshing(false);
+          return;
+        }
+      }
+      // ========== END OFFLINE CHECK ==========
+
       // ✅ FIXED: Changed from axios.get to 'get' string method
       const response = await authenticatedAxios(
         'get',  // <-- FIXED: Use string method name
@@ -115,22 +392,46 @@ const EsealsReplacement = () => {
       const data = response.data;
       if (data && Array.isArray(data.content)) {
         setRequests(data.content);
+        // Apply filter after setting data
+        applyT1Filter(data.content, showOnlyWithT1);
+        // ========== OFFLINE: Cache fetched requests ==========
+        await cacheRequestsData(data.content);
+        // ========== END OFFLINE CACHE ==========
       } else {
         setRequests([]);
+        setFilteredRequests([]);
       }
     } catch (error) {
       console.error('Fetch seal replacement error:', error);
-      Snackbar.show({
-        text: error.response?.data?.message || t('eseals_replacement.errors.load_failed', { defaultValue: 'Failed to load requests' }),
-        duration: 3000,
-        backgroundColor: '#FF6B6B',
-      });
-      setRequests([]);
+
+      // ========== OFFLINE: Fallback to cached requests on error ==========
+      const hasCached = await loadCachedRequests();
+      if (!hasCached) {
+        Snackbar.show({
+          text: error.response?.data?.message || t('eseals_replacement.errors.load_failed', { defaultValue: 'Failed to load requests' }),
+          duration: 3000,
+          backgroundColor: '#FF6B6B',
+        });
+        setRequests([]);
+        setFilteredRequests([]);
+      } else {
+        Snackbar.show({
+          text: t('eseals_replacement.using_cached', { defaultValue: 'Using cached data (offline mode)' }),
+          duration: 3000,
+          backgroundColor: '#FF9800',
+        });
+      }
+      // ========== END OFFLINE FALLBACK ==========
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
   };
+
+  // Update filter when requests change
+  React.useEffect(() => {
+    applyT1Filter(requests, showOnlyWithT1);
+  }, [requests]);
 
   useFocusEffect(
     useCallback(() => {
@@ -140,7 +441,13 @@ const EsealsReplacement = () => {
 
   const onRefresh = () => {
     setRefreshing(true);
-    fetchRequests();
+    // ========== OFFLINE: Manual sync on refresh ==========
+    if (isOnline) {
+      manualSync();
+    } else {
+      fetchRequests();
+    }
+    // ========== END OFFLINE MANUAL SYNC ==========
   };
 
   const handleSubmitRequest = async () => {
@@ -172,6 +479,58 @@ const EsealsReplacement = () => {
         oldDeviceConditionId: parseInt(formData.oldDeviceConditionId),
       };
 
+      // ========== OFFLINE: Check if online ==========
+      const online = await NetworkMonitorService.isOnline();
+
+      if (!online) {
+        // Save request offline
+        const saved = await saveRequestOffline(payload);
+        if (saved) {
+          // Add to local requests list optimistically
+          const offlineRequestItem = {
+            id: Date.now(),
+            ticketNumber: `OFFLINE-${Date.now()}`,
+            title: 'Pending Seal Replacement (Offline)',
+            description: 'Request created offline',
+            priority: 'MEDIUM',
+            status: 'PENDING',
+            deviceSerialNumber: 'Pending',
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            sealReplacementRequested: true,
+            sealReplacementApproved: false,
+            sealReplacementRejected: false,
+            sealReplacementReason: payload.reason,
+            newSealNumber: payload.newSealNumber,
+            t1Number: 'Pending Sync',
+            truckRegistrationNumber: 'Pending Sync',
+          };
+
+          const updatedRequests = [offlineRequestItem, ...requests];
+          setRequests(updatedRequests);
+          applyT1Filter(updatedRequests, showOnlyWithT1);
+
+          Snackbar.show({
+            text: t('eseals_replacement.success.saved_offline', { defaultValue: 'Request saved offline. Will submit when online.' }),
+            duration: 4000,
+            backgroundColor: '#FF9800',
+          });
+
+          // Close modal and reset form
+          setModalVisible(false);
+          setFormData({ ticketId: '', newSealNumber: '', reason: '', oldDeviceConditionId: '' });
+        } else {
+          Snackbar.show({
+            text: t('eseals_replacement.errors.save_offline_failed', { defaultValue: 'Failed to save request offline' }),
+            duration: 3000,
+            backgroundColor: '#FF6B6B',
+          });
+        }
+        setSubmitting(false);
+        return;
+      }
+      // ========== END OFFLINE CHECK ==========
+
       // ✅ FIXED: Changed from axios.post to 'post' string method
       const response = await authenticatedAxios(
         'post',  // <-- FIXED: Use string method name
@@ -199,11 +558,44 @@ const EsealsReplacement = () => {
       }
     } catch (error) {
       console.error('Submit error:', error);
-      Snackbar.show({
-        text: error.response?.data?.message || t('eseals_replacement.errors.submit_failed', { defaultValue: 'Failed to submit request' }),
-        duration: 3000,
-        backgroundColor: '#FF6B6B',
-      });
+
+      // ========== OFFLINE: Offer to save offline on error ==========
+      const isNetworkError = error.message?.includes('network') ||
+                            error.message?.includes('offline') ||
+                            error.code === 'ERR_NETWORK';
+
+      if (isNetworkError && !isOnline) {
+        const saved = await saveRequestOffline({
+          ticketId: parseInt(formData.ticketId),
+          newSealNumber: formData.newSealNumber.trim(),
+          reason: formData.reason.trim(),
+          oldDeviceConditionId: parseInt(formData.oldDeviceConditionId),
+        });
+
+        if (saved) {
+          Snackbar.show({
+            text: t('eseals_replacement.success.saved_offline', { defaultValue: 'Request saved offline. Will submit when online.' }),
+            duration: 4000,
+            backgroundColor: '#FF9800',
+          });
+          setModalVisible(false);
+          setFormData({ ticketId: '', newSealNumber: '', reason: '', oldDeviceConditionId: '' });
+          await fetchRequests();
+        } else {
+          Snackbar.show({
+            text: error.response?.data?.message || t('eseals_replacement.errors.submit_failed', { defaultValue: 'Failed to submit request' }),
+            duration: 3000,
+            backgroundColor: '#FF6B6B',
+          });
+        }
+      } else {
+        Snackbar.show({
+          text: error.response?.data?.message || t('eseals_replacement.errors.submit_failed', { defaultValue: 'Failed to submit request' }),
+          duration: 3000,
+          backgroundColor: '#FF6B6B',
+        });
+      }
+      // ========== END OFFLINE OFFER ==========
     } finally {
       setSubmitting(false);
     }
@@ -291,6 +683,14 @@ const EsealsReplacement = () => {
           <Text style={styles.infoText}>{t('eseals_replacement.truck_label', { defaultValue: 'Truck' })}: {item.truckRegistrationNumber}</Text>
         </View>
 
+        {/* T1 Number Display */}
+        {item.t1Number && (
+          <View style={styles.infoRow}>
+            <Icon name="receipt" size={14} color="#888" />
+            <Text style={styles.infoText}>{t('eseals_replacement.t1_label', { defaultValue: 'T1 Number' })}: {item.t1Number}</Text>
+          </View>
+        )}
+
         {/* Seal Replacement Info */}
         {isSealRequested && (
           <View style={styles.sealRequestContainer}>
@@ -349,10 +749,47 @@ const EsealsReplacement = () => {
           <Icon name="arrow-back" size={24} color="#1A1A1A" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>{t('eseals_replacement.title', { defaultValue: 'Seal Replacement Requests' })}</Text>
-        <View style={{ width: 40 }} />
+        <View style={styles.headerRight}>
+          {/* ========== OFFLINE: Manual sync button ========== */}
+          {isSyncing ? (
+            <ActivityIndicator size="small" color="#FFA500" style={styles.syncIndicator} />
+          ) : (
+            <TouchableOpacity onPress={manualSync} style={styles.syncButton}>
+              <Icon name="sync" size={20} color={isOnline ? "#4CAF50" : "#999"} />
+            </TouchableOpacity>
+          )}
+          {/* ========== END OFFLINE SYNC BUTTON ========== */}
+          <TouchableOpacity onPress={toggleT1Filter} style={styles.filterButton}>
+            <Icon
+              name="filter-list"
+              size={24}
+              color={showOnlyWithT1 ? '#FFA500' : '#999'}
+            />
+            {showOnlyWithT1 && <View style={styles.filterBadge} />}
+          </TouchableOpacity>
+        </View>
       </View>
 
-      {requests.length === 0 ? (
+      {/* ========== OFFLINE: Network status banner ========== */}
+      {!isOnline && (
+        <View style={styles.offlineBanner}>
+          <Text style={styles.offlineBannerText}>📴 Offline Mode - Using cached data</Text>
+        </View>
+      )}
+      {/* ========== END OFFLINE BANNER ========== */}
+
+      {/* ========== OFFLINE: Pending requests banner ========== */}
+      {pendingRequests.length > 0 && isOnline && (
+        <TouchableOpacity style={styles.pendingBanner} onPress={processPendingRequests}>
+          <Icon name="pending" size={16} color="#FF9800" />
+          <Text style={styles.pendingBannerText}>
+            {pendingRequests.length} pending request(s) to sync. Tap to sync now.
+          </Text>
+        </TouchableOpacity>
+      )}
+      {/* ========== END OFFLINE PENDING BANNER ========== */}
+
+      {filteredRequests.length === 0 ? (
         <View style={styles.emptyContainer}>
           <Icon name="inventory" size={64} color="#CCCCCC" />
           <Text style={styles.emptyText}>{t('eseals_replacement.empty.title', { defaultValue: 'No replacement requests' })}</Text>
@@ -360,7 +797,7 @@ const EsealsReplacement = () => {
         </View>
       ) : (
         <FlatList
-          data={requests}
+          data={filteredRequests}
           keyExtractor={(item) => item.id.toString()}
           renderItem={renderItem}
           contentContainerStyle={styles.listContent}
@@ -482,7 +919,70 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     backgroundColor: '#F5F5F5',
   },
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  syncButton: {
+    width: 40,
+    height: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 20,
+    backgroundColor: '#F5F5F5',
+  },
+  syncIndicator: {
+    width: 40,
+    height: 40,
+  },
+  filterButton: {
+    width: 40,
+    height: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 20,
+    backgroundColor: '#F5F5F5',
+    position: 'relative',
+  },
+  filterBadge: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#FFA500',
+  },
   headerTitle: { fontSize: 20, fontWeight: '600', color: '#1A1A1A' },
+  offlineBanner: {
+    backgroundColor: '#FF9800',
+    padding: 10,
+    marginHorizontal: 16,
+    marginTop: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  offlineBannerText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  pendingBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFF3E0',
+    marginHorizontal: 16,
+    marginTop: 12,
+    padding: 12,
+    borderRadius: 8,
+    gap: 8,
+  },
+  pendingBannerText: {
+    fontSize: 12,
+    color: '#FF9800',
+    flex: 1,
+  },
   listContent: { padding: 16, paddingBottom: 80 },
   card: {
     backgroundColor: '#FFFFFF',

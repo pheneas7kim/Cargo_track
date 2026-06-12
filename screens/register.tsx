@@ -19,6 +19,11 @@ import serverUrl from '../config';
 import Snackbar from 'react-native-snackbar';
 import * as Animatable from 'react-native-animatable';
 
+// ========== OFFLINE MODULE IMPORTS ==========
+import OfflineDatabaseService from '../services/OfflineDatabaseService';
+import NetworkMonitorService from '../services/NetworkMonitorService';
+// ========== END OFFLINE MODULE IMPORTS ==========
+
 const { width, height } = Dimensions.get('window');
 
 const extractMessage = (body: any): string => {
@@ -41,7 +46,7 @@ const RegisterPage = () => {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-  
+
   // Focus states for better UX
   const [emailFocused, setEmailFocused] = useState(false);
   const [firstNameFocused, setFirstNameFocused] = useState(false);
@@ -49,9 +54,118 @@ const RegisterPage = () => {
   const [phoneFocused, setPhoneFocused] = useState(false);
   const [passwordFocused, setPasswordFocused] = useState(false);
 
+  // ========== OFFLINE MODE STATE VARIABLES ==========
+  const [isOnline, setIsOnline] = useState(true);
+  const [pendingRegistration, setPendingRegistration] = useState(null);
+  // ========== END OFFLINE MODE STATE VARIABLES ==========
+
   const handleLoginPress = () => {
     navigation.navigate('Login');
   };
+
+  // ========== OFFLINE MODE INITIALIZATION ==========
+  React.useEffect(() => {
+    const initOfflineMode = async () => {
+      try {
+        // Initialize offline database
+        await OfflineDatabaseService.initDatabase();
+        console.log('✅ Offline database initialized for Register Page');
+
+        // Initialize network monitor
+        NetworkMonitorService.init();
+
+        // Listen for network changes
+        NetworkMonitorService.on('connectionChange', (online) => {
+          setIsOnline(online);
+          if (online && pendingRegistration) {
+            // If we come back online and have a pending registration, attempt to sync
+            attemptSyncPendingRegistration();
+          }
+          if (!online) {
+            Snackbar.show({
+              text: 'Offline mode - Registration will be saved locally',
+              duration: 3000,
+              backgroundColor: '#FF9800',
+            });
+          }
+        });
+
+      } catch (error) {
+        console.error('❌ Offline mode init error:', error);
+      }
+    };
+
+    initOfflineMode();
+
+    return () => {
+      // Cleanup
+      NetworkMonitorService.cleanup();
+    };
+  }, []);
+  // ========== END OFFLINE MODE INITIALIZATION ==========
+
+  // ========== OFFLINE: Save pending registration ==========
+  const savePendingRegistration = async (registrationData) => {
+    try {
+      const pendingRegistrations = await OfflineDatabaseService.getUserData('pending_registrations') || [];
+      const newRegistration = {
+        id: Date.now().toString(),
+        ...registrationData,
+        timestamp: new Date().toISOString(),
+        status: 'PENDING',
+        retryCount: 0
+      };
+      pendingRegistrations.push(newRegistration);
+      await OfflineDatabaseService.saveUserData('pending_registrations', pendingRegistrations);
+      setPendingRegistration(newRegistration);
+
+      // Also add to sync queue
+      await OfflineDatabaseService.addToSyncQueue('REGISTRATION', '/api/auth/register', registrationData);
+
+      console.log('📦 Registration saved offline for later sync');
+      return true;
+    } catch (error) {
+      console.error('Error saving registration offline:', error);
+      return false;
+    }
+  };
+  // ========== END OFFLINE SAVE PENDING REGISTRATION ==========
+
+  // ========== OFFLINE: Sync pending registration ==========
+  const attemptSyncPendingRegistration = async () => {
+    const pendingRegistrations = await OfflineDatabaseService.getUserData('pending_registrations');
+    if (!pendingRegistrations || pendingRegistrations.length === 0) return;
+
+    console.log(`🔄 Attempting to sync ${pendingRegistrations.length} pending registrations...`);
+
+    for (const registration of pendingRegistrations) {
+      try {
+        const response = await fetch(`${serverUrl}/api/auth/register`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(registration),
+        });
+
+        if (response.ok) {
+          console.log(`✅ Synced registration for ${registration.userEmail}`);
+          // Remove from pending after successful sync
+          const updatedRegistrations = pendingRegistrations.filter(r => r.id !== registration.id);
+          await OfflineDatabaseService.saveUserData('pending_registrations', updatedRegistrations);
+
+          Snackbar.show({
+            text: `Registration for ${registration.userEmail} has been synced!`,
+            duration: 3000,
+            backgroundColor: '#4CAF50',
+          });
+        }
+      } catch (error) {
+        console.error(`Failed to sync registration for ${registration.userEmail}:`, error);
+      }
+    }
+  };
+  // ========== END OFFLINE SYNC PENDING REGISTRATION ==========
 
   const isValidEmail = (email: string) => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -138,24 +252,63 @@ const RegisterPage = () => {
     }
 
     setLoading(true);
+
+    const registrationData = {
+      firstName: firstName,
+      lastName: lastName,
+      otherNames: lastName,
+      userEmail: email,
+      phoneNo: phoneNo,
+      city: 'Nairobi',
+      postalAddress: '20400',
+      streetName: 'Nairobi',
+      userName: email,
+      password: password,
+    };
+
+    // ========== OFFLINE: Check if online ==========
+    const online = await NetworkMonitorService.isOnline();
+
+    if (!online) {
+      console.log('📴 Offline - saving registration for later sync');
+      const saved = await savePendingRegistration(registrationData);
+      if (saved) {
+        Snackbar.show({
+          text: 'Registration saved offline. Will sync when online.',
+          duration: 4000,
+          backgroundColor: '#FF9800',
+        });
+
+        // Reset form
+        setEmail('');
+        setFirstName('');
+        setLastName('');
+        setPhoneNo('');
+        setPassword('');
+        setLoading(false);
+
+        setTimeout(() => {
+          navigation.replace('Login');
+        }, 2000);
+      } else {
+        Snackbar.show({
+          text: 'Failed to save registration offline. Please try again.',
+          duration: 3000,
+          backgroundColor: '#FF6B6B',
+        });
+        setLoading(false);
+      }
+      return;
+    }
+    // ========== END OFFLINE CHECK ==========
+
     try {
       const response = await fetch(`${serverUrl}/api/auth/register`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          firstName: firstName,
-          lastName: lastName,
-          otherNames: lastName,
-          userEmail: email,
-          phoneNo: phoneNo,
-          city: 'Nairobi',
-          postalAddress: '20400',
-          streetName: 'Nairobi',
-          userName: email,
-          password: password,
-        }),
+        body: JSON.stringify(registrationData),
       });
 
       if (response.ok) {
@@ -175,6 +328,25 @@ const RegisterPage = () => {
         const errorData = await response.json();
         const message = extractMessage(errorData);
 
+        // ========== OFFLINE: If API fails but we have valid data, save offline ==========
+        if (response.status === 500 || response.status === 503) {
+          const saved = await savePendingRegistration(registrationData);
+          if (saved) {
+            Snackbar.show({
+              text: 'Server error. Registration saved offline for later sync.',
+              duration: 4000,
+              backgroundColor: '#FF9800',
+            });
+
+            setTimeout(() => {
+              setLoading(false);
+              navigation.replace('Login');
+            }, 2000);
+            return;
+          }
+        }
+        // ========== END OFFLINE FALLBACK ==========
+
         Snackbar.show({
           text: message,
           duration: 3000,
@@ -183,73 +355,99 @@ const RegisterPage = () => {
         setLoading(false);
       }
     } catch (error) {
-      Snackbar.show({
-        text: 'Something went wrong. Please try again later.',
-        duration: 3000,
-        backgroundColor: '#FF6B6B',
-      });
-      setLoading(false);
+      console.error('Registration error:', error);
+
+      // ========== OFFLINE: Save registration offline on network error ==========
+      const saved = await savePendingRegistration(registrationData);
+      if (saved) {
+        Snackbar.show({
+          text: 'Network error. Registration saved offline. Will sync when online.',
+          duration: 4000,
+          backgroundColor: '#FF9800',
+        });
+
+        setTimeout(() => {
+          setLoading(false);
+          navigation.replace('Login');
+        }, 2000);
+      } else {
+        Snackbar.show({
+          text: 'Something went wrong. Please try again later.',
+          duration: 3000,
+          backgroundColor: '#FF6B6B',
+        });
+        setLoading(false);
+      }
+      // ========== END OFFLINE SAVE ==========
     }
   };
 
   const formatPhoneNumber = (text: string) => {
     // Remove all non-numeric characters
     const cleaned = text.replace(/[^0-9]/g, '');
-    
+
     // If it starts with 254, add the +
     if (cleaned.startsWith('254')) {
       return `+${cleaned}`;
     }
-    
+
     // If it starts with 0, replace with +254
     if (cleaned.startsWith('0')) {
       return `+254${cleaned.substring(1)}`;
     }
-    
+
     // If it's just digits, assume it's after 254
     if (cleaned.length > 0) {
       return `+254${cleaned}`;
     }
-    
+
     return text;
   };
 
   const isFormValid = email && firstName && lastName && phoneNo && password;
 
   return (
-    <KeyboardAvoidingView 
-      style={styles.container} 
+    <KeyboardAvoidingView
+      style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
       <StatusBar barStyle="dark-content" backgroundColor="#fff" />
-      
-      <ScrollView 
+
+      {/* ========== OFFLINE: Network status banner ========== */}
+      {!isOnline && (
+        <View style={styles.offlineBanner}>
+          <Text style={styles.offlineBannerText}>📴 Offline Mode - Registration will be saved locally</Text>
+        </View>
+      )}
+      {/* ========== END OFFLINE BANNER ========== */}
+
+      <ScrollView
         contentContainerStyle={styles.scrollContainer}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
         {/* Header Section */}
-        <Animatable.View 
-          animation="fadeInDown" 
+        <Animatable.View
+          animation="fadeInDown"
           duration={1000}
           style={styles.headerSection}
         >
           <View style={styles.logoContainer}>
-            <Image 
-              source={require('../assets/tiplogo.jpeg')} 
-              style={styles.logo} 
+            <Image
+              source={require('../assets/tiplogo.jpeg')}
+              style={styles.logo}
               resizeMode="contain"
             />
             <View style={styles.logoGlow} />
           </View>
-          
+
           <Text style={styles.welcomeText}>Create Account</Text>
           <Text style={styles.subtitle}>Join Golden Tie Tipping today</Text>
         </Animatable.View>
 
         {/* Form Section */}
-        <Animatable.View 
-          animation="fadeInUp" 
+        <Animatable.View
+          animation="fadeInUp"
           duration={1000}
           delay={300}
           style={styles.formSection}
@@ -258,7 +456,7 @@ const RegisterPage = () => {
           <View style={styles.inputContainer}>
             <Text style={styles.inputLabel}>Email Address</Text>
             <View style={[
-              styles.inputWrapper, 
+              styles.inputWrapper,
               emailFocused && styles.inputWrapperFocused,
               email && styles.inputWrapperFilled
             ]}>
@@ -270,6 +468,8 @@ const RegisterPage = () => {
                 value={email}
                 autoCapitalize="none"
                 onChangeText={setEmail}
+                onFocus={() => setEmailFocused(true)}
+                onBlur={() => setEmailFocused(false)}
               />
             </View>
           </View>
@@ -279,7 +479,7 @@ const RegisterPage = () => {
             <View style={[styles.inputContainer, styles.nameInput]}>
               <Text style={styles.inputLabel}>First Name</Text>
               <View style={[
-                styles.inputWrapper, 
+                styles.inputWrapper,
                 firstNameFocused && styles.inputWrapperFocused,
                 firstName && styles.inputWrapperFilled
               ]}>
@@ -290,6 +490,8 @@ const RegisterPage = () => {
                   value={firstName}
                   autoCapitalize="words"
                   onChangeText={setFirstName}
+                  onFocus={() => setFirstNameFocused(true)}
+                  onBlur={() => setFirstNameFocused(false)}
                 />
               </View>
             </View>
@@ -297,7 +499,7 @@ const RegisterPage = () => {
             <View style={[styles.inputContainer, styles.nameInput]}>
               <Text style={styles.inputLabel}>Last Name</Text>
               <View style={[
-                styles.inputWrapper, 
+                styles.inputWrapper,
                 lastNameFocused && styles.inputWrapperFocused,
                 lastName && styles.inputWrapperFilled
               ]}>
@@ -308,6 +510,8 @@ const RegisterPage = () => {
                   value={lastName}
                   autoCapitalize="words"
                   onChangeText={setLastName}
+                  onFocus={() => setLastNameFocused(true)}
+                  onBlur={() => setLastNameFocused(false)}
                 />
               </View>
             </View>
@@ -317,7 +521,7 @@ const RegisterPage = () => {
           <View style={styles.inputContainer}>
             <Text style={styles.inputLabel}>Phone Number</Text>
             <View style={[
-              styles.inputWrapper, 
+              styles.inputWrapper,
               phoneFocused && styles.inputWrapperFocused,
               phoneNo && styles.inputWrapperFilled
             ]}>
@@ -329,6 +533,8 @@ const RegisterPage = () => {
                 value={phoneNo}
                 maxLength={13}
                 onChangeText={(text) => setPhoneNo(formatPhoneNumber(text))}
+                onFocus={() => setPhoneFocused(true)}
+                onBlur={() => setPhoneFocused(false)}
               />
             </View>
           </View>
@@ -337,7 +543,7 @@ const RegisterPage = () => {
           <View style={styles.inputContainer}>
             <Text style={styles.inputLabel}>Password</Text>
             <View style={[
-              styles.inputWrapper, 
+              styles.inputWrapper,
               passwordFocused && styles.inputWrapperFocused,
               password && styles.inputWrapperFilled
             ]}>
@@ -349,8 +555,10 @@ const RegisterPage = () => {
                 autoCapitalize="none"
                 value={password}
                 onChangeText={setPassword}
+                onFocus={() => setPasswordFocused(true)}
+                onBlur={() => setPasswordFocused(false)}
               />
-              <TouchableOpacity 
+              <TouchableOpacity
                 style={styles.eyeIcon}
                 onPress={() => setShowPassword(prev => !prev)}
                 activeOpacity={0.7}
@@ -368,12 +576,12 @@ const RegisterPage = () => {
           </View>
 
           {/* Register Button */}
-          <TouchableOpacity 
+          <TouchableOpacity
             style={[
-              styles.registerButton, 
+              styles.registerButton,
               loading && styles.registerButtonDisabled,
               isFormValid && styles.registerButtonActive
-            ]} 
+            ]}
             onPress={handleRegistration}
             disabled={loading}
             activeOpacity={0.8}
@@ -509,7 +717,7 @@ const styles = StyleSheet.create({
     color: '#1A1A1A',
     fontWeight: '400',
   },
- eyeIcon: {
+  eyeIcon: {
     position: 'absolute',
     right: 16,
     top: 8,
@@ -577,6 +785,19 @@ const styles = StyleSheet.create({
     color: '#FFD700',
     fontWeight: '600',
   },
+  // ========== OFFLINE STYLES ==========
+  offlineBanner: {
+    backgroundColor: '#FF9800',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+  },
+  offlineBannerText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  // ========== END OFFLINE STYLES ==========
 });
 
 export default RegisterPage;

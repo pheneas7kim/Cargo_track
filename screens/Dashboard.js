@@ -27,6 +27,12 @@ import { useTranslation } from 'react-i18next';
 // ✅ Import global token refresh service
 import { refreshAccessToken, addTokenRefreshListener } from '../services/TokenService';
 
+// ========== OFFLINE MODULE IMPORTS ==========
+import OfflineDatabaseService from '../services/OfflineDatabaseService';
+import NetworkMonitorService from '../services/NetworkMonitorService';
+import OfflineSyncService from '../services/OfflineSyncService';
+// ========== END OFFLINE MODULE IMPORTS ==========
+
 const { width } = Dimensions.get('window');
 
 // API Base URL
@@ -303,6 +309,21 @@ const resolveTicket = async (ticketId, notes, files, i18n) => {
   return await response.json();
 };
 
+// ========== CLAIM TICKET FUNCTION ==========
+const claimTicket = async (ticketId, i18n) => {
+  const response = await authenticatedAxios(
+    'post',
+    {
+      url: `${API_BASE}/api/v1/tickets/${ticketId}/claim`,
+      data: {},
+      headers: { 'Content-Type': 'application/json' },
+    },
+    i18n
+  );
+  return response.data;
+};
+// ========== END CLAIM TICKET FUNCTION ==========
+
 function HomeScreen() {
   const { t, i18n } = useTranslation();
   const navigation = useNavigation();
@@ -341,6 +362,13 @@ function HomeScreen() {
   const [roleId, setRoleId] = useState(null);
   const [acknowledgingTicketId, setAcknowledgingTicketId] = useState(null);
   const [resolvingTicketId, setResolvingTicketId] = useState(null);
+  const [claimingTicketId, setClaimingTicketId] = useState(null); // New state for claim action
+
+  // ========== OFFLINE MODE STATE VARIABLES ==========
+  const [isOnline, setIsOnline] = useState(true);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [dataLoadError, setDataLoadError] = useState(false);
+  // ========== END OFFLINE MODE STATE VARIABLES ==========
 
   // ✅ Listen for token refresh events
   useEffect(() => {
@@ -349,6 +377,143 @@ function HomeScreen() {
     });
     return () => removeListener();
   }, []);
+
+  // ========== OFFLINE MODE INITIALIZATION ==========
+  useEffect(() => {
+    const initOfflineMode = async () => {
+      try {
+        // Initialize offline database
+        await OfflineDatabaseService.initDatabase();
+        console.log('✅ Offline database initialized for Home Screen');
+
+        // Initialize network monitor
+        NetworkMonitorService.init();
+
+        // Start auto-sync service
+        await OfflineSyncService.startAutoSync();
+
+        // Listen for network changes
+        NetworkMonitorService.on('connectionChange', (online) => {
+          setIsOnline(online);
+          if (online) {
+            Snackbar.show({
+              text: t('common.back_online', { defaultValue: 'Back online! Syncing data...' }),
+              duration: 2000,
+              backgroundColor: '#4CAF50',
+            });
+            // Auto-refresh when coming back online
+            if (roleId !== null) {
+              loadAllData();
+            }
+          } else {
+            Snackbar.show({
+              text: t('common.offline_mode', { defaultValue: 'Offline mode - using cached data' }),
+              duration: 3000,
+              backgroundColor: '#FF9800',
+            });
+          }
+        });
+
+      } catch (error) {
+        console.error('❌ Offline mode init error:', error);
+      }
+    };
+
+    initOfflineMode();
+
+    return () => {
+      // Cleanup
+      OfflineSyncService.stopAutoSync();
+      NetworkMonitorService.cleanup();
+    };
+  }, []);
+  // ========== END OFFLINE MODE INITIALIZATION ==========
+
+  // ========== OFFLINE: Cache data helper ==========
+  const cacheDashboardData = async (shipmentsData, ticketsData, alertsData, notificationsData) => {
+    try {
+      if (shipmentsData) await OfflineDatabaseService.saveUserData('home_shipments', { data: shipmentsData, timestamp: Date.now() });
+      if (ticketsData) await OfflineDatabaseService.saveUserData('home_tickets', { data: ticketsData, timestamp: Date.now() });
+      if (alertsData) await OfflineDatabaseService.saveUserData('home_alerts', { data: alertsData, timestamp: Date.now() });
+      if (notificationsData) await OfflineDatabaseService.saveUserData('home_notifications', { data: notificationsData, timestamp: Date.now() });
+      console.log('✅ Home screen data cached offline');
+    } catch (error) {
+      console.error('Error caching home data:', error);
+    }
+  };
+  // ========== END OFFLINE CACHE HELPER ==========
+
+  // ========== OFFLINE: Load cached data ==========
+  const loadCachedData = async () => {
+    try {
+      const cachedShipments = await OfflineDatabaseService.getUserData('home_shipments');
+      if (cachedShipments && cachedShipments.data) {
+        setShipments(cachedShipments.data);
+        console.log('📦 Loaded cached shipments');
+      }
+
+      const cachedTickets = await OfflineDatabaseService.getUserData('home_tickets');
+      if (cachedTickets && cachedTickets.data) {
+        setTickets(cachedTickets.data);
+        console.log('📦 Loaded cached tickets');
+      }
+
+      const cachedAlerts = await OfflineDatabaseService.getUserData('home_alerts');
+      if (cachedAlerts && cachedAlerts.data) {
+        setAlerts(cachedAlerts.data);
+        console.log('📦 Loaded cached alerts');
+      }
+
+      const cachedNotifications = await OfflineDatabaseService.getUserData('home_notifications');
+      if (cachedNotifications && cachedNotifications.data) {
+        setNotifications(cachedNotifications.data);
+        console.log('📦 Loaded cached notifications');
+      }
+      setDataLoadError(false);
+    } catch (error) {
+      console.error('Error loading cached data:', error);
+      setDataLoadError(true);
+    } finally {
+      setLoadingShipments(false);
+      setLoadingTickets(false);
+      setLoadingAlerts(false);
+      setLoadingNotifications(false);
+    }
+  };
+  // ========== END OFFLINE LOAD CACHED ==========
+
+  // ========== OFFLINE: Manual sync function ==========
+  const manualSync = async () => {
+    if (!isOnline) {
+      Snackbar.show({
+        text: t('common.cannot_sync_offline', { defaultValue: 'Cannot sync while offline' }),
+        duration: 3000,
+        backgroundColor: '#FF6B6B',
+      });
+      return;
+    }
+
+    setIsSyncing(true);
+    try {
+      await OfflineSyncService.syncAll();
+      await loadAllData();
+      Snackbar.show({
+        text: t('common.sync_complete', { defaultValue: 'Sync completed successfully!' }),
+        duration: 3000,
+        backgroundColor: '#4CAF50',
+      });
+    } catch (error) {
+      console.error('Manual sync error:', error);
+      Snackbar.show({
+        text: t('common.sync_failed', { defaultValue: 'Sync failed' }),
+        duration: 3000,
+        backgroundColor: '#FF6B6B',
+      });
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+  // ========== END OFFLINE MANUAL SYNC ==========
 
   useEffect(() => {
     const loadRole = async () => {
@@ -455,8 +620,10 @@ function HomeScreen() {
       });
 
       setShipments(transformed);
+      return transformed;
     } catch (error) {
       console.error('Error fetching shipments:', error);
+      return null;
     } finally {
       setLoadingShipments(false);
     }
@@ -501,12 +668,15 @@ function HomeScreen() {
           updatedAt: ticket.updatedAt,
           t1Number: ticket.t1Number,
           truckReg: ticket.truckRegistrationNumber,
+          assignee: ticket.assignee, // Store assignee object
         };
       });
 
       setTickets(transformed);
+      return transformed;
     } catch (error) {
       console.error('Error fetching tickets:', error);
+      return null;
     } finally {
       setLoadingTickets(false);
     }
@@ -535,8 +705,10 @@ function HomeScreen() {
         timestamp: alert.createdAt,
       }));
       setAlerts(transformed);
+      return transformed;
     } catch (error) {
       console.error('Error fetching alerts:', error);
+      return null;
     } finally {
       setLoadingAlerts(false);
     }
@@ -566,27 +738,50 @@ function HomeScreen() {
         type: notif.type?.toLowerCase() === 'alarm' ? 'alert' : 'info',
       }));
       setNotifications(transformed);
+      return transformed;
     } catch (error) {
       console.error('Error fetching notifications:', error);
       setNotifications([]);
+      return [];
     } finally {
       setLoadingNotifications(false);
     }
   };
 
   const loadAllData = async () => {
-    if (roleId === 257) {
-      await Promise.all([
-        fetchTickets(),
-      ]);
+    // ========== OFFLINE: Check if online ==========
+    const online = await NetworkMonitorService.isOnline();
+
+    if (!online && roleId !== null) {
+      // Load cached data
+      await loadCachedData();
+      return;
     }
-    else {
-      await Promise.all([
-        fetchShipments(),
-        fetchTickets(),
-        fetchAlerts(),
-        fetchNotifications(),
-      ]);
+    // ========== END OFFLINE CHECK ==========
+
+    try {
+      setDataLoadError(false);
+      if (roleId === 257) {
+        const ticketsData = await fetchTickets();
+        if (ticketsData) await cacheDashboardData(null, ticketsData, null, null);
+      }
+      else {
+        const [shipmentsData, ticketsData, alertsData, notificationsData] = await Promise.all([
+          fetchShipments(),
+          fetchTickets(),
+          fetchAlerts(),
+          fetchNotifications(),
+        ]);
+
+        // ========== OFFLINE: Cache fetched data ==========
+        await cacheDashboardData(shipmentsData, ticketsData, alertsData, notificationsData);
+        // ========== END OFFLINE CACHE ==========
+      }
+    } catch (error) {
+      console.error('Error loading data:', error);
+      setDataLoadError(true);
+      // Try to load cached data as fallback
+      await loadCachedData();
     }
   };
 
@@ -742,6 +937,33 @@ function HomeScreen() {
       setAcknowledgingTicketId(null);
     }
   };
+
+  // ========== CLAIM TICKET HANDLER ==========
+  const handleClaimTicket = async (ticketId) => {
+    if (claimingTicketId) return;
+    setClaimingTicketId(ticketId);
+    try {
+      await claimTicket(ticketId, i18n);
+      Snackbar.show({
+        text: t('common.ticket_claimed', { defaultValue: 'Ticket claimed successfully!' }),
+        duration: 2000,
+        backgroundColor: '#4CAF50',
+      });
+      setModalVisible(false);
+      setSelectedTicket(null);
+      await fetchTickets();
+    } catch (error) {
+      console.error('Claim error:', error);
+      Snackbar.show({
+        text: error.response?.data?.message || t('common.ticket_claim_failed', { defaultValue: 'Failed to claim ticket' }),
+        duration: 3000,
+        backgroundColor: '#FF6B6B',
+      });
+    } finally {
+      setClaimingTicketId(null);
+    }
+  };
+  // ========== END CLAIM TICKET HANDLER ==========
 
   // Updated handleResolve to navigate to AttachEvidence screen with proper params
   const handleResolve = (ticket) => {
@@ -907,6 +1129,8 @@ function HomeScreen() {
     const statusColor = getTicketStatusInfo(item.status, t).color;
     const priorityColor = getPriorityColor(item.priority);
     const statusInfo = getTicketStatusInfo(item.status, t);
+    // Detect broadcast ticket: assignee is null and status is OPEN (or just assignee null)
+    const isBroadcast = !item.assignee && item.status === 'OPEN';
 
     return (
       <Animatable.View
@@ -923,7 +1147,7 @@ function HomeScreen() {
           }}
         >
           <View style={styles.ticketCard}>
-            {/* Row 1: Ticket Number + Priority */}
+            {/* Row 1: Ticket Number + Priority + Broadcast Badge */}
             <View style={styles.ticketHeaderRow}>
               <Text style={styles.ticketNumberLabel}>Ticket Number:</Text>
               <Text style={styles.ticketNumber}>{item.ticketNumber || `#${item.id}`}</Text>
@@ -933,6 +1157,11 @@ function HomeScreen() {
                   {item.priority}
                 </Text>
               </View>
+              {isBroadcast && (
+                <View style={styles.broadcastBadge}>
+                  <Text style={styles.broadcastBadgeText}>📢 Broadcast</Text>
+                </View>
+              )}
             </View>
 
             {/* Row 2: Status */}
@@ -1006,6 +1235,16 @@ function HomeScreen() {
           <Text style={styles.greeting}>{getCurrentTime()}</Text>
         </View>
         <View style={styles.headerActions}>
+          {/* ========== OFFLINE: Sync button ========== */}
+          {isSyncing ? (
+            <ActivityIndicator size="small" color="#FFA500" style={styles.syncIndicator} />
+          ) : (
+            <TouchableOpacity style={styles.iconButton} onPress={manualSync}>
+              <Image source={require('../assets/refresh.png')} style={[styles.headerIcon, { tintColor: isOnline ? '#4CAF50' : '#999' }]} />
+            </TouchableOpacity>
+          )}
+          {/* ========== END OFFLINE SYNC BUTTON ========== */}
+
           <TouchableOpacity style={styles.iconButton} onPress={handleLogout}>
             <Image source={require('../assets/logout.png')} style={styles.headerIcon} />
           </TouchableOpacity>
@@ -1021,44 +1260,53 @@ function HomeScreen() {
         </View>
       </View>
 
+      {/* ========== OFFLINE: Network status banner ========== */}
+      {!isOnline && (
+        <View style={styles.offlineBanner}>
+          <Text style={styles.offlineBannerText}>📴 Offline Mode - Using cached data</Text>
+        </View>
+      )}
+      {/* ========== END OFFLINE BANNER ========== */}
+
+      {/* Quick Actions Grid - 4 columns */}
       {(roleId === 1 || roleId === 102 || roleId === 255 || roleId === 103 || roleId === 257) && (
         <View style={styles.quickActionsGrid}>
           <View style={styles.actionsContainer}>
-            {/* ROLE 102: 4 icons in first row, Eseals Replacement in second row */}
+
+            {/* ROLE 102 - 5 icons (4 columns, last row has 1) */}
             {roleId === 102 && (
               <>
-                <View style={styles.actionRowSingle}>
-                  <TouchableOpacity style={styles.actionCardSmall} onPress={handleTicketsScreen}>
+                <View style={styles.actionRow}>
+                  <TouchableOpacity style={styles.actionCard} onPress={handleTicketsScreen}>
                     <View style={[styles.actionIconBg, { backgroundColor: '#2196F320' }]}>
                       <Image source={require('../assets/phone.png')} style={styles.actionIcon} />
                     </View>
                     <Text style={styles.actionLabel}>{t('common.actions.tickets', { defaultValue: 'Tickets' })}</Text>
                   </TouchableOpacity>
 
-                  <TouchableOpacity style={styles.actionCardSmall} onPress={handleRandomStopScreen}>
+                  <TouchableOpacity style={styles.actionCard} onPress={handleRandomStopScreen}>
                     <View style={[styles.actionIconBg, { backgroundColor: '#2196F320' }]}>
                       <Image source={require('../assets/randomstop.png')} style={styles.actionIcon} />
                     </View>
                     <Text style={styles.actionLabel}>{t('common.actions.random_stop', { defaultValue: 'Random Stop' })}</Text>
                   </TouchableOpacity>
 
-                  <TouchableOpacity style={styles.actionCardSmall} onPress={handleRequestEsealsList}>
+                  <TouchableOpacity style={styles.actionCard} onPress={handleRequestEsealsList}>
                     <View style={[styles.actionIconBg, { backgroundColor: '#FF6B6B20' }]}>
                       <Image source={require('../assets/alarm.png')} style={styles.actionIcon} />
                     </View>
                     <Text style={styles.actionLabel}>{t('common.actions.request_eseals', { defaultValue: 'Request Eseals' })}</Text>
                   </TouchableOpacity>
 
-                  <TouchableOpacity style={styles.actionCardSmall} onPress={handleAssignedEseals}>
+                  <TouchableOpacity style={styles.actionCard} onPress={handleAssignedEseals}>
                     <View style={[styles.actionIconBg, { backgroundColor: '#2196F320' }]}>
                       <Image source={require('../assets/phone.png')} style={styles.actionIcon} />
                     </View>
                     <Text style={styles.actionLabel}>{t('common.actions.assigned_eseals', { defaultValue: 'Assigned Eseals' })}</Text>
                   </TouchableOpacity>
                 </View>
-
-                <View style={styles.actionRowSingle}>
-                  <TouchableOpacity style={styles.actionCardSmall} onPress={handleEsealsReplacement}>
+                <View style={styles.actionRow}>
+                  <TouchableOpacity style={styles.actionCard} onPress={handleEsealsReplacement}>
                     <View style={[styles.actionIconBg, { backgroundColor: '#4CAF5020' }]}>
                       <Image source={require('../assets/bell.png')} style={styles.actionIcon} />
                     </View>
@@ -1068,40 +1316,105 @@ function HomeScreen() {
               </>
             )}
 
-            {/* Row 1 – visible only for role 1 */}
+            {/* ROLE 1 - 4x3 grid (12 icons) */}
             {roleId === 1 && (
-              <View style={styles.actionRow}>
-                <TouchableOpacity style={styles.actionCard} onPress={handleQrPaymentScanner}>
-                  <View style={[styles.actionIconBg, { backgroundColor: '#9C27B020' }]}>
-                    <Image source={require('../assets/trk.png')} style={styles.actionIcon} />
-                  </View>
-                  <Text style={styles.actionLabel}>{t('common.actions.scan_to_unlock', { defaultValue: 'Scan to Unlock' })}</Text>
-                </TouchableOpacity>
+              <>
+                {/* Row 1 */}
+                <View style={styles.actionRow}>
+                  <TouchableOpacity style={styles.actionCard} onPress={handleQrPaymentScanner}>
+                    <View style={[styles.actionIconBg, { backgroundColor: '#9C27B020' }]}>
+                      <Image source={require('../assets/trk.png')} style={styles.actionIcon} />
+                    </View>
+                    <Text style={styles.actionLabel}>{t('common.actions.scan_to_unlock', { defaultValue: 'Scan to Unlock' })}</Text>
+                  </TouchableOpacity>
 
-                <TouchableOpacity style={styles.actionCard} onPress={handleMasterSlaveMapper}>
-                  <View style={[styles.actionIconBg, { backgroundColor: '#FF980020' }]}>
-                    <Image source={require('../assets/geo.png')} style={styles.actionIcon} />
-                  </View>
-                  <Text style={styles.actionLabel}>{t('common.actions.sensors_mapping', { defaultValue: 'Sensors Mapping' })}</Text>
-                </TouchableOpacity>
+                  <TouchableOpacity style={styles.actionCard} onPress={handleMasterSlaveMapper}>
+                    <View style={[styles.actionIconBg, { backgroundColor: '#FF980020' }]}>
+                      <Image source={require('../assets/geo.png')} style={styles.actionIcon} />
+                    </View>
+                    <Text style={styles.actionLabel}>{t('common.actions.sensors_mapping', { defaultValue: 'Sensors Mapping' })}</Text>
+                  </TouchableOpacity>
 
-                <TouchableOpacity style={styles.actionCard} onPress={handleSensorList}>
-                  <View style={[styles.actionIconBg, { backgroundColor: '#E91E6320' }]}>
-                    <Image source={require('../assets/location.png')} style={styles.actionIcon} />
-                  </View>
-                  <Text style={styles.actionLabel}>{t('common.actions.mapped_sensors', { defaultValue: 'Mapped Sensors' })}</Text>
-                </TouchableOpacity>
+                  <TouchableOpacity style={styles.actionCard} onPress={handleSensorList}>
+                    <View style={[styles.actionIconBg, { backgroundColor: '#E91E6320' }]}>
+                      <Image source={require('../assets/location.png')} style={styles.actionIcon} />
+                    </View>
+                    <Text style={styles.actionLabel}>{t('common.actions.mapped_sensors', { defaultValue: 'Mapped Sensors' })}</Text>
+                  </TouchableOpacity>
 
-                <TouchableOpacity style={styles.actionCard} onPress={handleTicketsScreen}>
-                  <View style={[styles.actionIconBg, { backgroundColor: '#2196F320' }]}>
-                    <Image source={require('../assets/phone.png')} style={styles.actionIcon} />
-                  </View>
-                  <Text style={styles.actionLabel}>{t('common.actions.tickets', { defaultValue: 'Tickets' })}</Text>
-                </TouchableOpacity>
-              </View>
+                  <TouchableOpacity style={styles.actionCard} onPress={handleTicketsScreen}>
+                    <View style={[styles.actionIconBg, { backgroundColor: '#2196F320' }]}>
+                      <Image source={require('../assets/phone.png')} style={styles.actionIcon} />
+                    </View>
+                    <Text style={styles.actionLabel}>{t('common.actions.tickets', { defaultValue: 'Tickets' })}</Text>
+                  </TouchableOpacity>
+                </View>
+
+                {/* Row 2 */}
+                <View style={styles.actionRow}>
+                  <TouchableOpacity style={styles.actionCard} onPress={handleRandomStopScreen}>
+                    <View style={[styles.actionIconBg, { backgroundColor: '#2196F320' }]}>
+                      <Image source={require('../assets/randomstop.png')} style={styles.actionIcon} />
+                    </View>
+                    <Text style={styles.actionLabel}>{t('common.actions.random_stop', { defaultValue: 'Random Stop' })}</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity style={styles.actionCard} onPress={handleRequestEsealsList}>
+                    <View style={[styles.actionIconBg, { backgroundColor: '#FF6B6B20' }]}>
+                      <Image source={require('../assets/alarm.png')} style={styles.actionIcon} />
+                    </View>
+                    <Text style={styles.actionLabel}>{t('common.actions.request_eseals', { defaultValue: 'Request Eseals' })}</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity style={styles.actionCard} onPress={handleGeofencesScreen}>
+                    <View style={[styles.actionIconBg, { backgroundColor: '#FF980020' }]}>
+                      <Image source={require('../assets/geo.png')} style={styles.actionIcon} />
+                    </View>
+                    <Text style={styles.actionLabel}>{t('common.actions.geofences', { defaultValue: 'Geofences' })}</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity style={styles.actionCard} onPress={handleHotspotsScreen}>
+                    <View style={[styles.actionIconBg, { backgroundColor: '#E91E6320' }]}>
+                      <Image source={require('../assets/location.png')} style={styles.actionIcon} />
+                    </View>
+                    <Text style={styles.actionLabel}>{t('common.actions.hotspots', { defaultValue: 'Hotspots' })}</Text>
+                  </TouchableOpacity>
+                </View>
+
+                {/* Row 3 */}
+                <View style={styles.actionRow}>
+                  <TouchableOpacity style={styles.actionCard} onPress={handleDeviceMapScreen}>
+                    <View style={[styles.actionIconBg, { backgroundColor: '#FFA50020' }]}>
+                      <Image source={require('../assets/monitor.png')} style={styles.actionIcon} />
+                    </View>
+                    <Text style={styles.actionLabel}>{t('common.actions.shipments', { defaultValue: 'Shipments' })}</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity style={styles.actionCard} onPress={handleStationsScreen}>
+                    <View style={[styles.actionIconBg, { backgroundColor: '#00BCD420' }]}>
+                      <Image source={require('../assets/station.png')} style={styles.actionIcon} />
+                    </View>
+                    <Text style={styles.actionLabel}>{t('common.actions.stations', { defaultValue: 'Stations' })}</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity style={styles.actionCard} onPress={handleAssignedEseals}>
+                    <View style={[styles.actionIconBg, { backgroundColor: '#2196F320' }]}>
+                      <Image source={require('../assets/phone.png')} style={styles.actionIcon} />
+                    </View>
+                    <Text style={styles.actionLabel}>{t('common.actions.assigned_eseals', { defaultValue: 'Assigned Eseals' })}</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity style={styles.actionCard} onPress={handleInventoryScan}>
+                    <View style={[styles.actionIconBg, { backgroundColor: '#9C27B020' }]}>
+                      <Image source={require('../assets/trk.png')} style={styles.actionIcon} />
+                    </View>
+                    <Text style={styles.actionLabel}>{t('common.actions.scan_to_add', { defaultValue: 'Scan to Add Devices' })}</Text>
+                  </TouchableOpacity>
+                </View>
+              </>
             )}
 
-            {/* Row for role 103 - only Tickets */}
+            {/* ROLE 103 - only Tickets */}
             {roleId === 103 && (
               <View style={styles.actionRow}>
                 <TouchableOpacity style={styles.actionCard} onPress={handleTicketsScreen}>
@@ -1113,7 +1426,7 @@ function HomeScreen() {
               </View>
             )}
 
-            {/* Row for role 257 - only Tickets */}
+            {/* ROLE 257 - only Tickets */}
             {roleId === 257 && (
               <View style={styles.actionRow}>
                 <TouchableOpacity style={styles.actionCard} onPress={handleTicketsScreen}>
@@ -1124,87 +1437,13 @@ function HomeScreen() {
                 </TouchableOpacity>
               </View>
             )}
-
-            {/* Row 2 – visible for role 1 only */}
-            {roleId === 1 && (
-              <View style={styles.actionRow}>
-                <TouchableOpacity style={styles.actionCard} onPress={handleRandomStopScreen}>
-                  <View style={[styles.actionIconBg, { backgroundColor: '#2196F320' }]}>
-                    <Image source={require('../assets/randomstop.png')} style={styles.actionIcon} />
-                  </View>
-                  <Text style={styles.actionLabel}>{t('common.actions.random_stop', { defaultValue: 'Random Stop' })}</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity style={styles.actionCard} onPress={handleRequestEsealsList}>
-                  <View style={[styles.actionIconBg, { backgroundColor: '#FF6B6B20' }]}>
-                    <Image source={require('../assets/alarm.png')} style={styles.actionIcon} />
-                  </View>
-                  <Text style={styles.actionLabel}>{t('common.actions.request_eseals', { defaultValue: 'Request Eseals' })}</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity style={styles.actionCard} onPress={handleEsealsReplacement}>
-                  <View style={[styles.actionIconBg, { backgroundColor: '#4CAF5020' }]}>
-                    <Image source={require('../assets/bell.png')} style={styles.actionIcon} />
-                  </View>
-                  <Text style={styles.actionLabel}>{t('common.actions.eseals_replacement', { defaultValue: 'Eseals Replacement' })}</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity style={styles.actionCard} onPress={handleAssignedEseals}>
-                  <View style={[styles.actionIconBg, { backgroundColor: '#2196F320' }]}>
-                    <Image source={require('../assets/phone.png')} style={styles.actionIcon} />
-                  </View>
-                  <Text style={styles.actionLabel}>{t('common.actions.assigned_eseals', { defaultValue: 'Assigned Eseals' })}</Text>
-                </TouchableOpacity>
-              </View>
-            )}
-
-            {/* Row 3 – visible only for role 1 (admin features) */}
-            {roleId === 1 && (
-              <View style={styles.actionRow}>
-                <TouchableOpacity style={styles.actionCard} onPress={handleGeofencesScreen}>
-                  <View style={[styles.actionIconBg, { backgroundColor: '#FF980020' }]}>
-                    <Image source={require('../assets/geo.png')} style={styles.actionIcon} />
-                  </View>
-                  <Text style={styles.actionLabel}>{t('common.actions.geofences', { defaultValue: 'Geofences' })}</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity style={styles.actionCard} onPress={handleHotspotsScreen}>
-                  <View style={[styles.actionIconBg, { backgroundColor: '#E91E6320' }]}>
-                    <Image source={require('../assets/location.png')} style={styles.actionIcon} />
-                  </View>
-                  <Text style={styles.actionLabel}>{t('common.actions.hotspots', { defaultValue: 'Hotspots' })}</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity style={styles.actionCard} onPress={handleDeviceMapScreen}>
-                  <View style={[styles.actionIconBg, { backgroundColor: '#FFA50020' }]}>
-                    <Image source={require('../assets/monitor.png')} style={styles.actionIcon} />
-                  </View>
-                  <Text style={styles.actionLabel}>{t('common.actions.shipments', { defaultValue: 'Shipments' })}</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity style={styles.actionCard} onPress={handleStationsScreen}>
-                  <View style={[styles.actionIconBg, { backgroundColor: '#00BCD420' }]}>
-                    <Image source={require('../assets/station.png')} style={styles.actionIcon} />
-                  </View>
-                  <Text style={styles.actionLabel}>{t('common.actions.stations', { defaultValue: 'Stations' })}</Text>
-                </TouchableOpacity>
-              </View>
-            )}
           </View>
         </View>
       )}
 
+      {/* Receive Devices Section - Moved outside the grid for proper placement */}
       {(roleId === 1 || roleId === 202) && (
         <View style={styles.actionRow}>
-          {(roleId === 1) && (
-            <TouchableOpacity style={styles.actionCard} onPress={handleInventoryScan}>
-              <View style={[styles.actionIconBg, { backgroundColor: '#9C27B020' }]}>
-                <Image source={require('../assets/trk.png')} style={styles.actionIcon} />
-              </View>
-              <Text style={styles.actionLabel}>{t('common.actions.scan_to_add', { defaultValue: 'Scan to Add Devices' })}</Text>
-            </TouchableOpacity>
-          )}
-
           {(roleId === 202 || roleId === 1) && (
             <TouchableOpacity style={styles.actionCard} onPress={handleReceiveDevicesScreen}>
               <View style={[styles.actionIconBg, { backgroundColor: '#9C27B020' }]}>
@@ -1270,6 +1509,15 @@ function HomeScreen() {
                 <ActivityIndicator size="large" color="#FFA500" />
                 <Text style={styles.loaderText}>{t('common.loading_tickets', { defaultValue: 'Loading tickets...' })}</Text>
               </View>
+            ) : dataLoadError ? (
+              <View style={styles.emptyContainer}>
+                <Image source={require('../assets/refresh.png')} style={styles.errorIcon} />
+                <Text style={styles.emptyTitle}>Connection Error</Text>
+                <Text style={styles.emptyText}>Unable to load data. Please check your connection.</Text>
+                <TouchableOpacity style={styles.retryButton} onPress={loadAllData}>
+                  <Text style={styles.retryButtonText}>Retry</Text>
+                </TouchableOpacity>
+              </View>
             ) : (
               <View style={styles.emptyContainer}>
                 <Text style={styles.emptyText}>{t('common.no_tickets', { defaultValue: 'No tickets found' })}</Text>
@@ -1304,6 +1552,15 @@ function HomeScreen() {
             <View style={styles.loaderContainer}>
               <ActivityIndicator size="large" color="#FFA500" />
               <Text style={styles.loaderText}>{t('common.loading', { defaultValue: 'Loading...' })}</Text>
+            </View>
+          ) : dataLoadError ? (
+            <View style={styles.emptyContainer}>
+              <Image source={require('../assets/refresh.png')} style={styles.errorIcon} />
+              <Text style={styles.emptyTitle}>Connection Error</Text>
+              <Text style={styles.emptyText}>Unable to load data. Please check your connection.</Text>
+              <TouchableOpacity style={styles.retryButton} onPress={loadAllData}>
+                <Text style={styles.retryButtonText}>Retry</Text>
+              </TouchableOpacity>
             </View>
           ) : (
             <View style={styles.emptyContainer}>
@@ -1502,9 +1759,9 @@ function HomeScreen() {
                         setModalVisible(false);
                         const shipment = shipments.find(s => s.trackingNumber === selectedTicket.t1Number);
                         if (shipment) {
-                          navigation.navigate('TrackOnMap2', { shipment });
+                          navigation.navigate('DeviceMapScreen', { shipment });
                         } else {
-                          navigation.navigate('TrackOnMap2', { t1Number: selectedTicket.t1Number });
+                          navigation.navigate('DeviceMapScreen', { t1Number: selectedTicket.t1Number });
                         }
                       }}
                     >
@@ -1514,19 +1771,64 @@ function HomeScreen() {
                   )}
                 </ScrollView>
 
-                {selectedTicket && (
-                  <View style={styles.modalActions}>
-                    {(selectedTicket.status === 'RESOLVED' || selectedTicket.status === 'CLOSED') ? (
-                      <View style={[styles.submitButton, { backgroundColor: '#4CAF50', flex: 1 }]}>
-                        <Text style={styles.submitButtonText}>
-                          {selectedTicket.status === 'RESOLVED' ? t('common.resolved', { defaultValue: '✓ Resolved' }) : t('common.closed', { defaultValue: '✓ Closed' })}
-                        </Text>
-                      </View>
-                    ) : (
-                      <>
-                        {selectedTicket.status === 'ACKNOWLEDGED' ? (
+                {/* Modal action buttons */}
+                <View style={styles.modalActions}>
+                  {(selectedTicket.status === 'RESOLVED' || selectedTicket.status === 'CLOSED') ? (
+                    <View style={[styles.submitButton, { backgroundColor: '#4CAF50', flex: 1 }]}>
+                      <Text style={styles.submitButtonText}>
+                        {selectedTicket.status === 'RESOLVED' ? t('common.resolved', { defaultValue: '✓ Resolved' }) : t('common.closed', { defaultValue: '✓ Closed' })}
+                      </Text>
+                    </View>
+                  ) : (
+                    <>
+                      {/* Show Claim button only for broadcast tickets (assignee null) and ticket is OPEN */}
+                      {!selectedTicket.assignee && selectedTicket.status === 'OPEN' && (
+                        <TouchableOpacity
+                          style={[styles.submitButton, { backgroundColor: '#8B5CF6', flex: 1 }]}
+                          onPress={() => handleClaimTicket(selectedTicket.id)}
+                          disabled={claimingTicketId === selectedTicket.id}
+                        >
+                          {claimingTicketId === selectedTicket.id ? (
+                            <ActivityIndicator size="small" color="#FFFFFF" />
+                          ) : (
+                            <Text style={styles.submitButtonText}>{t('common.claim', { defaultValue: 'Claim Ticket' })}</Text>
+                          )}
+                        </TouchableOpacity>
+                      )}
+                      {selectedTicket.status === 'ACKNOWLEDGED' ? (
+                        <TouchableOpacity
+                          style={[styles.submitButton, { flex: 1 }]}
+                          onPress={() => handleResolve(selectedTicket)}
+                          disabled={resolvingTicketId === selectedTicket.id}
+                        >
+                          {resolvingTicketId === selectedTicket.id ? (
+                            <ActivityIndicator size="small" color="#FFFFFF" />
+                          ) : (
+                            <Text style={styles.submitButtonText}>{t('common.resolve', { defaultValue: 'Resolve' })}</Text>
+                          )}
+                        </TouchableOpacity>
+                      ) : (
+                        <>
                           <TouchableOpacity
-                            style={[styles.submitButton, { flex: 1 }]}
+                            style={[
+                              styles.submitButton,
+                              (acknowledgingTicketId === selectedTicket.id) && styles.submitButtonDisabled
+                            ]}
+                            onPress={() => handleAcknowledge(selectedTicket.id)}
+                            disabled={acknowledgingTicketId === selectedTicket.id}
+                          >
+                            {acknowledgingTicketId === selectedTicket.id ? (
+                              <ActivityIndicator size="small" color="#FFFFFF" />
+                            ) : (
+                              <Text style={styles.submitButtonText}>{t('common.acknowledge', { defaultValue: 'Acknowledge' })}</Text>
+                            )}
+                          </TouchableOpacity>
+
+                          <TouchableOpacity
+                            style={[
+                              styles.submitButton,
+                              (resolvingTicketId === selectedTicket.id) && styles.submitButtonDisabled
+                            ]}
                             onPress={() => handleResolve(selectedTicket)}
                             disabled={resolvingTicketId === selectedTicket.id}
                           >
@@ -1536,43 +1838,11 @@ function HomeScreen() {
                               <Text style={styles.submitButtonText}>{t('common.resolve', { defaultValue: 'Resolve' })}</Text>
                             )}
                           </TouchableOpacity>
-                        ) : (
-                          <>
-                            <TouchableOpacity
-                              style={[
-                                styles.submitButton,
-                                (acknowledgingTicketId === selectedTicket.id) && styles.submitButtonDisabled
-                              ]}
-                              onPress={() => handleAcknowledge(selectedTicket.id)}
-                              disabled={acknowledgingTicketId === selectedTicket.id}
-                            >
-                              {acknowledgingTicketId === selectedTicket.id ? (
-                                <ActivityIndicator size="small" color="#FFFFFF" />
-                              ) : (
-                                <Text style={styles.submitButtonText}>{t('common.acknowledge', { defaultValue: 'Acknowledge' })}</Text>
-                              )}
-                            </TouchableOpacity>
-
-                            <TouchableOpacity
-                              style={[
-                                styles.submitButton,
-                                (resolvingTicketId === selectedTicket.id) && styles.submitButtonDisabled
-                              ]}
-                              onPress={() => handleResolve(selectedTicket)}
-                              disabled={resolvingTicketId === selectedTicket.id}
-                            >
-                              {resolvingTicketId === selectedTicket.id ? (
-                                <ActivityIndicator size="small" color="#FFFFFF" />
-                              ) : (
-                                <Text style={styles.submitButtonText}>{t('common.resolve', { defaultValue: 'Resolve' })}</Text>
-                              )}
-                            </TouchableOpacity>
-                          </>
-                        )}
-                      </>
-                    )}
-                  </View>
-                )}
+                        </>
+                      )}
+                    </>
+                  )}
+                </View>
               </>
             )}
           </Animatable.View>
@@ -1592,47 +1862,43 @@ const styles = StyleSheet.create({
   headerIcon: { width: 24, height: 24 },
   badge: { position: 'absolute', top: -5, right: -8, backgroundColor: '#FFA500', borderRadius: 10, minWidth: 18, height: 18, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 4 },
   badgeText: { color: '#FFFFFF', fontSize: 10, fontWeight: 'bold' },
+  syncIndicator: { marginLeft: 16 },
+  offlineBanner: { backgroundColor: '#FF9800', padding: 8, marginHorizontal: 20, marginBottom: 12, borderRadius: 8, alignItems: 'center' },
+  offlineBannerText: { color: '#FFFFFF', fontSize: 12, fontWeight: '500' },
   trackingCard: { backgroundColor: '#FFFFFF', marginHorizontal: 20, marginBottom: 20, padding: 20, borderRadius: 12, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 12, elevation: 1 },
   trackingTitle: { fontSize: 18, fontWeight: '600', color: '#1A1A1A', marginBottom: 12 },
   trackingSearch: { flexDirection: 'row' },
   searchInput: { flex: 1, borderWidth: 1.5, borderColor: '#E5E5E5', borderRadius: 12, paddingHorizontal: 16, paddingVertical: 12, fontSize: 14, backgroundColor: '#FAFAFA', marginRight: 12 },
   trackButton: { backgroundColor: '#FFA500', borderRadius: 12, paddingHorizontal: 24, justifyContent: 'center', shadowColor: '#FFA500', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 3 },
   trackButtonText: { color: '#FFFFFF', fontWeight: '600', fontSize: 14 },
-  quickActionsGrid: { marginHorizontal: 2, marginBottom: 20, marginTop: 16 },
-  actionsContainer: { gap: 6 },
-  actionRow: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'flex-start' },
-  actionRowSingle: { flexDirection: 'row', flexWrap: 'nowrap', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 4, marginBottom: 15 },
-  actionCard: {
-    width: '22%',
-    marginHorizontal: '1.5%',
-    marginBottom: 15,
-    alignItems: 'center',
-    minHeight: 80,
-  },
-  actionCardSmall: {
-    width: '23%',
-    marginHorizontal: '1%',
+  quickActionsGrid: { marginHorizontal: 20, marginBottom: 20, marginTop: 16 },
+  actionsContainer: { gap: 16 },
+  actionRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
     marginBottom: 0,
+  },
+  actionCard: {
+    width: (width - 56) / 4,
     alignItems: 'center',
     minHeight: 80,
   },
   actionIconBg: {
-    width: 46,
-    height: 46,
-    borderRadius: 28,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 8,
   },
   actionIcon: { width: 24, height: 24 },
   actionLabel: {
-    fontSize: 10,
+    fontSize: 11,
     color: '#333',
     fontWeight: '500',
     textAlign: 'center',
     lineHeight: 14,
-    height: 28,
-    width: '100%',
   },
   alarmCard: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#FFFFFF', marginHorizontal: 20, marginBottom: 16, padding: 16, borderRadius: 12, shadowOpacity: 0.05, elevation: 1 },
   alarmInfo: { flexDirection: 'row', alignItems: 'center', flex: 1 },
@@ -1645,6 +1911,19 @@ const styles = StyleSheet.create({
   tabText: { fontSize: 14, fontWeight: '500', color: '#666' },
   activeTabText: { color: '#FFA500', fontWeight: '600' },
   listContent: { paddingBottom: 100 },
+
+  // Broadcast badge style
+  broadcastBadge: {
+    backgroundColor: '#8B5CF6',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  broadcastBadgeText: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#FFFFFF',
+  },
 
   // Shipment Card Styles
   shipmentCard: { backgroundColor: '#FFFFFF', borderRadius: 16, marginHorizontal: 16, padding: 16, marginBottom: 12, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 3 },
@@ -1849,6 +2128,24 @@ const styles = StyleSheet.create({
   loaderText: { marginTop: 12, fontSize: 14, color: '#666' },
   emptyContainer: { padding: 40, alignItems: 'center' },
   emptyText: { fontSize: 14, color: '#999' },
+  errorIcon: {
+    width: 64,
+    height: 64,
+    marginBottom: 16,
+    opacity: 0.5,
+  },
+  retryButton: {
+    backgroundColor: '#FFA500',
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 8,
+    marginTop: 16,
+  },
+  retryButtonText: {
+    color: '#FFFFFF',
+    fontWeight: '600',
+    fontSize: 14,
+  },
 
   // Ticket Detail Modal Styles
   ticketDetailHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },

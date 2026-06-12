@@ -11,6 +11,12 @@ import serverUrl from '../config';
 import { PermissionsAndroid, Platform } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 
+// ========== OFFLINE MODULE IMPORTS ==========
+import OfflineDatabaseService from '../services/OfflineDatabaseService';
+import NetworkMonitorService from '../services/NetworkMonitorService';
+import OfflineSyncService from '../services/OfflineSyncService';
+// ========== END OFFLINE MODULE IMPORTS ==========
+
 const CreateTicket = ({ navigation }) => {
   const [submitting, setSubmitting] = useState(false);
   const [incidentTypes, setIncidentTypes] = useState([]);
@@ -30,9 +36,182 @@ const CreateTicket = ({ navigation }) => {
 
   const priorityOptions = ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'];
 
+  // ========== OFFLINE MODE STATE VARIABLES ==========
+  const [isOnline, setIsOnline] = useState(true);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [pendingTickets, setPendingTickets] = useState([]);
+  // ========== END OFFLINE MODE STATE VARIABLES ==========
+
+  // ========== OFFLINE MODE INITIALIZATION ==========
   useEffect(() => {
-    fetchIncidentTypes();
+    const initOfflineMode = async () => {
+      try {
+        // Initialize offline database
+        await OfflineDatabaseService.initDatabase();
+        console.log('✅ Offline database initialized for Create Ticket Screen');
+
+        // Initialize network monitor
+        NetworkMonitorService.init();
+
+        // Start auto-sync service
+        await OfflineSyncService.startAutoSync();
+
+        // Listen for network changes
+        NetworkMonitorService.on('connectionChange', (online) => {
+          setIsOnline(online);
+          if (online) {
+            Snackbar.show({
+              text: 'Back online! Syncing pending tickets...',
+              duration: 2000,
+              backgroundColor: '#4CAF50',
+            });
+            // Process pending tickets when coming back online
+            processPendingTickets();
+          } else {
+            Snackbar.show({
+              text: 'Offline mode - Tickets will be saved locally',
+              duration: 3000,
+              backgroundColor: '#FF9800',
+            });
+          }
+        });
+
+        // Load pending tickets from storage
+        await loadPendingTickets();
+
+        // Load incident types (with offline fallback)
+        await fetchIncidentTypes();
+      } catch (error) {
+        console.error('❌ Offline mode init error:', error);
+      }
+    };
+
+    initOfflineMode();
+
+    return () => {
+      // Cleanup
+      OfflineSyncService.stopAutoSync();
+      NetworkMonitorService.cleanup();
+    };
   }, []);
+  // ========== END OFFLINE MODE INITIALIZATION ==========
+
+  // ========== OFFLINE: Load pending tickets ==========
+  const loadPendingTickets = async () => {
+    try {
+      const pending = await OfflineDatabaseService.getUserData('pending_tickets');
+      if (pending && pending.length > 0) {
+        setPendingTickets(pending);
+        Snackbar.show({
+          text: `You have ${pending.length} pending ticket(s) to sync`,
+          duration: 4000,
+          backgroundColor: '#FF9800',
+        });
+      }
+    } catch (error) {
+      console.error('Error loading pending tickets:', error);
+    }
+  };
+  // ========== END OFFLINE LOAD PENDING ==========
+
+  // ========== OFFLINE: Save ticket offline ==========
+  const saveTicketOffline = async (ticketData, position) => {
+    try {
+      const offlineTicket = {
+        id: Date.now(),
+        ...ticketData,
+        latitude: position.coords.latitude,
+        longitude: position.coords.longitude,
+        createdAt: new Date().toISOString(),
+        status: 'PENDING_SYNC',
+        syncStatus: 'PENDING'
+      };
+
+      const existingTickets = await OfflineDatabaseService.getUserData('pending_tickets') || [];
+      existingTickets.push(offlineTicket);
+      await OfflineDatabaseService.saveUserData('pending_tickets', existingTickets);
+      setPendingTickets(existingTickets);
+
+      // Also add to sync queue
+      await OfflineDatabaseService.addToSyncQueue('CREATE_TICKET', '/tickets/manual', offlineTicket);
+
+      return true;
+    } catch (error) {
+      console.error('Error saving ticket offline:', error);
+      return false;
+    }
+  };
+  // ========== END OFFLINE SAVE TICKET ==========
+
+  // ========== OFFLINE: Process pending tickets ==========
+  const processPendingTickets = async () => {
+    if (!isOnline) return;
+
+    const pending = await OfflineDatabaseService.getUserData('pending_tickets');
+    if (!pending || pending.length === 0) return;
+
+    console.log(`🔄 Processing ${pending.length} pending tickets...`);
+    let successCount = 0;
+    let failCount = 0;
+
+    for (const ticket of pending) {
+      try {
+        const token = await AsyncStorage.getItem('accessToken');
+        const userObj = await AsyncStorage.getItem('user');
+        const user = userObj ? JSON.parse(userObj) : null;
+
+        const payload = {
+          title: ticket.title,
+          description: ticket.description,
+          priority: ticket.priority,
+          latitude: ticket.latitude,
+          longitude: ticket.longitude,
+          assigneeId: user?.id || 1,
+          cargoValue: ticket.cargoValue || 0,
+          deviceSn: ticket.deviceSn || null,
+          incidentTypeId: ticket.incidentTypeId,
+        };
+
+        const response = await axios.post(`${serverUrl}/tickets/manual`, payload, {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        });
+
+        if (response.status === 200 || response.status === 201) {
+          successCount++;
+          console.log(`✅ Synced ticket: ${ticket.title}`);
+        } else {
+          failCount++;
+        }
+      } catch (error) {
+        console.error(`Failed to sync ticket:`, error);
+        failCount++;
+      }
+    }
+
+    // Clear processed tickets from storage
+    await OfflineDatabaseService.saveUserData('pending_tickets', []);
+    setPendingTickets([]);
+
+    if (successCount > 0) {
+      Snackbar.show({
+        text: `Synced ${successCount} pending ticket(s) successfully!`,
+        duration: 3000,
+        backgroundColor: '#4CAF50',
+      });
+    }
+
+    if (failCount > 0) {
+      Snackbar.show({
+        text: `${failCount} ticket(s) failed to sync. Will retry later.`,
+        duration: 3000,
+        backgroundColor: '#FF6B6B',
+      });
+    }
+  };
+  // ========== END OFFLINE PROCESS PENDING ==========
 
   const fetchIncidentTypes = async () => {
     setLoadingIncidentTypes(true);
@@ -44,17 +223,68 @@ const CreateTicket = ({ navigation }) => {
 
       // Assuming the response returns an array of objects with id and name
       setIncidentTypes(response.data);
+
+      // ========== OFFLINE: Cache incident types ==========
+      await OfflineDatabaseService.saveUserData('incident_types', response.data);
+      // ========== END OFFLINE CACHE ==========
     } catch (error) {
       console.error('Error fetching incident types:', error);
-      Snackbar.show({
-        text: 'Failed to load incident types',
-        backgroundColor: '#FF6B6B',
-        duration: 3000,
-      });
+
+      // ========== OFFLINE: Fallback to cached incident types ==========
+      const cachedTypes = await OfflineDatabaseService.getUserData('incident_types');
+      if (cachedTypes && cachedTypes.length > 0) {
+        setIncidentTypes(cachedTypes);
+        Snackbar.show({
+          text: 'Using cached incident types (offline mode)',
+          backgroundColor: '#FF9800',
+          duration: 2000,
+        });
+      } else {
+        Snackbar.show({
+          text: 'Failed to load incident types',
+          backgroundColor: '#FF6B6B',
+          duration: 3000,
+        });
+      }
+      // ========== END OFFLINE FALLBACK ==========
     } finally {
       setLoadingIncidentTypes(false);
     }
   };
+
+  // ========== OFFLINE: Manual sync function ==========
+  const manualSync = async () => {
+    if (!isOnline) {
+      Snackbar.show({
+        text: 'Cannot sync while offline',
+        duration: 3000,
+        backgroundColor: '#FF6B6B',
+      });
+      return;
+    }
+
+    setIsSyncing(true);
+    try {
+      await OfflineSyncService.syncAll();
+      await processPendingTickets();
+      await fetchIncidentTypes();
+      Snackbar.show({
+        text: 'Sync completed successfully!',
+        duration: 3000,
+        backgroundColor: '#4CAF50',
+      });
+    } catch (error) {
+      console.error('Manual sync error:', error);
+      Snackbar.show({
+        text: 'Sync failed',
+        duration: 3000,
+        backgroundColor: '#FF6B6B',
+      });
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+  // ========== END OFFLINE MANUAL SYNC ==========
 
   const handleSubmit = async () => {
     // 1. Validate required fields
@@ -91,6 +321,44 @@ const CreateTicket = ({ navigation }) => {
     Geolocation.getCurrentPosition(
       async (position) => {
         try {
+          // ========== OFFLINE: Check if online ==========
+          const online = await NetworkMonitorService.isOnline();
+
+          if (!online) {
+            // Save ticket offline
+            const saved = await saveTicketOffline(form, position);
+            if (saved) {
+              Alert.alert(
+                'Ticket Saved Offline',
+                'Your ticket has been saved locally and will be submitted when you are back online.',
+                [
+                  {
+                    text: 'OK',
+                    onPress: () => {
+                      // Reset form
+                      setForm({
+                        title: '',
+                        description: '',
+                        priority: 'MEDIUM',
+                        deviceSn: '',
+                        cargoValue: '',
+                        incidentType: 'ROUTE',
+                        incidentTypeId: null,
+                        incidentTypeName: '',
+                      });
+                      navigation.goBack();
+                    }
+                  }
+                ]
+              );
+            } else {
+              Alert.alert('Error', 'Failed to save ticket offline. Please try again.');
+            }
+            setSubmitting(false);
+            return;
+          }
+          // ========== END OFFLINE CHECK ==========
+
           const token = await AsyncStorage.getItem('accessToken');
           const userObj = await AsyncStorage.getItem('user');
           const user = userObj ? JSON.parse(userObj) : null;
@@ -129,7 +397,44 @@ const CreateTicket = ({ navigation }) => {
           }
         } catch (error) {
           console.error('Submission Error:', error.response?.data);
-          Alert.alert('Error', error.response?.data?.message || 'Submission failed');
+
+          // ========== OFFLINE: Offer to save offline on error ==========
+          const isNetworkError = error.message?.includes('network') ||
+                                error.message?.includes('offline') ||
+                                error.code === 'ERR_NETWORK';
+
+          if (isNetworkError && !isOnline) {
+            const saved = await saveTicketOffline(form, position);
+            if (saved) {
+              Alert.alert(
+                'Ticket Saved Offline',
+                'Your ticket has been saved locally and will be submitted when you are back online.',
+                [
+                  {
+                    text: 'OK',
+                    onPress: () => {
+                      setForm({
+                        title: '',
+                        description: '',
+                        priority: 'MEDIUM',
+                        deviceSn: '',
+                        cargoValue: '',
+                        incidentType: 'ROUTE',
+                        incidentTypeId: null,
+                        incidentTypeName: '',
+                      });
+                      navigation.goBack();
+                    }
+                  }
+                ]
+              );
+            } else {
+              Alert.alert('Error', error.response?.data?.message || 'Submission failed');
+            }
+          } else {
+            Alert.alert('Error', error.response?.data?.message || 'Submission failed');
+          }
+          // ========== END OFFLINE OFFER ==========
         } finally {
           setSubmitting(false);
         }
@@ -154,7 +459,41 @@ const CreateTicket = ({ navigation }) => {
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContent}>
-        <Text style={styles.headerTitle}>Create Manual Ticket</Text>
+        {/* ========== OFFLINE: Header with sync button ========== */}
+        <View style={styles.headerRow}>
+          <Text style={styles.headerTitle}>Create Manual Ticket</Text>
+          {isSyncing ? (
+            <ActivityIndicator size="small" color="#FFA500" />
+          ) : (
+            <TouchableOpacity onPress={manualSync} style={styles.syncButton}>
+              <Icon name="sync" size={20} color={isOnline ? "#4CAF50" : "#999"} />
+              <Text style={[styles.syncButtonText, { color: isOnline ? "#4CAF50" : "#999" }]}>Sync</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+        {/* ========== END OFFLINE HEADER ========== */}
+
+        {/* ========== OFFLINE: Network status banner ========== */}
+        {!isOnline && (
+          <View style={styles.offlineBanner}>
+            <Icon name="wifi-off" size={16} color="#FFF" />
+            <Text style={styles.offlineBannerText}>
+              Offline Mode - Ticket will be saved locally
+            </Text>
+          </View>
+        )}
+        {/* ========== END OFFLINE BANNER ========== */}
+
+        {/* ========== OFFLINE: Pending tickets banner ========== */}
+        {pendingTickets.length > 0 && isOnline && (
+          <TouchableOpacity style={styles.pendingBanner} onPress={processPendingTickets}>
+            <Icon name="pending" size={16} color="#FF9800" />
+            <Text style={styles.pendingBannerText}>
+              {pendingTickets.length} pending ticket(s) to sync. Tap to sync now.
+            </Text>
+          </TouchableOpacity>
+        )}
+        {/* ========== END OFFLINE PENDING BANNER ========== */}
 
         <Text style={styles.label}>Title *</Text>
         <TextInput
@@ -227,7 +566,9 @@ const CreateTicket = ({ navigation }) => {
           {submitting ? (
             <ActivityIndicator color="#fff" />
           ) : (
-            <Text style={styles.btnText}>Proceed to Attatch Evidence</Text>
+            <Text style={styles.btnText}>
+              {!isOnline ? 'Save Ticket Offline' : 'Proceed to Attach Evidence'}
+            </Text>
           )}
         </TouchableOpacity>
       </ScrollView>
@@ -289,7 +630,57 @@ export default CreateTicket;
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F8F9FA' },
   scrollContent: { padding: 20 },
-  headerTitle: { fontSize: 22, fontWeight: 'bold', marginBottom: 15, color: '#1A1A1A', marginTop: 30 },
+  headerRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 15,
+    marginTop: 30,
+  },
+  headerTitle: { fontSize: 22, fontWeight: 'bold', color: '#1A1A1A' },
+  syncButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    backgroundColor: '#F5F5F5',
+    borderRadius: 20,
+    gap: 4,
+  },
+  syncButtonText: {
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  offlineBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FF9800',
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 16,
+    gap: 8,
+  },
+  offlineBannerText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '500',
+    flex: 1,
+  },
+  pendingBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFF3E0',
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 16,
+    gap: 8,
+  },
+  pendingBannerText: {
+    color: '#FF9800',
+    fontSize: 12,
+    fontWeight: '500',
+    flex: 1,
+  },
   label: { fontWeight: '600', marginTop: 15, color: '#444' },
   optionalLabel: { fontWeight: '500', marginTop: 15, color: '#888', fontSize: 13 },
   input: { backgroundColor: '#F5F5F5', borderRadius: 10, padding: 12, color: '#000' },

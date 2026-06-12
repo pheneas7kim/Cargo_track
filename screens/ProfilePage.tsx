@@ -17,6 +17,11 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../screens/types';
 import * as Animatable from 'react-native-animatable';
 
+// ========== OFFLINE MODULE IMPORTS ==========
+import OfflineDatabaseService from '../services/OfflineDatabaseService';
+import NetworkMonitorService from '../services/NetworkMonitorService';
+// ========== END OFFLINE MODULE IMPORTS ==========
+
 const { width } = Dimensions.get('window');
 
 export default function ProfilePage() {
@@ -24,6 +29,85 @@ export default function ProfilePage() {
   const [emailname, setEmail] = useState<string>('');
   const [userInitials, setUserInitials] = useState<string>('');
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+
+  // ========== OFFLINE MODE STATE VARIABLES ==========
+  const [isOnline, setIsOnline] = useState(true);
+  // ========== END OFFLINE MODE STATE VARIABLES ==========
+
+  // ========== OFFLINE MODE INITIALIZATION ==========
+  useEffect(() => {
+    const initOfflineMode = async () => {
+      try {
+        // Initialize offline database
+        await OfflineDatabaseService.initDatabase();
+        console.log('✅ Offline database initialized for Profile Page');
+
+        // Initialize network monitor
+        NetworkMonitorService.init();
+
+        // Listen for network changes
+        NetworkMonitorService.on('connectionChange', (online) => {
+          setIsOnline(online);
+          if (!online) {
+            console.log('📴 Offline mode in Profile Page');
+          }
+        });
+      } catch (error) {
+        console.error('❌ Offline mode init error:', error);
+      }
+    };
+
+    initOfflineMode();
+
+    return () => {
+      // Cleanup
+      NetworkMonitorService.cleanup();
+    };
+  }, []);
+  // ========== END OFFLINE MODE INITIALIZATION ==========
+
+  // ========== OFFLINE: Cache user profile data ==========
+  const cacheUserProfile = async (name: string, email: string) => {
+    try {
+      await OfflineDatabaseService.saveUserData('user_profile', {
+        name: name,
+        email: email,
+        timestamp: Date.now()
+      });
+      console.log('✅ User profile cached offline');
+    } catch (error) {
+      console.error('Error caching user profile:', error);
+    }
+  };
+  // ========== END OFFLINE CACHE HELPER ==========
+
+  // ========== OFFLINE: Load cached user profile ==========
+  const loadCachedUserProfile = async () => {
+    try {
+      const cached = await OfflineDatabaseService.getUserData('user_profile');
+      if (cached && cached.name) {
+        setUserName(cached.name);
+        setEmail(cached.email || '');
+
+        // Generate initials from cached name
+        const initials = cached.name
+          .split(' ')
+          .map((word: string) => word.charAt(0))
+          .join('')
+          .toUpperCase()
+          .substring(0, 2);
+        setUserInitials(initials);
+
+        console.log('📦 Loaded cached user profile');
+        return true;
+      }
+      return false;
+    } catch (error) {
+      console.error('Error loading cached user profile:', error);
+      return false;
+    }
+  };
+  // ========== END OFFLINE LOAD CACHED ==========
 
   useEffect(() => {
     const getUserData = async () => {
@@ -41,12 +125,27 @@ export default function ProfilePage() {
             .toUpperCase()
             .substring(0, 2);
           setUserInitials(initials);
+
+          // ========== OFFLINE: Cache user data ==========
+          if (email) {
+            await cacheUserProfile(name, email);
+          }
+          // ========== END OFFLINE CACHE ==========
         }
         if (email) {
           setEmail(email);
         }
+
+        // ========== OFFLINE: If no data found, try loading from cache ==========
+        if (!name && !email) {
+          await loadCachedUserProfile();
+        }
+        // ========== END OFFLINE FALLBACK ==========
       } catch (error) {
         console.error('Error retrieving user data:', error);
+        // ========== OFFLINE: Try loading from cache on error ==========
+        await loadCachedUserProfile();
+        // ========== END OFFLINE FALLBACK ==========
       }
     };
 
@@ -64,10 +163,21 @@ export default function ProfilePage() {
   const handleWithdraw = () => {
     navigation.navigate('Withdraw');
   };
-  
+
   const handleTransactions = () => {
     navigation.navigate('Transactions');
   };
+
+  // ========== OFFLINE: Clear cached data on logout ==========
+  const clearCachedUserData = async () => {
+    try {
+      await OfflineDatabaseService.saveUserData('user_profile', null);
+      console.log('🗑️ Cached user profile cleared');
+    } catch (error) {
+      console.error('Error clearing cached user profile:', error);
+    }
+  };
+  // ========== END OFFLINE CLEAR CACHE ==========
 
   const handleLogout = () => {
     Alert.alert(
@@ -83,6 +193,10 @@ export default function ProfilePage() {
           style: 'destructive',
           onPress: async () => {
             try {
+              // ========== OFFLINE: Clear cached user data ==========
+              await clearCachedUserData();
+              // ========== END OFFLINE CLEAR ==========
+
               await AsyncStorage.clear();
               navigation.reset({
                 index: 0,
@@ -135,8 +249,16 @@ export default function ProfilePage() {
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
-      
-      <ScrollView 
+
+      {/* ========== OFFLINE: Network status banner ========== */}
+      {!isOnline && (
+        <View style={styles.offlineBanner}>
+          <Text style={styles.offlineBannerText}>📴 Offline Mode - Using cached profile data</Text>
+        </View>
+      )}
+      {/* ========== END OFFLINE BANNER ========== */}
+
+      <ScrollView
         style={styles.scrollView}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
@@ -159,7 +281,7 @@ export default function ProfilePage() {
               )}
               <View style={styles.onlineIndicator} />
             </View>
-            
+
             <View style={styles.profileInfo}>
               <Text style={styles.userName}>{userName || 'User Name'}</Text>
               <Text style={styles.userEmail}>{emailname || 'user@example.com'}</Text>
@@ -173,7 +295,7 @@ export default function ProfilePage() {
         {/* Menu Items */}
         <Animatable.View  delay={400} style={styles.menuSection}>
           <Text style={styles.sectionTitle}>Account Settings</Text>
-          
+
           {menuItems.map((item, index) => (
             <Animatable.View
               key={item.id}
@@ -186,9 +308,9 @@ export default function ProfilePage() {
               >
                 <View style={styles.menuItemLeft}>
                   <View style={[styles.iconContainer, { backgroundColor: `${item.color}15` }]}>
-                    <Image 
-                      source={item.icon} 
-                      style={[styles.menuIcon, { tintColor: item.color }]} 
+                    <Image
+                      source={item.icon}
+                      style={[styles.menuIcon, { tintColor: item.color }]}
                     />
                   </View>
                   <View style={styles.menuTextContainer}>
@@ -390,4 +512,19 @@ const styles = StyleSheet.create({
     color: '#999999',
     textAlign: 'center',
   },
+  // ========== OFFLINE STYLES ==========
+  offlineBanner: {
+    backgroundColor: '#FF9800',
+    padding: 10,
+    marginHorizontal: 16,
+    marginTop: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  offlineBannerText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  // ========== END OFFLINE STYLES ==========
 });
