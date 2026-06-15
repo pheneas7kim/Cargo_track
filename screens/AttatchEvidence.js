@@ -590,7 +590,7 @@ const AttachEvidence = () => {
             <ActivityIndicator color="#fff" />
           ) : (
             <Text style={styles.btnText}>
-              {t('attach_evidence.resolve_button', { defaultValue: 'RESOLVE TICKET' })}
+              {t('attach_evidence.resolve_button', { defaultValue: 'ATTATCH TICKET EVIDENCE' })}
               {photos.length > 0 ? ` (${photos.length} photo${photos.length !== 1 ? 's' : ''})` : ''}
             </Text>
           )}

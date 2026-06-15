@@ -50,6 +50,8 @@ import InventoryScan from './screens/InventoryScan';
 import { setupAxiosLogging } from './utils/axiosLogger';
 import notifee, { AndroidImportance } from '@notifee/react-native';
 import SpInAppUpdates, { IAUUpdateKind } from 'sp-react-native-in-app-updates';
+import ScanConfirmArrival from './screens/ScanConfirmArrival'; // Adjust path
+
 
 // Define the types for your stack
 type RootStackParamList = {
@@ -91,6 +93,7 @@ type RootStackParamList = {
   ReceiveDevicesScreen: undefined;
   inventoryScan: undefined;
   CreateTicket: undefined;
+  ScanConfirmArrival: undefined;
   AttatchEvidence: undefined;
 };
 
@@ -216,6 +219,7 @@ export default function App() {
               <Stack.Screen name="ReceiveDevicesScreen" component={ReceiveDevicesScreen} options={{ headerShown: false }}/>
 
               <Stack.Screen name="AssignedEseals" component={AssignedEseals} options={{ headerShown: false }} />
+              <Stack.Screen   name="ScanConfirmArrival" component={ScanConfirmArrival} options={{title: 'Scan to Confirm Arrival', headerBackTitle: 'Back'  }} />
 
               <Stack.Screen
                 name="RequestEsealsList"

@@ -200,7 +200,6 @@ const authenticatedAxios = async (method, config, i18n, retryCount = 0) => {
 };
 
 // Add this function to fetch store ID for the logged-in user
-// ✅ FIXED: fetchUserStore using authenticatedAxios
 const fetchUserStore = async (i18n) => {
   try {
     const userId = await AsyncStorage.getItem('id');
@@ -548,6 +547,7 @@ function HomeScreen() {
     }
     return false; // any other role or missing → nothing
   };
+
   // Commands list with translations
   const commands = [
     { id: 'CMD-001', name: t('common.commands.check_status', { defaultValue: 'Check Status' }), description: t('common.commands.check_status_desc', { defaultValue: 'Get real-time status of your shipment' }) },
@@ -873,6 +873,12 @@ function HomeScreen() {
   const handleRequestEsealsList = () => navigation.navigate('RequestEsealsList');
   const handleAssignedEseals = () => navigation.navigate('AssignedEseals');
   const handleInventoryScan = () => navigation.navigate('InventoryScan');
+
+  // ========== SCAN TO CONFIRM ARRIVAL HANDLER - FOR ROLE 255 ==========
+  const handleScanConfirmArrival = () => {
+    navigation.navigate('ScanConfirmArrival');
+  };
+  // ========== END SCAN TO CONFIRM ARRIVAL HANDLER ==========
 
   // ✅ FIXED: Updated to pass storeId and storeName to ReceiveDevicesScreen
   const handleReceiveDevicesScreen = () => {
@@ -1426,8 +1432,8 @@ function HomeScreen() {
               </View>
             )}
 
-            {/* ROLE 257 - only Tickets */}
-            {roleId === 257 && (
+            {/* ========== UPDATED: ROLE 255 - Tickets + Scan to Confirm Arrival SIDE BY SIDE ========== */}
+            {roleId === 255 && (
               <View style={styles.actionRow}>
                 <TouchableOpacity style={styles.actionCard} onPress={handleTicketsScreen}>
                   <View style={[styles.actionIconBg, { backgroundColor: '#2196F320' }]}>
@@ -1435,8 +1441,20 @@ function HomeScreen() {
                   </View>
                   <Text style={styles.actionLabel}>{t('common.actions.tickets', { defaultValue: 'Tickets' })}</Text>
                 </TouchableOpacity>
+
+                {/* Scan to Confirm Arrival Icon - For Role 255 */}
+                <TouchableOpacity style={styles.actionCard} onPress={handleScanConfirmArrival}>
+                  <View style={[styles.actionIconBg, { backgroundColor: '#4CAF5020' }]}>
+                    {/* Using emoji as fallback if icon not available - replace with actual image if needed */}
+                    <Text style={{ fontSize: 24 }}>📦</Text>
+                    {/* Uncomment below if you have the icon asset */}
+                    {/* <Image source={require('../assets/scan_confirm.png')} style={styles.actionIcon} /> */}
+                  </View>
+                  <Text style={styles.actionLabel}>{t('common.actions.scan_confirm', { defaultValue: 'Scan to Confirm Arrival' })}</Text>
+                </TouchableOpacity>
               </View>
             )}
+            {/* ========== END ROLE 255 UPDATES ========== */}
           </View>
         </View>
       )}
@@ -1493,7 +1511,7 @@ function HomeScreen() {
   );
 
   const renderContent = () => {
-    if (roleId === 257) {
+    if (roleId === 257 || roleId === 255) {
       return (
         <FlatList
           data={tickets}
@@ -2128,6 +2146,7 @@ const styles = StyleSheet.create({
   loaderText: { marginTop: 12, fontSize: 14, color: '#666' },
   emptyContainer: { padding: 40, alignItems: 'center' },
   emptyText: { fontSize: 14, color: '#999' },
+  emptyTitle: { fontSize: 16, fontWeight: '600', color: '#333', marginBottom: 8 },
   errorIcon: {
     width: 64,
     height: 64,
