@@ -1445,12 +1445,9 @@ function HomeScreen() {
                 {/* Scan to Confirm Arrival Icon - For Role 255 */}
                 <TouchableOpacity style={styles.actionCard} onPress={handleScanConfirmArrival}>
                   <View style={[styles.actionIconBg, { backgroundColor: '#4CAF5020' }]}>
-                    {/* Using emoji as fallback if icon not available - replace with actual image if needed */}
-                    <Text style={{ fontSize: 24 }}>📦</Text>
-                    {/* Uncomment below if you have the icon asset */}
-                    {/* <Image source={require('../assets/scan_confirm.png')} style={styles.actionIcon} /> */}
+                    <Text style={{ fontSize: 24 }}>📦✅</Text>
                   </View>
-                  <Text style={styles.actionLabel}>{t('common.actions.scan_confirm', { defaultValue: 'Scan to Confirm Arrival' })}</Text>
+                  <Text style={styles.actionLabel}>{t('common.actions.confirm_arrival', { defaultValue: 'Confirm Arrival' })}</Text>
                 </TouchableOpacity>
               </View>
             )}
@@ -1459,19 +1456,35 @@ function HomeScreen() {
         </View>
       )}
 
-      {/* Receive Devices Section - Moved outside the grid for proper placement */}
+      {/* ========== RECEIVE DEVICES + CONFIRM ARRIVAL SECTION (Side by side) ========== */}
       {(roleId === 1 || roleId === 202) && (
-        <View style={styles.actionRow}>
-          {(roleId === 202 || roleId === 1) && (
-            <TouchableOpacity style={styles.actionCard} onPress={handleReceiveDevicesScreen}>
-              <View style={[styles.actionIconBg, { backgroundColor: '#9C27B020' }]}>
-                <Image source={require('../assets/trk.png')} style={styles.actionIcon} />
-              </View>
-              <Text style={styles.actionLabel}>{t('common.actions.receive', { defaultValue: 'Receive' })}</Text>
-            </TouchableOpacity>
-          )}
+        <View style={[styles.quickActionsGrid, { marginTop: 0 }]}>
+          <View style={styles.actionsContainer}>
+            <View style={styles.actionRow}>
+              {/* Receive Devices - For Role 202 and 1 */}
+              {(roleId === 202 || roleId === 1) && (
+                <TouchableOpacity style={styles.actionCard} onPress={handleReceiveDevicesScreen}>
+                  <View style={[styles.actionIconBg, { backgroundColor: '#9C27B020' }]}>
+                    <Image source={require('../assets/trk.png')} style={styles.actionIcon} />
+                  </View>
+                  <Text style={styles.actionLabel}>{t('common.actions.receive', { defaultValue: 'Receive' })}</Text>
+                </TouchableOpacity>
+              )}
+
+              {/* Confirm Arrival - For Role 202 and 1 (placed next to Receive) */}
+              {(roleId === 202 || roleId === 1) && (
+                <TouchableOpacity style={styles.actionCard} onPress={handleScanConfirmArrival}>
+                  <View style={[styles.actionIconBg, { backgroundColor: '#4CAF5020' }]}>
+                    <Text style={{ fontSize: 24 }}>📦✅</Text>
+                  </View>
+                  <Text style={styles.actionLabel}>{t('common.actions.confirm_arrival', { defaultValue: 'Confirm Arrival' })}</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          </View>
         </View>
       )}
+      {/* ========== END RECEIVE + CONFIRM ARRIVAL SECTION ========== */}
 
       <View style={styles.tabs}>
         {roleId !== 255 && roleId !== 103 && roleId !== 257 && (

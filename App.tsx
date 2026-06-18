@@ -51,6 +51,7 @@ import { setupAxiosLogging } from './utils/axiosLogger';
 import notifee, { AndroidImportance } from '@notifee/react-native';
 import SpInAppUpdates, { IAUUpdateKind } from 'sp-react-native-in-app-updates';
 import ScanConfirmArrival from './screens/ScanConfirmArrival'; // Adjust path
+import Arrived from './screens/Arrived';
 
 
 // Define the types for your stack
@@ -91,10 +92,12 @@ type RootStackParamList = {
   RequestEsealsScreen: undefined;
   AssignedEseals: undefined;
   ReceiveDevicesScreen: undefined;
-  inventoryScan: undefined;
+  InventoryScan: undefined;
   CreateTicket: undefined;
   ScanConfirmArrival: undefined;
   AttatchEvidence: undefined;
+  Arrived :undefined;
+
 };
 
 export const navigationRef = createNavigationContainerRef<RootStackParamList>();
@@ -232,6 +235,13 @@ export default function App() {
                               component={RequestEsealsScreen}
                               options={{ headerShown: false }}
                             />
+
+                            {/* 🔑 REGISTERED THE NAVIGATION SCREEN DECLARATION LAYER HERE */}
+            <Stack.Screen
+              name="Arrived"
+              component={Arrived}
+              options={{ headerShown: false }}
+            />
 
               <Stack.Screen
                               name="MasterSlaveMapper"
