@@ -361,7 +361,7 @@ function HomeScreen() {
   const [roleId, setRoleId] = useState(null);
   const [acknowledgingTicketId, setAcknowledgingTicketId] = useState(null);
   const [resolvingTicketId, setResolvingTicketId] = useState(null);
-  const [claimingTicketId, setClaimingTicketId] = useState(null); // New state for claim action
+  const [claimingTicketId, setClaimingTicketId] = useState(null);
 
   // ========== OFFLINE MODE STATE VARIABLES ==========
   const [isOnline, setIsOnline] = useState(true);
@@ -381,17 +381,12 @@ function HomeScreen() {
   useEffect(() => {
     const initOfflineMode = async () => {
       try {
-        // Initialize offline database
         await OfflineDatabaseService.initDatabase();
         console.log('✅ Offline database initialized for Home Screen');
 
-        // Initialize network monitor
         NetworkMonitorService.init();
-
-        // Start auto-sync service
         await OfflineSyncService.startAutoSync();
 
-        // Listen for network changes
         NetworkMonitorService.on('connectionChange', (online) => {
           setIsOnline(online);
           if (online) {
@@ -400,7 +395,6 @@ function HomeScreen() {
               duration: 2000,
               backgroundColor: '#4CAF50',
             });
-            // Auto-refresh when coming back online
             if (roleId !== null) {
               loadAllData();
             }
@@ -421,7 +415,6 @@ function HomeScreen() {
     initOfflineMode();
 
     return () => {
-      // Cleanup
       OfflineSyncService.stopAutoSync();
       NetworkMonitorService.cleanup();
     };
@@ -522,14 +515,12 @@ function HomeScreen() {
         id = stored ? parseInt(stored, 10) : null;
       }
       setRoleId(id);
-      // FOR ROLE 257: Force activeTab to 'tickets' only
       if (id === 257) {
         setActiveTab('tickets');
       } else if (id === 255) {
         setActiveTab('tickets');
       }
 
-      // ✅ FIXED: Fetch store ID for STORE role (202) AND ADMIN role (1)
       if (id === 202 || id === 1) {
         console.log(`${id === 202 ? 'STORE' : 'ADMIN'} role detected, fetching store info...`);
         await fetchUserStore(i18n);
@@ -537,16 +528,6 @@ function HomeScreen() {
     };
     loadRole();
   }, [route.params?.roleId]);
-
-  // Helper to decide if an icon should be shown
-  const shouldShowIcon = (iconName) => {
-    if (roleId === 1) return true;
-    if (roleId === 102) {
-      const forbidden = ['Random Stop', 'Request Eseals', 'Return Eseals', 'Assigned Eseals'];
-      return !forbidden.includes(iconName);
-    }
-    return false; // any other role or missing → nothing
-  };
 
   // Commands list with translations
   const commands = [
@@ -578,7 +559,6 @@ function HomeScreen() {
     try {
       setLoadingShipments(true);
 
-      // Fetch both telemetry and T1 declarations in parallel
       const [telemetryResponse, t1Response] = await Promise.all([
         authenticatedAxios('get', { url: `${API_BASE}/api/v1/telemetry/latest-t1s` }, i18n),
         authenticatedAxios('get', { url: `${API_BASE}/api/v1/customs/t1` }, i18n),
@@ -587,13 +567,11 @@ function HomeScreen() {
       const telemetryData = telemetryResponse.data;
       const t1Data = t1Response.data;
 
-      // Create a map of t1Number to T1 declaration for easy lookup
       const t1Map = {};
       t1Data.forEach(t1 => {
         t1Map[t1.t1Number] = t1;
       });
 
-      // Transform telemetry data into shipment format
       const transformed = telemetryData.map(item => {
         const t1 = t1Map[item.t1Number] || {};
         const status = t1.trackingStatus || 'IN_TRANSIT';
@@ -668,7 +646,7 @@ function HomeScreen() {
           updatedAt: ticket.updatedAt,
           t1Number: ticket.t1Number,
           truckReg: ticket.truckRegistrationNumber,
-          assignee: ticket.assignee, // Store assignee object
+          assignee: ticket.assignee,
         };
       });
 
@@ -749,15 +727,12 @@ function HomeScreen() {
   };
 
   const loadAllData = async () => {
-    // ========== OFFLINE: Check if online ==========
     const online = await NetworkMonitorService.isOnline();
 
     if (!online && roleId !== null) {
-      // Load cached data
       await loadCachedData();
       return;
     }
-    // ========== END OFFLINE CHECK ==========
 
     try {
       setDataLoadError(false);
@@ -773,14 +748,11 @@ function HomeScreen() {
           fetchNotifications(),
         ]);
 
-        // ========== OFFLINE: Cache fetched data ==========
         await cacheDashboardData(shipmentsData, ticketsData, alertsData, notificationsData);
-        // ========== END OFFLINE CACHE ==========
       }
     } catch (error) {
       console.error('Error loading data:', error);
       setDataLoadError(true);
-      // Try to load cached data as fallback
       await loadCachedData();
     }
   };
@@ -973,12 +945,10 @@ function HomeScreen() {
 
   // Updated handleResolve to navigate to AttachEvidence screen with proper params
   const handleResolve = (ticket) => {
-    // Navigate to AttachEvidence screen with only serializable data
     navigation.navigate('AttatchEvidence', {
       ticketId: ticket.id,
       ticketNumber: ticket.ticketNumber,
       onResolveComplete: (notes, files) => {
-        // This callback will be called from AttachEvidence after successful upload
         resolveTicketWithEvidence(ticket.id, notes, files);
       }
     });
@@ -1135,7 +1105,6 @@ function HomeScreen() {
     const statusColor = getTicketStatusInfo(item.status, t).color;
     const priorityColor = getPriorityColor(item.priority);
     const statusInfo = getTicketStatusInfo(item.status, t);
-    // Detect broadcast ticket: assignee is null and status is OPEN (or just assignee null)
     const isBroadcast = !item.assignee && item.status === 'OPEN';
 
     return (
@@ -1153,7 +1122,6 @@ function HomeScreen() {
           }}
         >
           <View style={styles.ticketCard}>
-            {/* Row 1: Ticket Number + Priority + Broadcast Badge */}
             <View style={styles.ticketHeaderRow}>
               <Text style={styles.ticketNumberLabel}>Ticket Number:</Text>
               <Text style={styles.ticketNumber}>{item.ticketNumber || `#${item.id}`}</Text>
@@ -1170,7 +1138,6 @@ function HomeScreen() {
               )}
             </View>
 
-            {/* Row 2: Status */}
             <View style={styles.statusRow}>
               <Text style={styles.statusLabel}>Status:</Text>
               <View style={[styles.statusBadgeSmall, { backgroundColor: statusColor + '20' }]}>
@@ -1180,10 +1147,8 @@ function HomeScreen() {
               </View>
             </View>
 
-            {/* Title */}
             <Text style={styles.ticketTitle}>{item.subject}</Text>
 
-            {/* Description with label */}
             <View style={styles.descriptionContainer}>
               <Text style={styles.descriptionLabel}>Description:</Text>
               <Text style={styles.ticketDescription} numberOfLines={2}>
@@ -1191,7 +1156,6 @@ function HomeScreen() {
               </Text>
             </View>
 
-            {/* Footer with field names */}
             <View style={styles.ticketFooterRow}>
               <View style={styles.footerItem}>
                 <Text style={styles.footerIcon}>🕒</Text>
@@ -1241,7 +1205,6 @@ function HomeScreen() {
           <Text style={styles.greeting}>{getCurrentTime()}</Text>
         </View>
         <View style={styles.headerActions}>
-          {/* ========== OFFLINE: Sync button ========== */}
           {isSyncing ? (
             <ActivityIndicator size="small" color="#FFA500" style={styles.syncIndicator} />
           ) : (
@@ -1249,7 +1212,6 @@ function HomeScreen() {
               <Image source={require('../assets/refresh.png')} style={[styles.headerIcon, { tintColor: isOnline ? '#4CAF50' : '#999' }]} />
             </TouchableOpacity>
           )}
-          {/* ========== END OFFLINE SYNC BUTTON ========== */}
 
           <TouchableOpacity style={styles.iconButton} onPress={handleLogout}>
             <Image source={require('../assets/logout.png')} style={styles.headerIcon} />
@@ -1266,20 +1228,18 @@ function HomeScreen() {
         </View>
       </View>
 
-      {/* ========== OFFLINE: Network status banner ========== */}
       {!isOnline && (
         <View style={styles.offlineBanner}>
           <Text style={styles.offlineBannerText}>📴 Offline Mode - Using cached data</Text>
         </View>
       )}
-      {/* ========== END OFFLINE BANNER ========== */}
 
       {/* Quick Actions Grid - 4 columns */}
       {(roleId === 1 || roleId === 102 || roleId === 255 || roleId === 103 || roleId === 257) && (
         <View style={styles.quickActionsGrid}>
           <View style={styles.actionsContainer}>
 
-            {/* ROLE 102 - 5 icons (4 columns, last row has 1) */}
+            {/* ROLE 102 - 5 icons (4 columns, last row has 1 with placeholders) */}
             {roleId === 102 && (
               <>
                 <View style={styles.actionRow}>
@@ -1311,6 +1271,7 @@ function HomeScreen() {
                     <Text style={styles.actionLabel}>{t('common.actions.assigned_eseals', { defaultValue: 'Assigned Eseals' })}</Text>
                   </TouchableOpacity>
                 </View>
+
                 <View style={styles.actionRow}>
                   <TouchableOpacity style={styles.actionCard} onPress={handleEsealsReplacement}>
                     <View style={[styles.actionIconBg, { backgroundColor: '#4CAF5020' }]}>
@@ -1318,11 +1279,16 @@ function HomeScreen() {
                     </View>
                     <Text style={styles.actionLabel}>{t('common.actions.eseals_replacement', { defaultValue: 'Eseals Replacement' })}</Text>
                   </TouchableOpacity>
+
+                  {/* Empty placeholders to maintain 4-column grid spacing */}
+                  <View style={[styles.actionCard, { opacity: 0, pointerEvents: 'none' }]} />
+                  <View style={[styles.actionCard, { opacity: 0, pointerEvents: 'none' }]} />
+                  <View style={[styles.actionCard, { opacity: 0, pointerEvents: 'none' }]} />
                 </View>
               </>
             )}
 
-            {/* ROLE 1 - 4x3 grid (12 icons) */}
+            {/* ROLE 1 - 4x4 grid (16 icons) */}
             {roleId === 1 && (
               <>
                 {/* Row 1 */}
@@ -1417,10 +1383,33 @@ function HomeScreen() {
                     <Text style={styles.actionLabel}>{t('common.actions.scan_to_add', { defaultValue: 'Scan to Add Devices' })}</Text>
                   </TouchableOpacity>
                 </View>
+
+                {/* Row 4 - Receive and Confirm Arrival side by side with placeholders */}
+                <View style={styles.actionRow}>
+                  <TouchableOpacity style={styles.actionCard} onPress={handleReceiveDevicesScreen}>
+                    <View style={[styles.actionIconBg, { backgroundColor: '#9C27B020' }]}>
+                      <Image source={require('../assets/trk.png')} style={styles.actionIcon} />
+                    </View>
+                    <Text style={styles.actionLabel}>{t('common.actions.receive', { defaultValue: 'Receive' })}</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity style={styles.actionCard} onPress={handleScanConfirmArrival}>
+                    <View style={[styles.actionIconBg, { backgroundColor: '#4CAF5020' }]}>
+                      <Image source={require('../assets/trk.png')} style={styles.actionIcon} />
+                    </View>
+                    <Text style={styles.actionLabel}>
+  {t('common.actions.confirm_arrival', { defaultValue: 'Confirm Arrival' })}
+</Text>
+                  </TouchableOpacity>
+
+                  {/* Empty placeholders to maintain 4-column grid spacing */}
+                  <View style={[styles.actionCard, { opacity: 0, pointerEvents: 'none' }]} />
+                  <View style={[styles.actionCard, { opacity: 0, pointerEvents: 'none' }]} />
+                </View>
               </>
             )}
 
-            {/* ROLE 103 - only Tickets */}
+            {/* ROLE 103 - only Tickets with placeholders */}
             {roleId === 103 && (
               <View style={styles.actionRow}>
                 <TouchableOpacity style={styles.actionCard} onPress={handleTicketsScreen}>
@@ -1429,10 +1418,38 @@ function HomeScreen() {
                   </View>
                   <Text style={styles.actionLabel}>{t('common.actions.tickets', { defaultValue: 'Tickets' })}</Text>
                 </TouchableOpacity>
+
+                {/* Empty placeholders to maintain 4-column grid spacing */}
+                <View style={[styles.actionCard, { opacity: 0, pointerEvents: 'none' }]} />
+                <View style={[styles.actionCard, { opacity: 0, pointerEvents: 'none' }]} />
+                <View style={[styles.actionCard, { opacity: 0, pointerEvents: 'none' }]} />
               </View>
             )}
 
-            {/* ========== UPDATED: ROLE 255 - Tickets + Scan to Confirm Arrival SIDE BY SIDE ========== */}
+            {/* ROLE 202 - Store with Receive and Confirm Arrival with placeholders */}
+            {roleId === 202 && (
+              <View style={styles.actionRow}>
+                <TouchableOpacity style={styles.actionCard} onPress={handleReceiveDevicesScreen}>
+                  <View style={[styles.actionIconBg, { backgroundColor: '#9C27B020' }]}>
+                    <Image source={require('../assets/trk.png')} style={styles.actionIcon} />
+                  </View>
+                  <Text style={styles.actionLabel}>{t('common.actions.receive', { defaultValue: 'Receive' })}</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity style={styles.actionCard} onPress={handleScanConfirmArrival}>
+                  <View style={[styles.actionIconBg, { backgroundColor: '#4CAF5020' }]}>
+                    <Image source={require('../assets/trk.png')} style={styles.actionIcon} />
+                  </View>
+                  <Text style={styles.actionLabel}>{t('common.actions.confirm_arrival', { defaultValue: 'Confirm Arrival' })}</Text>
+                </TouchableOpacity>
+
+                {/* Empty placeholders to maintain 4-column grid spacing */}
+                <View style={[styles.actionCard, { opacity: 0, pointerEvents: 'none' }]} />
+                <View style={[styles.actionCard, { opacity: 0, pointerEvents: 'none' }]} />
+              </View>
+            )}
+
+            {/* ROLE 255 - Tickets + Confirm Arrival with placeholders */}
             {roleId === 255 && (
               <View style={styles.actionRow}>
                 <TouchableOpacity style={styles.actionCard} onPress={handleTicketsScreen}>
@@ -1442,49 +1459,21 @@ function HomeScreen() {
                   <Text style={styles.actionLabel}>{t('common.actions.tickets', { defaultValue: 'Tickets' })}</Text>
                 </TouchableOpacity>
 
-                {/* Scan to Confirm Arrival Icon - For Role 255 */}
                 <TouchableOpacity style={styles.actionCard} onPress={handleScanConfirmArrival}>
                   <View style={[styles.actionIconBg, { backgroundColor: '#4CAF5020' }]}>
-                    <Text style={{ fontSize: 24 }}>📦✅</Text>
-                  </View>
-                  <Text style={styles.actionLabel}>{t('common.actions.confirm_arrival', { defaultValue: 'Confirm Arrival' })}</Text>
-                </TouchableOpacity>
-              </View>
-            )}
-            {/* ========== END ROLE 255 UPDATES ========== */}
-          </View>
-        </View>
-      )}
-
-      {/* ========== RECEIVE DEVICES + CONFIRM ARRIVAL SECTION (Side by side) ========== */}
-      {(roleId === 1 || roleId === 202) && (
-        <View style={[styles.quickActionsGrid, { marginTop: 0 }]}>
-          <View style={styles.actionsContainer}>
-            <View style={styles.actionRow}>
-              {/* Receive Devices - For Role 202 and 1 */}
-              {(roleId === 202 || roleId === 1) && (
-                <TouchableOpacity style={styles.actionCard} onPress={handleReceiveDevicesScreen}>
-                  <View style={[styles.actionIconBg, { backgroundColor: '#9C27B020' }]}>
                     <Image source={require('../assets/trk.png')} style={styles.actionIcon} />
                   </View>
-                  <Text style={styles.actionLabel}>{t('common.actions.receive', { defaultValue: 'Receive' })}</Text>
-                </TouchableOpacity>
-              )}
-
-              {/* Confirm Arrival - For Role 202 and 1 (placed next to Receive) */}
-              {(roleId === 202 || roleId === 1) && (
-                <TouchableOpacity style={styles.actionCard} onPress={handleScanConfirmArrival}>
-                  <View style={[styles.actionIconBg, { backgroundColor: '#4CAF5020' }]}>
-                    <Text style={{ fontSize: 24 }}>📦✅</Text>
-                  </View>
                   <Text style={styles.actionLabel}>{t('common.actions.confirm_arrival', { defaultValue: 'Confirm Arrival' })}</Text>
                 </TouchableOpacity>
-              )}
-            </View>
+
+                {/* Empty placeholders to maintain 4-column grid spacing */}
+                <View style={[styles.actionCard, { opacity: 0, pointerEvents: 'none' }]} />
+                <View style={[styles.actionCard, { opacity: 0, pointerEvents: 'none' }]} />
+              </View>
+            )}
           </View>
         </View>
       )}
-      {/* ========== END RECEIVE + CONFIRM ARRIVAL SECTION ========== */}
 
       <View style={styles.tabs}>
         {roleId !== 255 && roleId !== 103 && roleId !== 257 && (
@@ -1812,7 +1801,6 @@ function HomeScreen() {
                     </View>
                   ) : (
                     <>
-                      {/* Show Claim button only for broadcast tickets (assignee null) and ticket is OPEN */}
                       {!selectedTicket.assignee && selectedTicket.status === 'OPEN' && (
                         <TouchableOpacity
                           style={[styles.submitButton, { backgroundColor: '#8B5CF6', flex: 1 }]}
@@ -1943,7 +1931,6 @@ const styles = StyleSheet.create({
   activeTabText: { color: '#FFA500', fontWeight: '600' },
   listContent: { paddingBottom: 100 },
 
-  // Broadcast badge style
   broadcastBadge: {
     backgroundColor: '#8B5CF6',
     paddingHorizontal: 8,
@@ -1956,7 +1943,6 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
   },
 
-  // Shipment Card Styles
   shipmentCard: { backgroundColor: '#FFFFFF', borderRadius: 16, marginHorizontal: 16, padding: 16, marginBottom: 12, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 3 },
   shipmentHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
   trackingInfo: { flex: 1 },
@@ -1982,7 +1968,6 @@ const styles = StyleSheet.create({
   actionBtn: { flex: 1, backgroundColor: '#F5F5F5', paddingVertical: 10, borderRadius: 10, alignItems: 'center' },
   actionBtnText: { fontSize: 14, color: '#FFA500', fontWeight: '500' },
 
-  // Ticket Card Styles
   ticketCard: {
     backgroundColor: '#FFFFFF',
     borderRadius: 16,
@@ -2113,13 +2098,11 @@ const styles = StyleSheet.create({
     color: '#FFA500',
   },
 
-  // Alert Card Styles
   alertCard: { backgroundColor: '#FFFFFF', borderRadius: 16, marginHorizontal: 16, padding: 16, marginBottom: 12, borderLeftWidth: 4, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 3 },
   alertTitle: { fontSize: 14, fontWeight: '600', color: '#1A1A1A', marginBottom: 4 },
   alertMessage: { fontSize: 12, color: '#666', marginBottom: 8 },
   alertTime: { fontSize: 10, color: '#999' },
 
-  // Modal Styles
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
   modalContent: { backgroundColor: '#FFF', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, maxHeight: '80%' },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
@@ -2131,22 +2114,18 @@ const styles = StyleSheet.create({
   mapButton: { backgroundColor: '#FFA500', borderRadius: 12, paddingVertical: 14, alignItems: 'center', marginTop: 20 },
   mapButtonText: { color: '#FFFFFF', fontWeight: '600', fontSize: 14 },
 
-  // FAB
   fab: { position: 'absolute', bottom: 30, right: 20, width: 56, height: 56, borderRadius: 28, backgroundColor: '#FFA500', justifyContent: 'center', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 8 },
   fabText: { fontSize: 32, color: '#FFFFFF', fontWeight: '300' },
 
-  // Command Modal
   commandItem: { padding: 16, borderBottomWidth: 1, borderBottomColor: '#F0F0F0' },
   commandName: { fontSize: 16, fontWeight: '600', color: '#1A1A1A', marginBottom: 4 },
   commandDescription: { fontSize: 12, color: '#666' },
   commandList: { paddingBottom: 20 },
 
-  // Input Styles
   inputContainer: { paddingHorizontal: 20, marginBottom: 16 },
   inputLabel: { fontSize: 14, fontWeight: '600', color: '#333333', marginBottom: 8 },
   input: { borderWidth: 1.5, borderColor: '#E5E5E5', borderRadius: 12, paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: '#1A1A1A', backgroundColor: '#FAFAFA' },
 
-  // Modal Actions
   modalActions: { flexDirection: 'row', paddingHorizontal: 20, paddingTop: 8, paddingBottom: 20, gap: 12 },
   cancelButton: { flex: 1, paddingVertical: 14, borderRadius: 12, borderWidth: 1, borderColor: '#E5E5E5', alignItems: 'center' },
   cancelButtonText: { fontSize: 16, fontWeight: '600', color: '#666666' },
@@ -2154,7 +2133,6 @@ const styles = StyleSheet.create({
   submitButtonDisabled: { backgroundColor: '#CCCCCC' },
   submitButtonText: { fontSize: 16, fontWeight: '600', color: '#FFFFFF' },
 
-  // Loading & Empty States
   loaderContainer: { padding: 40, alignItems: 'center' },
   loaderText: { marginTop: 12, fontSize: 14, color: '#666' },
   emptyContainer: { padding: 40, alignItems: 'center' },
@@ -2179,7 +2157,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
 
-  // Ticket Detail Modal Styles
   ticketDetailHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
   ticketDetailNumber: { fontSize: 14, fontWeight: '600', color: '#666' },
   statusBadgeLarge: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 },
@@ -2193,15 +2170,12 @@ const styles = StyleSheet.create({
   priorityBadgeLarge: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8, gap: 6 },
   priorityTextLarge: { fontSize: 12, fontWeight: '600' },
 
-  // Animation Wrapper
   animationWrapper: { marginHorizontal: 8, marginBottom: 8 },
 
-  // Additional Ticket Styles
   ticketId: { fontSize: 12, color: '#999', fontWeight: '500' },
   ticketSubject: { fontSize: 16, fontWeight: '600', color: '#1A1A1A', marginBottom: 4 },
   ticketDate: { fontSize: 10, color: '#999' },
 
-  // Notification Styles
   notificationCard: { flexDirection: 'row', backgroundColor: '#FFFFFF', borderRadius: 12, padding: 12, marginBottom: 8, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 2, elevation: 1 },
   unreadNotification: { backgroundColor: '#FFF9E6' },
   notificationIcon: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#F5F5F5', justifyContent: 'center', alignItems: 'center', marginRight: 12 },

@@ -13,16 +13,16 @@ import {
   Dimensions,
   ScrollView,
   TextInput,
+  Platform,
+  BackHandler,
 } from 'react-native';
+import Icon from 'react-native-vector-icons/MaterialIcons'; 
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
-import { BackHandler } from 'react-native';
 import Snackbar from 'react-native-snackbar';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
-import Icon from 'react-native-vector-icons/MaterialIcons';
 import serverUrl from '../config';
 import { useTranslation } from 'react-i18next';
-// ✅ Import global token refresh service
 import { refreshAccessToken, addTokenRefreshListener } from '../services/TokenService';
 
 // ========== OFFLINE MODULE IMPORTS ==========
@@ -33,7 +33,7 @@ import OfflineSyncService from '../services/OfflineSyncService';
 
 const { width } = Dimensions.get('window');
 
-// ✅ Helper function to get language header
+// Helper function to get language header
 const getLanguageHeader = async (i18n) => {
   try {
     const language = await AsyncStorage.getItem('userLanguage') || i18n?.language || 'en';
@@ -44,17 +44,16 @@ const getLanguageHeader = async (i18n) => {
   }
 };
 
-// ✅ FIXED: Helper function to make authenticated axios request with retry on 401
+// Helper function to make authenticated axios request with retry on 401
 const authenticatedAxios = async (method, config, i18n, retryCount = 0) => {
   try {
     const token = await AsyncStorage.getItem('accessToken');
     const language = await getLanguageHeader(i18n);
 
-    // Create a new axios instance for each request
     const axiosInstance = axios.create();
 
     const response = await axiosInstance({
-      method: method, // 'get', 'post', 'put', 'delete', etc.
+      method: method,
       ...config,
       headers: {
         ...config.headers,
@@ -72,10 +71,8 @@ const authenticatedAxios = async (method, config, i18n, retryCount = 0) => {
     });
 
     if (error.response?.status === 401 && retryCount === 0) {
-      console.log('🔐 Token expired, attempting refresh...');
       const newToken = await refreshAccessToken();
       if (newToken) {
-        console.log('✅ Token refreshed, retrying request...');
         return authenticatedAxios(method, config, i18n, 1);
       }
     }
@@ -100,9 +97,7 @@ const AssignedEseals = () => {
   // ========== OFFLINE MODE STATE VARIABLES ==========
   const [isOnline, setIsOnline] = useState(true);
   const [isSyncing, setIsSyncing] = useState(false);
-  // ========== END OFFLINE MODE STATE VARIABLES ==========
 
-  // ✅ Listen for token refresh events
   useEffect(() => {
     const removeListener = addTokenRefreshListener((newToken) => {
       console.log('📡 Token refreshed in AssignedEseals');
@@ -114,17 +109,10 @@ const AssignedEseals = () => {
   useEffect(() => {
     const initOfflineMode = async () => {
       try {
-        // Initialize offline database
         await OfflineDatabaseService.initDatabase();
-        console.log('✅ Offline database initialized for Assigned Eseals Screen');
-
-        // Initialize network monitor
         NetworkMonitorService.init();
-
-        // Start auto-sync service
         await OfflineSyncService.startAutoSync();
 
-        // Listen for network changes
         NetworkMonitorService.on('connectionChange', (online) => {
           setIsOnline(online);
           if (online) {
@@ -133,7 +121,6 @@ const AssignedEseals = () => {
               duration: 2000,
               backgroundColor: '#4CAF50',
             });
-            // Auto-refresh when coming back online
             fetchDevices();
           } else {
             Snackbar.show({
@@ -144,7 +131,6 @@ const AssignedEseals = () => {
           }
         });
 
-        // Load initial data
         await fetchDevices();
       } catch (error) {
         console.error('❌ Offline mode init error:', error);
@@ -154,12 +140,10 @@ const AssignedEseals = () => {
     initOfflineMode();
 
     return () => {
-      // Cleanup
       OfflineSyncService.stopAutoSync();
       NetworkMonitorService.cleanup();
     };
   }, []);
-  // ========== END OFFLINE MODE INITIALIZATION ==========
 
   useFocusEffect(
     useCallback(() => {
@@ -176,17 +160,9 @@ const AssignedEseals = () => {
   const fetchDevices = async () => {
     try {
       setLoading(true);
-
-      // ========== OFFLINE: Check network status ==========
-      const online = await NetworkMonitorService.isOnline();
-      // ========== END OFFLINE CHECK ==========
-
-      // ✅ FIXED: Changed from axios.get to 'get' string method
       const response = await authenticatedAxios(
-        'get',  // <-- FIXED: Use string method name
-        {
-          url: `${serverUrl}/rru-inventory/my-stock`,
-        },
+        'get',
+        { url: `${serverUrl}/rru-inventory/my-stock` },
         i18n
       );
 
@@ -194,18 +170,14 @@ const AssignedEseals = () => {
         setDevices(response.data.devices || []);
         setAvailableCount(response.data.availableCount || 0);
 
-        // ========== OFFLINE: Cache devices data ==========
         await OfflineDatabaseService.saveUserData('assigned_eseals_devices', {
           devices: response.data.devices || [],
           availableCount: response.data.availableCount || 0,
           timestamp: Date.now()
         });
-        // ========== END OFFLINE CACHE ==========
       }
     } catch (error) {
       console.error('Failed to fetch devices:', error);
-
-      // ========== OFFLINE: Fallback to cached devices ==========
       const cachedData = await OfflineDatabaseService.getUserData('assigned_eseals_devices');
       if (cachedData && cachedData.devices && cachedData.devices.length > 0) {
         setDevices(cachedData.devices);
@@ -222,7 +194,6 @@ const AssignedEseals = () => {
           backgroundColor: '#FF6B6B',
         });
       }
-      // ========== END OFFLINE FALLBACK ==========
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -231,16 +202,13 @@ const AssignedEseals = () => {
 
   const onRefresh = () => {
     setRefreshing(true);
-    // ========== OFFLINE: Manual sync on refresh ==========
     if (isOnline) {
       manualSync();
     } else {
       fetchDevices();
     }
-    // ========== END OFFLINE MANUAL SYNC ==========
   };
 
-  // ========== OFFLINE: Manual sync function ==========
   const manualSync = async () => {
     if (!isOnline) {
       Snackbar.show({
@@ -271,12 +239,10 @@ const AssignedEseals = () => {
       setIsSyncing(false);
     }
   };
-  // ========== END OFFLINE MANUAL SYNC ==========
 
   const filterDevices = () => {
     let filtered = [...devices];
 
-    // Apply search filter
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase().trim();
       filtered = filtered.filter(
@@ -287,14 +253,12 @@ const AssignedEseals = () => {
       );
     }
 
-    // Apply status filter (online/offline)
     if (statusFilter !== 'all') {
       filtered = filtered.filter((device) =>
         statusFilter === 'online' ? device.isOnline : !device.isOnline
       );
     }
 
-    // Apply warranty filter
     if (warrantyFilter !== 'all') {
       filtered = filtered.filter((device) =>
         warrantyFilter === 'active'
@@ -313,14 +277,15 @@ const AssignedEseals = () => {
   };
 
   const renderDeviceCard = ({ item }) => {
-    const statusColor = item.isOnline ? '#4CAF50' : '#9E9E9E';
+    const statusColor = item.isOnline ? '#2E7D32' : '#757575';
+    const statusBg = item.isOnline ? '#E8F5E9' : '#F5F5F5';
     const statusText = item.isOnline
       ? t('assigned_eseals.status.online', { defaultValue: 'Online' })
       : t('assigned_eseals.status.offline', { defaultValue: 'Offline' });
 
     return (
       <TouchableOpacity
-        activeOpacity={0.7}
+        activeOpacity={0.8}
         style={styles.card}
         onPress={() => {
           setSelectedDevice(item);
@@ -329,27 +294,33 @@ const AssignedEseals = () => {
       >
         <View style={styles.cardHeader}>
           <View style={styles.deviceInfo}>
-            <Icon name="devices" size={24} color="#FFA500" />
-            <Text style={styles.deviceName}>{item.name || t('assigned_eseals.na', { defaultValue: 'N/A' })}</Text>
+            <View style={styles.iconContainer}>
+              <Icon name="security" size={20} color="#FFA500" />
+            </View>
+            <View style={styles.nameBlock}>
+              <Text style={styles.deviceName} numberOfLines={1}>
+                {item.name || t('assigned_eseals.na', { defaultValue: 'Unnamed E-Seal' })}
+              </Text>
+              <Text style={styles.serialSubtitle}>SN: {item.serialNo || '—'}</Text>
+            </View>
           </View>
-          <View style={[styles.statusBadge, { backgroundColor: statusColor + '20' }]}>
+          <View style={[styles.statusBadge, { backgroundColor: statusBg }]}>
+            <View style={[styles.statusDot, { backgroundColor: statusColor }]} />
             <Text style={[styles.statusText, { color: statusColor }]}>{statusText}</Text>
           </View>
         </View>
 
+        <View style={styles.dividerLine} />
+
         <View style={styles.cardDetails}>
-          <View style={styles.detailRow}>
-            <Icon name="confirmation-number" size={16} color="#666" />
-            <Text style={styles.detailText}>{t('assigned_eseals.serial_label', { defaultValue: 'Serial' })}: {item.serialNo || t('assigned_eseals.na', { defaultValue: 'N/A' })}</Text>
+          <View style={styles.detailItem}>
+            <Text style={styles.detailLabel}>{t('assigned_eseals.group_label', { defaultValue: 'Assignment Group' })}</Text>
+            <Text style={styles.detailValue} numberOfLines={1}>{item.groupName || '—'}</Text>
           </View>
-          <View style={styles.detailRow}>
-            <Icon name="group" size={16} color="#666" />
-            <Text style={styles.detailText}>{t('assigned_eseals.group_label', { defaultValue: 'Group' })}: {item.groupName || t('assigned_eseals.na', { defaultValue: 'N/A' })}</Text>
-          </View>
-          <View style={styles.detailRow}>
-            <Icon name="security" size={16} color="#666" />
-            <Text style={styles.detailText}>
-              {t('assigned_eseals.warranty_label', { defaultValue: 'Warranty' })}: {item.warrantyStatus || t('assigned_eseals.na', { defaultValue: 'N/A' })} ({item.warrantyStartDate} - {item.warrantyEndDate})
+          <View style={styles.detailItem}>
+            <Text style={styles.detailLabel}>{t('assigned_eseals.warranty_label', { defaultValue: 'Warranty Status' })}</Text>
+            <Text style={[styles.detailValue, item.warrantyStatus === 'Active' ? styles.activeWarranty : null]}>
+              {item.warrantyStatus || '—'}
             </Text>
           </View>
         </View>
@@ -357,238 +328,147 @@ const AssignedEseals = () => {
     );
   };
 
-  const renderFilters = () => (
-    <View style={styles.filtersContainer}>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-        {/* Status Chips */}
-        <TouchableOpacity
-          style={[styles.filterChip, statusFilter === 'all' && styles.activeFilter]}
-          onPress={() => setStatusFilter('all')}
-        >
-          <Text style={[styles.filterText, statusFilter === 'all' && styles.activeFilterText]}>
-            {t('assigned_eseals.filters.all', { defaultValue: 'All' })}
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.filterChip, statusFilter === 'online' && styles.activeFilter]}
-          onPress={() => setStatusFilter('online')}
-        >
-          <Icon name="wifi" size={16} color={statusFilter === 'online' ? '#FFA500' : '#666'} />
-          <Text style={[styles.filterText, statusFilter === 'online' && styles.activeFilterText]}>
-            {t('assigned_eseals.filters.online', { defaultValue: 'Online' })}
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.filterChip, statusFilter === 'offline' && styles.activeFilter]}
-          onPress={() => setStatusFilter('offline')}
-        >
-          <Icon name="wifi-off" size={16} color={statusFilter === 'offline' ? '#FFA500' : '#666'} />
-          <Text style={[styles.filterText, statusFilter === 'offline' && styles.activeFilterText]}>
-            {t('assigned_eseals.filters.offline', { defaultValue: 'Offline' })}
-          </Text>
-        </TouchableOpacity>
-
-        {/* Warranty Chips */}
-        <TouchableOpacity
-          style={[styles.filterChip, warrantyFilter === 'active' && styles.activeFilter]}
-          onPress={() => setWarrantyFilter('active')}
-        >
-          <Icon name="verified" size={16} color={warrantyFilter === 'active' ? '#FFA500' : '#666'} />
-          <Text style={[styles.filterText, warrantyFilter === 'active' && styles.activeFilterText]}>
-            {t('assigned_eseals.filters.warranty_active', { defaultValue: 'Warranty Active' })}
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.filterChip, warrantyFilter === 'expired' && styles.activeFilter]}
-          onPress={() => setWarrantyFilter('expired')}
-        >
-          <Icon name="warning" size={16} color={warrantyFilter === 'expired' ? '#FFA500' : '#666'} />
-          <Text style={[styles.filterText, warrantyFilter === 'expired' && styles.activeFilterText]}>
-            {t('assigned_eseals.filters.warranty_expired', { defaultValue: 'Warranty Expired' })}
-          </Text>
-        </TouchableOpacity>
-
-        {/* Clear filters button */}
-        <TouchableOpacity style={styles.clearChip} onPress={clearFilters}>
-          <Icon name="clear" size={16} color="#FFA500" />
-          <Text style={styles.clearText}>{t('assigned_eseals.filters.clear', { defaultValue: 'Clear' })}</Text>
-        </TouchableOpacity>
-      </ScrollView>
-    </View>
-  );
-
-  const renderHeader = () => (
-    <View style={styles.header}>
-      <View style={styles.headerTop}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-          <Icon name="arrow-back" size={24} color="#1A1A1A" />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>{t('assigned_eseals.title', { defaultValue: 'Assigned E-Seals' })}</Text>
-        <View style={{ flexDirection: 'row', gap: 8 }}>
-          {/* ========== OFFLINE: Manual sync button ========== */}
-          {isSyncing ? (
-            <ActivityIndicator size="small" color="#FFA500" />
-          ) : (
-            <TouchableOpacity onPress={manualSync} style={styles.syncButton}>
-              <Icon name="sync" size={20} color={isOnline ? "#4CAF50" : "#999"} />
-              <Text style={[styles.syncButtonText, { color: isOnline ? "#4CAF50" : "#999" }]}>
-                {t('assigned_eseals.sync', { defaultValue: 'Sync' })}
-              </Text>
-            </TouchableOpacity>
-          )}
-          {/* ========== END OFFLINE SYNC BUTTON ========== */}
-        </View>
-      </View>
-
-      <View style={styles.statsCard}>
-        <Icon name="inventory" size={24} color="#FFA500" />
-        <Text style={styles.statsText}>
-          {t('assigned_eseals.available_count', { defaultValue: 'Available Count' })}: {availableCount}
-        </Text>
-      </View>
-
-      <View style={styles.searchContainer}>
-        <Icon name="search" size={20} color="#999" style={styles.searchIcon} />
-        <TextInput
-          style={styles.searchInput}
-          placeholder={t('assigned_eseals.search_placeholder', { defaultValue: 'Search by name or serial' })}
-          placeholderTextColor="#999"
-          value={searchQuery}
-          onChangeText={setSearchQuery}
-        />
-        {searchQuery.length > 0 && (
-          <TouchableOpacity onPress={() => setSearchQuery('')}>
-            <Icon name="close" size={20} color="#999" />
-          </TouchableOpacity>
-        )}
-      </View>
-
-      {renderFilters()}
-    </View>
-  );
-
-  if (loading && !refreshing) {
-    return (
-      <SafeAreaView style={styles.container}>
-        <StatusBar barStyle="dark-content" backgroundColor="#F8F9FA" />
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#FFA500" />
-          <Text style={styles.loadingText}>{t('assigned_eseals.loading', { defaultValue: 'Loading assigned eseals...' })}</Text>
-        </View>
-      </SafeAreaView>
-    );
-  }
-
   return (
     <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#F8F9FA" />
+      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
 
-      <FlatList
-        data={filteredDevices}
-        keyExtractor={(item) => item.deviceId.toString()}
-        renderItem={renderDeviceCard}
-        ListHeaderComponent={renderHeader}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#FFA500" />}
-        contentContainerStyle={styles.listContent}
-        showsVerticalScrollIndicator={false}
-        numColumns={width > 768 ? 2 : 1}
-        columnWrapperStyle={width > 768 ? styles.row : null}
-        ListEmptyComponent={
-          <View style={styles.emptyContainer}>
-            <Icon name="devices-off" size={64} color="#ccc" />
-            <Text style={styles.emptyTitle}>{t('assigned_eseals.empty.title', { defaultValue: 'No devices found' })}</Text>
-            <Text style={styles.emptyText}>
-              {searchQuery || statusFilter !== 'all' || warrantyFilter !== 'all'
-                ? t('assigned_eseals.empty.adjust_filters', { defaultValue: 'Try adjusting your filters' })
-                : t('assigned_eseals.empty.no_devices', { defaultValue: 'No assigned eseals available' })}
-            </Text>
+      {/* Styled Top App Bar Header */}
+      <View style={styles.header}>
+        <View style={styles.headerTop}>
+          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+            <Icon name="arrow-back" size={24} color="#1A1A1A" />
+          </TouchableOpacity>
+          <View style={styles.headerTextGroup}>
+            <Text style={styles.mainTitle}>{t('assigned_eseals.title', { defaultValue: 'My Assigned E-Seals' })}</Text>
+            <Text style={styles.subTitleText}>{t('assigned_eseals.subtitle', { defaultValue: 'Manage active inventory allocation' })}</Text>
           </View>
-        }
-      />
+          {isOnline && (
+            <TouchableOpacity onPress={manualSync} disabled={isSyncing} style={styles.syncIconButton}>
+              {isSyncing ? (
+                <ActivityIndicator size="small" color="#FFA500" />
+              ) : (
+                <Icon name="sync" size={22} color="#495057" />
+              )}
+            </TouchableOpacity>
+          )}
+        </View>
 
-      {/* Device Details Modal */}
-      <Modal
-        visible={modalVisible}
-        animationType="slide"
-        transparent={true}
-        onRequestClose={() => setModalVisible(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>{t('assigned_eseals.modal.title', { defaultValue: 'Device Details' })}</Text>
-              <TouchableOpacity onPress={() => setModalVisible(false)} style={styles.closeButton}>
-                <Icon name="close" size={24} color="#999" />
-              </TouchableOpacity>
-            </View>
-            {selectedDevice && (
-              <>
-                <ScrollView style={styles.modalBody}>
-                  <View style={styles.modalDetailRow}>
-                    <Text style={styles.modalLabel}>{t('assigned_eseals.modal.device_name', { defaultValue: 'Device Name' })}:</Text>
-                    <Text style={styles.modalValue}>{selectedDevice.name || t('assigned_eseals.na', { defaultValue: 'N/A' })}</Text>
-                  </View>
-                  <View style={styles.modalDetailRow}>
-                    <Text style={styles.modalLabel}>{t('assigned_eseals.modal.serial_number', { defaultValue: 'Serial Number' })}:</Text>
-                    <Text style={styles.modalValue}>{selectedDevice.serialNo || t('assigned_eseals.na', { defaultValue: 'N/A' })}</Text>
-                  </View>
-                  <View style={styles.modalDetailRow}>
-                    <Text style={styles.modalLabel}>{t('assigned_eseals.modal.imei', { defaultValue: 'IMEI' })}:</Text>
-                    <Text style={styles.modalValue}>{selectedDevice.imei || t('assigned_eseals.na', { defaultValue: 'N/A' })}</Text>
-                  </View>
-                  <View style={styles.modalDetailRow}>
-                    <Text style={styles.modalLabel}>{t('assigned_eseals.modal.model', { defaultValue: 'Model' })}:</Text>
-                    <Text style={styles.modalValue}>
-                      {selectedDevice.make} {selectedDevice.model}
-                    </Text>
-                  </View>
-                  <View style={styles.modalDetailRow}>
-                    <Text style={styles.modalLabel}>{t('assigned_eseals.modal.year_of_manufacture', { defaultValue: 'Year of Manufacture' })}:</Text>
-                    <Text style={styles.modalValue}>{selectedDevice.yearOfManufacture || t('assigned_eseals.na', { defaultValue: 'N/A' })}</Text>
-                  </View>
-                  <View style={styles.modalDetailRow}>
-                    <Text style={styles.modalLabel}>{t('assigned_eseals.modal.group', { defaultValue: 'Group' })}:</Text>
-                    <Text style={styles.modalValue}>{selectedDevice.groupName || t('assigned_eseals.na', { defaultValue: 'N/A' })}</Text>
-                  </View>
-                  <View style={styles.modalDetailRow}>
-                    <Text style={styles.modalLabel}>{t('assigned_eseals.modal.firmware_version', { defaultValue: 'Firmware Version' })}:</Text>
-                    <Text style={styles.modalValue}>{selectedDevice.firmwareVersion || t('assigned_eseals.na', { defaultValue: 'N/A' })}</Text>
-                  </View>
-                  <View style={styles.modalDetailRow}>
-                    <Text style={styles.modalLabel}>{t('assigned_eseals.modal.warranty', { defaultValue: 'Warranty' })}:</Text>
-                    <Text style={styles.modalValue}>
-                      {selectedDevice.warrantyStatus || t('assigned_eseals.na', { defaultValue: 'N/A' })} ({selectedDevice.warrantyStartDate} - {selectedDevice.warrantyEndDate})
-                    </Text>
-                  </View>
-                  <View style={styles.modalDetailRow}>
-                    <Text style={styles.modalLabel}>{t('assigned_eseals.modal.status', { defaultValue: 'Status' })}:</Text>
-                    <Text style={[styles.modalValue, { color: selectedDevice.isOnline ? '#4CAF50' : '#9E9E9E' }]}>
-                      {selectedDevice.isOnline
-                        ? t('assigned_eseals.status.online', { defaultValue: 'Online' })
-                        : t('assigned_eseals.status.offline', { defaultValue: 'Offline' })}
-                    </Text>
-                  </View>
-                </ScrollView>
-                <TouchableOpacity style={styles.closeModalButton} onPress={() => setModalVisible(false)}>
-                  <Text style={styles.closeModalButtonText}>{t('assigned_eseals.modal.close', { defaultValue: 'Close' })}</Text>
-                </TouchableOpacity>
-              </>
-            )}
+        {/* Dynamic Metric Counter Widget */}
+        <View style={styles.metricsBar}>
+          <View style={styles.metricItem}>
+            <Text style={styles.metricCount}>{availableCount}</Text>
+            <Text style={styles.metricLabel}>{t('assigned_eseals.available', { defaultValue: 'Available Stock' })}</Text>
+          </View>
+          <View style={styles.verticalDivider} />
+          <View style={styles.metricItem}>
+            <Text style={styles.metricCount}>{filteredDevices.length}</Text>
+            <Text style={styles.metricLabel}>{t('assigned_eseals.displayed', { defaultValue: 'Filtered Units' })}</Text>
           </View>
         </View>
-      </Modal>
+      </View>
+
+      {/* Connectivity Alert Ribbon */}
+      {!isOnline && (
+        <View style={styles.offlineBanner}>
+          <Text style={styles.offlineBannerText}>📴 Offline Mode — Serving Cached Records</Text>
+        </View>
+      )}
+
+      {/* Filter Options Control Deck Panel */}
+      <View style={styles.filterDeck}>
+        <View style={styles.searchBarContainer}>
+          <Icon name="search" size={20} color="#A0A0A0" style={styles.searchIcon} />
+          <TextInput
+            style={styles.searchInput}
+            placeholder={t('assigned_eseals.search_placeholder', { defaultValue: 'Search by serial, group, name...' })}
+            placeholderTextColor="#A0A0A0"
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            clearButtonMode="while-editing"
+          />
+        </View>
+
+        {/* Custom Pill Selector Rows */}
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.pillsScrollContainer}>
+          <TouchableOpacity 
+            style={[styles.filterPill, statusFilter === 'all' && styles.activePill]} 
+            onPress={() => setStatusFilter('all')}
+          >
+            <Text style={[styles.pillText, statusFilter === 'all' && styles.activePillText]}>All Status</Text>
+          </TouchableOpacity>
+          <TouchableOpacity 
+            style={[styles.filterPill, statusFilter === 'online' && styles.activePill]} 
+            onPress={() => setStatusFilter('online')}
+          >
+            <Text style={[styles.pillText, statusFilter === 'online' && styles.activePillText]}>Online</Text>
+          </TouchableOpacity>
+          <TouchableOpacity 
+            style={[styles.filterPill, statusFilter === 'offline' && styles.activePill]} 
+            onPress={() => setStatusFilter('offline')}
+          >
+            <Text style={[styles.pillText, statusFilter === 'offline' && styles.activePillText]}>Offline</Text>
+          </TouchableOpacity>
+
+          <View style={styles.pillsDivider} />
+
+          <TouchableOpacity 
+            style={[styles.filterPill, warrantyFilter === 'all' && styles.activePill]} 
+            onPress={() => setWarrantyFilter('all')}
+          >
+            <Text style={[styles.pillText, warrantyFilter === 'all' && styles.activePillText]}>All Warranty</Text>
+          </TouchableOpacity>
+          <TouchableOpacity 
+            style={[styles.filterPill, warrantyFilter === 'active' && styles.activePill]} 
+            onPress={() => setWarrantyFilter('active')}
+          >
+            <Text style={[styles.pillText, warrantyFilter === 'active' && styles.activePillText]}>Active Only</Text>
+          </TouchableOpacity>
+          
+          {(searchQuery || statusFilter !== 'all' || warrantyFilter !== 'all') && (
+            <TouchableOpacity style={styles.clearFiltersButton} onPress={clearFilters}>
+              <Icon name="clear-all" size={16} color="#FF6B6B" />
+              <Text style={styles.clearFiltersText}>Reset</Text>
+            </TouchableOpacity>
+          )}
+        </ScrollView>
+      </View>
+
+      {/* Main Stock Inventory Core List rendering interface view */}
+      {loading && !refreshing ? (
+        <View style={styles.centerLoading}>
+          <ActivityIndicator size="large" color="#FFA500" />
+          <Text style={styles.loadingText}>Synchronizing local store data...</Text>
+        </View>
+      ) : (
+        <FlatList
+          data={filteredDevices}
+          renderItem={renderDeviceCard}
+          keyExtractor={(item, index) => item.id?.toString() || index.toString()}
+          contentContainerStyle={styles.listContainer}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={['#FFA500']} />
+          }
+          ListEmptyComponent={
+            <View style={styles.emptyContainer}>
+              <Icon name="inventory" size={48} color="#D0D0D0" />
+              <Text style={styles.emptyTitle}>No Matching E-Seals Found</Text>
+              <Text style={styles.emptySubtitle}>Try adjusting your search query parameters or filters</Text>
+            </View>
+          }
+        />
+      )}
     </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
+ container: {
     flex: 1,
     backgroundColor: '#F8F9FA',
   },
   header: {
     backgroundColor: '#FFFFFF',
-    paddingBottom: 16,
+    paddingBottom: 12,
     borderBottomWidth: 1,
     borderBottomColor: '#F0F0F0',
     shadowColor: '#000',
@@ -596,269 +476,271 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.05,
     shadowRadius: 4,
     elevation: 2,
+    zIndex: 10,
   },
   headerTop: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 20,
-    paddingTop: 60,
-    paddingBottom: 16,
+    paddingTop: 50,
+    paddingBottom: 12,
   },
+  
   backButton: {
-    width: 40,
-    height: 40,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderRadius: 20,
-    backgroundColor: '#F5F5F5',
+    paddingVertical: 6,
+    paddingRight: 14,
   },
-  headerTitle: {
-    fontSize: 20,
-    fontWeight: '600',
+  headerTextGroup: {
+    flex: 1,
+  },
+  mainTitle: {
+    fontSize: 19,
+    fontWeight: '700',
+    color: '#1A1A1A',
+    letterSpacing: -0.3,
+  },
+  subTitleText: {
+    fontSize: 12,
+    color: '#666666',
+    marginTop: 2,
+  },
+  syncIconButton: {
+    padding: 6,
+  },
+  metricsBar: {
+    flexDirection: 'row',
+    backgroundColor: '#F8F9FA',
+    borderRadius: 10,
+    paddingVertical: 10,
+    marginTop: 16,
+    borderWidth: 1,
+    borderColor: '#EAEAEA',
+  },
+  metricItem: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  metricCount: {
+    fontSize: 16,
+    fontWeight: '700',
     color: '#1A1A1A',
   },
-  syncButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    backgroundColor: '#F5F5F5',
-    borderRadius: 20,
-    gap: 4,
+  metricLabel: {
+    fontSize: 11,
+    color: '#666666',
+    marginTop: 2,
   },
-  syncButtonText: {
-    fontSize: 12,
-    fontWeight: '500',
+  verticalDivider: {
+    width: 1,
+    backgroundColor: '#EAEAEA',
   },
-  statsCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#FFF9E6',
-    marginHorizontal: 20,
-    marginBottom: 16,
-    padding: 12,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#FFE0A3',
-    gap: 10,
-  },
-  statsText: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#B76E00',
-  },
-  searchContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#F5F5F5',
-    borderRadius: 12,
-    marginHorizontal: 20,
-    marginBottom: 12,
-    paddingHorizontal: 12,
+  offlineBanner: {
+    backgroundColor: '#FF9800',
     paddingVertical: 8,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+  },
+  offlineBannerText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  filterDeck: {
+    backgroundColor: '#FFFFFF',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#EAEAEA',
+  },
+  searchBarContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F8F9FA',
+    marginHorizontal: 20,
+    borderRadius: 10,
+    paddingHorizontal: 12,
     borderWidth: 1,
-    borderColor: '#F0F0F0',
+    borderColor: '#E2E8F0',
+    height: 40,
   },
   searchIcon: {
     marginRight: 8,
   },
   searchInput: {
     flex: 1,
-    fontSize: 14,
     color: '#1A1A1A',
-    paddingVertical: 8,
+    fontSize: 14,
+    paddingVertical: 0,
   },
-  filtersContainer: {
-    flexDirection: 'row',
-    paddingHorizontal: 12,
-    marginBottom: 8,
-  },
-  filterChip: {
-    flexDirection: 'row',
+  pillsScrollContainer: {
+    paddingHorizontal: 20,
     alignItems: 'center',
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 40,
-    backgroundColor: '#F5F5F5',
-    marginRight: 12,
-    gap: 6,
+    paddingTop: 12,
+    gap: 8,
   },
-  activeFilter: {
-    backgroundColor: '#FFA50020',
+  filterPill: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    backgroundColor: '#F1F3F5',
     borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  activePill: {
+    backgroundColor: '#FFA500',
     borderColor: '#FFA500',
   },
-  filterText: {
+  pillText: {
     fontSize: 12,
+    color: '#495057',
     fontWeight: '500',
-    color: '#666',
   },
-  activeFilterText: {
-    color: '#FFA500',
+  activePillText: {
+    color: '#FFFFFF',
+    fontWeight: '600',
   },
-  clearChip: {
+  pillsDivider: {
+    width: 1,
+    height: 16,
+    backgroundColor: '#EAEAEA',
+    marginHorizontal: 4,
+  },
+  clearFiltersButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 40,
-    backgroundColor: '#F5F5F5',
-    marginRight: 12,
-    gap: 6,
-    borderWidth: 1,
-    borderColor: '#E5E5E5',
+    paddingHorizontal: 10,
+    gap: 4,
   },
-  clearText: {
+  clearFiltersText: {
     fontSize: 12,
-    fontWeight: '500',
-    color: '#FFA500',
+    color: '#FF6B6B',
+    fontWeight: '600',
   },
-  listContent: {
-    paddingBottom: 20,
-  },
-  row: {
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
+  listContainer: {
+    padding: 16,
+    paddingBottom: 32,
   },
   card: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    marginHorizontal: 16,
-    marginBottom: 12,
+    borderRadius: 14,
     padding: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 3,
+    marginBottom: 12,
     borderWidth: 1,
-    borderColor: '#F0F0F0',
-    flex: 1,
+    borderColor: '#EAEAEA',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.02,
+    shadowRadius: 6,
+    elevation: 2,
   },
   cardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 12,
   },
   deviceInfo: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    flex: 1,
+    marginRight: 12,
+  },
+  iconContainer: {
+    width: 36,
+    height: 36,
+    borderRadius: 8,
+    backgroundColor: '#FFF8F0',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#FFEAD2',
+  },
+  nameBlock: {
+    marginLeft: 12,
+    flex: 1,
   },
   deviceName: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '600',
-    color: '#1A1F36',
+    color: '#1A1A1A',
+  },
+  serialSubtitle: {
+    fontSize: 12,
+    color: '#666666',
+    marginTop: 2,
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
   },
   statusBadge: {
-    paddingHorizontal: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
     paddingVertical: 4,
-    borderRadius: 8,
+    borderRadius: 12,
+    gap: 6,
+  },
+  statusDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
   },
   statusText: {
     fontSize: 11,
     fontWeight: '600',
   },
+  dividerLine: {
+    height: 1,
+    backgroundColor: '#F1F3F5',
+    marginVertical: 12,
+  },
   cardDetails: {
-    gap: 8,
-  },
-  detailRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
+    justifyContent: 'space-between',
   },
-  detailText: {
+  detailItem: {
+    flex: 1,
+  },
+  detailLabel: {
+    fontSize: 10,
+    color: '#888888',
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
+    marginBottom: 3,
+  },
+  detailValue: {
     fontSize: 13,
-    color: '#666',
+    color: '#495057',
+    fontWeight: '500',
   },
-  emptyContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingTop: 80,
-  },
-  emptyTitle: {
-    fontSize: 20,
+  activeWarranty: {
+    color: '#2E7D32',
     fontWeight: '600',
-    color: '#1A1A1A',
-    marginTop: 16,
-    marginBottom: 8,
   },
-  emptyText: {
-    fontSize: 14,
-    color: '#666',
-    textAlign: 'center',
-  },
-  loadingContainer: {
+  centerLoading: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
   },
   loadingText: {
+    color: '#666666',
+    fontSize: 14,
     marginTop: 12,
-    fontSize: 14,
-    color: '#666',
   },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'flex-end',
-  },
-  modalContent: {
-    backgroundColor: '#FFFFFF',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    maxHeight: '90%',
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+  emptyContainer: {
     alignItems: 'center',
-    padding: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F0F0F0',
-  },
-  modalTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#1A1A1A',
-  },
-  closeButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: '#F5F5F5',
     justifyContent: 'center',
-    alignItems: 'center',
+    paddingVertical: 64,
   },
-  modalBody: {
-    padding: 20,
-  },
-  modalDetailRow: {
-    marginBottom: 16,
-  },
-  modalLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#999',
-    marginBottom: 4,
-  },
-  modalValue: {
-    fontSize: 14,
-    color: '#333',
-  },
-  closeModalButton: {
-    backgroundColor: '#FFA500',
-    borderRadius: 12,
-    paddingVertical: 14,
-    alignItems: 'center',
-    margin: 20,
-  },
-  closeModalButtonText: {
-    color: '#FFFFFF',
-    fontWeight: '600',
+  emptyTitle: {
     fontSize: 16,
+    fontWeight: '600',
+    color: '#495057',
+    marginTop: 12,
+  },
+  emptySubtitle: {
+    fontSize: 13,
+    color: '#888888',
+    textAlign: 'center',
+    marginTop: 4,
+    paddingHorizontal: 32,
   },
 });
 

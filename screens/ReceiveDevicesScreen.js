@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   StyleSheet,
   SafeAreaView,
@@ -19,9 +19,9 @@ import { Camera } from 'react-native-camera-kit';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Snackbar from 'react-native-snackbar';
 import * as Animatable from 'react-native-animatable';
+import Icon from 'react-native-vector-icons/MaterialIcons'; // ✅ FIXED: Integrated native vector arrows & icons for system consistency
 import axios from 'axios';
 import { useTranslation } from 'react-i18next';
-// ✅ Import global token refresh service
 import { refreshAccessToken, addTokenRefreshListener } from '../services/TokenService';
 
 // ========== OFFLINE MODULE IMPORTS ==========
@@ -31,10 +31,10 @@ import OfflineSyncService from '../services/OfflineSyncService';
 // ========== END OFFLINE MODULE IMPORTS ==========
 
 const { width } = Dimensions.get('window');
-const SCAN_SIZE = width * 0.7;
+const SCAN_SIZE = width * 0.70;
 const API_BASE = 'https://demo2.bsl.co.ke';
 
-// ✅ Helper function to get language header
+// Helper function to get language header
 const getLanguageHeader = async (i18n) => {
   try {
     const language = await AsyncStorage.getItem('userLanguage') || i18n?.language || 'en';
@@ -45,7 +45,7 @@ const getLanguageHeader = async (i18n) => {
   }
 };
 
-// ✅ FIXED: Helper function to make authenticated axios request with retry on 401
+// Helper function to make authenticated axios request with retry on 401
 const authenticatedAxios = async (method, config, i18n, retryCount = 0) => {
   try {
     const token = await AsyncStorage.getItem('accessToken');
@@ -96,7 +96,6 @@ const ReceiveDevicesScreen = () => {
 
   // Scanner states
   const [showScanner, setShowScanner] = useState(true);
-  const [scannedData, setScannedData] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
 
   // Dropdown states
@@ -108,7 +107,6 @@ const ReceiveDevicesScreen = () => {
   const [isOnline, setIsOnline] = useState(true);
   const [isSyncing, setIsSyncing] = useState(false);
   const [pendingReceives, setPendingReceives] = useState([]);
-  // ========== END OFFLINE MODE STATE VARIABLES ==========
 
   // Device condition options
   const conditionOptions = [
@@ -123,7 +121,6 @@ const ReceiveDevicesScreen = () => {
     { id: 9, label: t('receive_devices.conditions.decommissioned', { defaultValue: 'Decommissioned' }) }
   ];
 
-  // ✅ Listen for token refresh events
   useEffect(() => {
     const removeListener = addTokenRefreshListener((newToken) => {
       console.log('📡 Token refreshed in ReceiveDevicesScreen');
@@ -135,17 +132,10 @@ const ReceiveDevicesScreen = () => {
   useEffect(() => {
     const initOfflineMode = async () => {
       try {
-        // Initialize offline database
         await OfflineDatabaseService.initDatabase();
-        console.log('✅ Offline database initialized for Receive Devices Screen');
-
-        // Initialize network monitor
         NetworkMonitorService.init();
-
-        // Start auto-sync service
         await OfflineSyncService.startAutoSync();
 
-        // Listen for network changes
         NetworkMonitorService.on('connectionChange', (online) => {
           setIsOnline(online);
           if (online) {
@@ -154,7 +144,6 @@ const ReceiveDevicesScreen = () => {
               duration: 2000,
               backgroundColor: '#4CAF50',
             });
-            // Auto-refresh when coming back online
             processPendingReceives();
           } else {
             Snackbar.show({
@@ -165,7 +154,6 @@ const ReceiveDevicesScreen = () => {
           }
         });
 
-        // Load pending receives from storage
         await loadPendingReceives();
       } catch (error) {
         console.error('❌ Offline mode init error:', error);
@@ -175,14 +163,11 @@ const ReceiveDevicesScreen = () => {
     initOfflineMode();
 
     return () => {
-      // Cleanup
       OfflineSyncService.stopAutoSync();
       NetworkMonitorService.cleanup();
     };
   }, []);
-  // ========== END OFFLINE MODE INITIALIZATION ==========
 
-  // ========== OFFLINE: Save receive batch offline ==========
   const saveReceiveOffline = async (storeIdValue, devices) => {
     try {
       const offlineReceive = {
@@ -199,43 +184,35 @@ const ReceiveDevicesScreen = () => {
       await OfflineDatabaseService.saveUserData('pending_device_receives', existingReceives);
       setPendingReceives(existingReceives);
 
-      // Also add to sync queue
       await OfflineDatabaseService.addToSyncQueue('RECEIVE_DEVICES', '/api/v1/store-stock/receive-devices', {
         storeId: storeIdValue,
         devices: devices
       });
 
-      console.log(`📦 Device receive batch saved offline (${devices.length} devices)`);
       return true;
     } catch (error) {
       console.error('Error saving receive batch offline:', error);
       return false;
     }
   };
-  // ========== END OFFLINE SAVE RECEIVE ==========
 
-  // ========== OFFLINE: Load pending receives ==========
   const loadPendingReceives = async () => {
     try {
       const pending = await OfflineDatabaseService.getUserData('pending_device_receives');
       if (pending && pending.length > 0) {
         setPendingReceives(pending);
-        console.log('📦 Found pending device receives:', pending.length);
       }
     } catch (error) {
       console.error('Error loading pending receives:', error);
     }
   };
-  // ========== END OFFLINE LOAD PENDING ==========
 
-  // ========== OFFLINE: Process pending receives ==========
   const processPendingReceives = async () => {
     if (!isOnline) return;
 
     const pending = await OfflineDatabaseService.getUserData('pending_device_receives');
     if (!pending || pending.length === 0) return;
 
-    console.log(`🔄 Processing ${pending.length} pending device receives...`);
     let successCount = 0;
     let failCount = 0;
 
@@ -256,22 +233,16 @@ const ReceiveDevicesScreen = () => {
           i18n
         );
 
-        const data = response.data;
         if (response.status === 200 || response.status === 201) {
-          const successDeviceCount = data.successfulDeviceIds?.length || 0;
-          successCount += successDeviceCount;
-          console.log(`✅ Synced receive batch with ${successDeviceCount} devices`);
+          successCount += response.data.successfulDeviceIds?.length || 0;
         } else {
           failCount += receive.devices.length;
-          console.log(`❌ Failed to sync receive batch`);
         }
       } catch (error) {
-        console.error(`Failed to sync receive batch:`, error);
         failCount += receive.devices.length;
       }
     }
 
-    // Clear processed receives from storage
     await OfflineDatabaseService.saveUserData('pending_device_receives', []);
     setPendingReceives([]);
 
@@ -291,9 +262,7 @@ const ReceiveDevicesScreen = () => {
       });
     }
   };
-  // ========== END OFFLINE PROCESS PENDING ==========
 
-  // ========== OFFLINE: Manual sync function ==========
   const manualSync = async () => {
     if (!isOnline) {
       Snackbar.show({
@@ -324,7 +293,6 @@ const ReceiveDevicesScreen = () => {
       setIsSyncing(false);
     }
   };
-  // ========== END OFFLINE MANUAL SYNC ==========
 
   useEffect(() => {
     loadStoreData();
@@ -337,10 +305,7 @@ const ReceiveDevicesScreen = () => {
 
       if (paramsStoreId) {
         setStoreId(paramsStoreId.toString());
-        if (paramsStoreName) {
-          setStoreName(paramsStoreName);
-        }
-        console.log('Store received from navigation:', { storeId: paramsStoreId, storeName: paramsStoreName });
+        if (paramsStoreName) setStoreName(paramsStoreName);
       } else {
         const storedStoreId = await AsyncStorage.getItem('storeId');
         const storedStoreName = await AsyncStorage.getItem('storeName');
@@ -348,9 +313,7 @@ const ReceiveDevicesScreen = () => {
         if (storedStoreId) {
           setStoreId(storedStoreId);
           setStoreName(storedStoreName || 'Store');
-          console.log('Store loaded from storage:', { storeId: storedStoreId, storeName: storedStoreName });
         } else {
-          console.warn('No store ID found!');
           Snackbar.show({
             text: t('receive_devices.errors.no_store', { defaultValue: 'No store assigned. Please contact admin.' }),
             duration: 3000,
@@ -366,26 +329,19 @@ const ReceiveDevicesScreen = () => {
   const extractSerialNumber = (scannedValue) => {
     if (scannedValue && scannedValue.includes('&')) {
       const parts = scannedValue.split('&');
-      const serialNumber = parts[parts.length - 1];
-      console.log('📋 Extracted Serial Number:', serialNumber);
-      return serialNumber;
+      return parts[parts.length - 1];
     }
     return scannedValue;
   };
 
   const onReadCode = async (event) => {
     const value = event?.nativeEvent?.codeStringValue;
-
-    console.log('📷 SCANNED VALUE:', value);
-    console.log('📷 LENGTH:', value?.length);
-
     if (!value || isLoading) return;
 
     const deviceCode = value.trim();
     const serialNumber = extractSerialNumber(deviceCode);
 
     if (!/^\d+$/.test(serialNumber)) {
-      console.log('❌ Invalid: Serial number contains non-numeric characters');
       Snackbar.show({
         text: t('receive_devices.errors.invalid_barcode', { defaultValue: 'Invalid barcode: Serial number must contain only numbers' }),
         duration: 3000,
@@ -438,7 +394,6 @@ const ReceiveDevicesScreen = () => {
     setShowDropdown(false);
     setPendingSerialNumber(null);
     setSelectedCondition(null);
-    setScannedData(null);
     setShowScanner(true);
   };
 
@@ -505,12 +460,9 @@ const ReceiveDevicesScreen = () => {
     }
 
     setSubmitting(true);
-
-    // ========== OFFLINE: Check if online ==========
     const online = await NetworkMonitorService.isOnline();
 
     if (!online) {
-      // Save receive batch offline
       const saved = await saveReceiveOffline(parseInt(storeId, 10), devicesList);
       if (saved) {
         Snackbar.show({
@@ -529,7 +481,6 @@ const ReceiveDevicesScreen = () => {
       setSubmitting(false);
       return;
     }
-    // ========== END OFFLINE CHECK ==========
 
     try {
       const requestBody = {
@@ -537,23 +488,17 @@ const ReceiveDevicesScreen = () => {
         devices: devicesList
       };
 
-      console.log('📤 Submitting devices:', JSON.stringify(requestBody, null, 2));
-
-      // ✅ FIXED: Use authenticatedAxios instead of authenticatedFetch
       const response = await authenticatedAxios(
         'post',
         {
           url: `${API_BASE}/api/v1/store-stock/receive-devices`,
           data: requestBody,
-          headers: {
-            'Content-Type': 'application/json',
-          },
+          headers: { 'Content-Type': 'application/json' },
         },
         i18n
       );
 
       const data = response.data;
-
       const successCount = data.successfulDeviceIds?.length || 0;
       const errorCount = data.errors?.length || 0;
 
@@ -569,24 +514,17 @@ const ReceiveDevicesScreen = () => {
       });
 
       if (data.errors && data.errors.length > 0) {
-        console.error('Submission errors:', data.errors);
         Alert.alert(
           t('receive_devices.alert.partial_success', { defaultValue: 'Partial Success' }),
           t('receive_devices.alert.partial_success_message', { defaultValue: 'Some devices failed:\n{{errors}}', errors: data.errors.join('\n') }).replace('{{errors}}', data.errors.join('\n'))
         );
       }
 
-      if (successCount > 0) {
-        setDevicesList([]);
-      }
+      if (successCount > 0) setDevicesList([]);
 
     } catch (error) {
       console.error('Error submitting devices:', error);
-
-      // ========== OFFLINE: Offer to save offline on error ==========
-      const isNetworkError = error.message?.includes('network') ||
-                            error.message?.includes('offline') ||
-                            error.code === 'ERR_NETWORK';
+      const isNetworkError = error.message?.includes('network') || error.message?.includes('offline') || error.code === 'ERR_NETWORK';
 
       if (isNetworkError && !online) {
         const saved = await saveReceiveOffline(parseInt(storeId, 10), devicesList);
@@ -597,12 +535,6 @@ const ReceiveDevicesScreen = () => {
             backgroundColor: '#FF9800',
           });
           setDevicesList([]);
-        } else {
-          Snackbar.show({
-            text: error.response?.data?.message || error.message || t('receive_devices.errors.submit_failed', { defaultValue: 'Failed to submit devices. Please try again.' }),
-            duration: 3000,
-            backgroundColor: '#FF6B6B',
-          });
         }
       } else if (error.response?.status === 401) {
         Snackbar.show({
@@ -619,7 +551,6 @@ const ReceiveDevicesScreen = () => {
           backgroundColor: '#FF6B6B',
         });
       }
-      // ========== END OFFLINE OFFER ==========
     } finally {
       setSubmitting(false);
     }
@@ -627,144 +558,166 @@ const ReceiveDevicesScreen = () => {
 
   const renderDeviceItem = ({ item, index }) => (
     <Animatable.View animation="fadeInLeft" delay={index * 50} style={styles.deviceCard}>
-      <View style={styles.deviceInfo}>
-        <Text style={styles.deviceSerial}>{item.serialNumber}</Text>
-        <View style={styles.conditionBadge}>
-          <Text style={styles.conditionText}>
+      <View style={styles.deviceCardLeft}>
+        <View style={styles.deviceIconWrapper}>
+          <Icon name="router" size={18} color="#FFA500" />
+        </View>
+        <View style={styles.deviceInfoTextContainer}>
+          <Text style={styles.deviceSerial}>{item.serialNumber}</Text>
+          <Text style={styles.conditionLabelText}>
             {conditionOptions.find(opt => opt.id === item.deviceConditionId)?.label || t('receive_devices.unknown', { defaultValue: 'Unknown' })}
           </Text>
         </View>
       </View>
-      <TouchableOpacity onPress={() => removeDevice(index)} style={styles.removeButton}>
-        <Text style={styles.removeButtonText}>✕</Text>
+      <TouchableOpacity activeOpacity={0.7} onPress={() => removeDevice(index)} style={styles.removeButton}>
+        <Icon name="close" size={16} color="#FF6B6B" />
       </TouchableOpacity>
     </Animatable.View>
   );
 
   return (
     <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#0B0C10" />
+      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
 
+      {/* Styled App Header Section Component Group */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-          <Text style={styles.backButtonText}>←</Text>
-        </TouchableOpacity>
-        <View style={styles.headerCenter}>
-          <Text style={styles.headerTitle}>{t('receive_devices.title', { defaultValue: 'Receive Devices' })}</Text>
-          {storeName && (
-            <Text style={styles.storeNameText}>{storeName}</Text>
-          )}
-        </View>
-        <View style={styles.headerRight}>
-          {/* ========== OFFLINE: Manual sync button ========== */}
-          {isSyncing ? (
-            <ActivityIndicator size="small" color="#FFD700" style={styles.syncIndicator} />
-          ) : (
-            <TouchableOpacity onPress={manualSync} style={styles.syncButton}>
-              <Text style={styles.syncButtonText}>↻</Text>
-            </TouchableOpacity>
-          )}
-          {/* ========== END OFFLINE SYNC BUTTON ========== */}
+        <View style={styles.headerTitleRow}>
+          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+                      <Icon name="arrow-back" size={24} color="#1A1A1A" />
+                    </TouchableOpacity>
+          <View style={styles.headerTextGroup}>
+            <Text style={styles.headerTitle}>{t('receive_devices.title', { defaultValue: 'Receive Devices' })}</Text>
+            {storeName && <Text style={styles.storeNameText}>{storeName}</Text>}
+          </View>
+          <View style={styles.headerRightActions}>
+            {isSyncing ? (
+              <ActivityIndicator size="small" color="#FFA500" />
+            ) : (
+              <TouchableOpacity activeOpacity={0.7} onPress={manualSync} style={styles.syncButton}>
+                <Icon name="sync" size={22} color="#495057" />
+              </TouchableOpacity>
+            )}
+          </View>
         </View>
       </View>
 
-      {/* ========== OFFLINE: Network status banner ========== */}
+      {/* Offline Alert Context Banner */}
       {!isOnline && (
         <View style={styles.offlineBanner}>
           <Text style={styles.offlineBannerText}>📴 Offline Mode - Devices will be saved locally</Text>
         </View>
       )}
-      {/* ========== END OFFLINE BANNER ========== */}
 
-      {/* ========== OFFLINE: Pending receives banner ========== */}
+      {/* Pending Batch Synchronization Action Box */}
       {pendingReceives.length > 0 && isOnline && (
-        <TouchableOpacity style={styles.pendingBanner} onPress={processPendingReceives}>
+        <TouchableOpacity activeOpacity={0.9} style={styles.pendingBanner} onPress={processPendingReceives}>
           <Text style={styles.pendingBannerText}>
             ⏳ {pendingReceives.reduce((sum, r) => sum + r.devices.length, 0)} pending device(s) to sync. Tap to sync now.
           </Text>
         </TouchableOpacity>
       )}
-      {/* ========== END OFFLINE PENDING BANNER ========== */}
 
-      <View style={styles.scannerContainer}>
-        <Text style={styles.scannerTitle}>{t('receive_devices.scan_title', { defaultValue: 'Scan Device QR Code' })}</Text>
-        <Text style={styles.scannerSubtitle}>{t('receive_devices.scan_subtitle', { defaultValue: 'Align QR code inside the frame' })}</Text>
+      <ScrollView contentContainerStyle={styles.scrollContainer} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+        {showScanner && (
+          <View style={styles.scannerCard}>
+            <Text style={styles.scannerTitle}>{t('receive_devices.scan_title', { defaultValue: 'Scan Device QR Code' })}</Text>
+            <Text style={styles.scannerSubtitle}>{t('receive_devices.scan_subtitle', { defaultValue: 'Align QR code inside the frame' })}</Text>
 
-        <View style={styles.cameraWrapper}>
-          <View style={styles.cameraFrame}>
-            <Camera
-              style={styles.camera}
-              scanBarcode={true}
-              onReadCode={onReadCode}
-              showFrame={false}
+            <View style={styles.cameraWrapper}>
+              <View style={styles.cameraFrame}>
+                <Camera
+                  style={StyleSheet.absoluteFillObject}
+                  scanBarcode={true}
+                  onReadCode={onReadCode}
+                  showFrame={false}
+                />
+                {/* Custom Vector Targeting Overlay Frame Brackets */}
+                <View style={styles.overlayContainer}>
+                  <View style={[styles.bracket, styles.topLeftBracket]} />
+                  <View style={[styles.bracket, styles.topRightBracket]} />
+                  <View style={[styles.bracket, styles.bottomLeftBracket]} />
+                  <View style={[styles.bracket, styles.bottomRightBracket]} />
+                </View>
+              </View>
+            </View>
+
+            <Text style={styles.scannerNote}>
+              {t('receive_devices.scan_note', { defaultValue: 'Both QR codes and barcodes supported' })}
+            </Text>
+          </View>
+        )}
+
+        {/* Dynamic Registered Items Stack Section */}
+        {devicesList.length > 0 && (
+          <View style={styles.devicesSection}>
+            <View style={styles.devicesHeader}>
+              <Text style={styles.devicesTitle}>
+                {t('receive_devices.devices_to_receive', { defaultValue: 'Devices to Receive' })} ({devicesList.length})
+              </Text>
+              <TouchableOpacity activeOpacity={0.7} onPress={clearAllDevices} disabled={submitting}>
+                <Text style={styles.clearAllText}>{t('receive_devices.clear_all', { defaultValue: 'Clear All' })}</Text>
+              </TouchableOpacity>
+            </View>
+
+            <FlatList
+              data={devicesList}
+              keyExtractor={(item, index) => `${item.serialNumber}-${index}`}
+              renderItem={renderDeviceItem}
+              scrollEnabled={false}
+              contentContainerStyle={styles.devicesList}
             />
-            <View style={styles.scanBorder} />
           </View>
-        </View>
+        )}
+      </ScrollView>
 
-        <Text style={styles.scannerNote}>
-          {t('receive_devices.scan_note', { defaultValue: 'Both QR codes and barcodes supported' })}
-        </Text>
-      </View>
-
+      {/* Main Bottom Footer Allocation Submit Panel */}
       {devicesList.length > 0 && (
-        <View style={styles.devicesSection}>
-          <View style={styles.devicesHeader}>
-            <Text style={styles.devicesTitle}>
-              {t('receive_devices.devices_to_receive', { defaultValue: 'Devices to Receive' })} ({devicesList.length})
-            </Text>
-            <TouchableOpacity onPress={clearAllDevices} disabled={submitting}>
-              <Text style={styles.clearAllText}>{t('receive_devices.clear_all', { defaultValue: 'Clear All' })}</Text>
-            </TouchableOpacity>
-          </View>
-
-          <FlatList
-            data={devicesList}
-            keyExtractor={(item, index) => `${item.serialNumber}-${index}`}
-            renderItem={renderDeviceItem}
-            scrollEnabled={false}
-            contentContainerStyle={styles.devicesList}
-          />
+        <View style={styles.bottomFooterPanel}>
+          <TouchableOpacity
+            activeOpacity={0.8}
+            style={[
+              styles.submitButton,
+              (devicesList.length === 0 || !storeId || submitting) && styles.submitButtonDisabled
+            ]}
+            onPress={submitDevices}
+            disabled={devicesList.length === 0 || !storeId || submitting}
+          >
+            {submitting ? (
+              <ActivityIndicator size="small" color="#FFFFFF" />
+            ) : (
+              <Text style={styles.submitButtonText}>
+                {!isOnline ? t('receive_devices.save_offline_button', { defaultValue: 'Save {{count}} Device', count: devicesList.length }).replace('{{count}}', devicesList.length.toString()) :
+                  t('receive_devices.submit_button', { defaultValue: 'Submit {{count}} Device', count: devicesList.length }).replace('{{count}}', devicesList.length.toString())}
+                {devicesList.length !== 1 ? 's' : ''}
+              </Text>
+            )}
+          </TouchableOpacity>
         </View>
       )}
 
-      {devicesList.length > 0 && (
-        <TouchableOpacity
-          style={[
-            styles.submitButton,
-            (devicesList.length === 0 || !storeId || submitting) && styles.submitButtonDisabled
-          ]}
-          onPress={submitDevices}
-          disabled={devicesList.length === 0 || !storeId || submitting}
-        >
-          {submitting ? (
-            <ActivityIndicator size="small" color="#000" />
-          ) : (
-            <Text style={styles.submitButtonText}>
-              {!isOnline ? t('receive_devices.save_offline_button', { defaultValue: 'Save {{count}} Device', count: devicesList.length }).replace('{{count}}', devicesList.length.toString()) :
-                t('receive_devices.submit_button', { defaultValue: 'Submit {{count}} Device', count: devicesList.length }).replace('{{count}}', devicesList.length.toString())}
-              {devicesList.length !== 1 ? 's' : ''}
-            </Text>
-          )}
-        </TouchableOpacity>
-      )}
-
+      {/* Custom Structural Input Verification Overlay Sheet */}
       <Modal
         visible={showDropdown}
         transparent={true}
-        animationType="slide"
+        animationType="fade"
         onRequestClose={cancelAddDevice}
       >
         <View style={styles.modalOverlay}>
-          <Animatable.View animation="slideInUp" style={styles.modalContent}>
-            <Text style={styles.modalTitle}>{t('receive_devices.modal.title', { defaultValue: 'Select Device Condition' })}</Text>
-            <Text style={styles.modalSubtitle}>
-              {t('receive_devices.modal.serial_label', { defaultValue: 'Serial' })}: {pendingSerialNumber}
-            </Text>
+          <Animatable.View animation="slideInUp" duration={250} style={styles.modalContent}>
+            <View style={styles.modalHeaderBlock}>
+              <Text style={styles.modalTitle}>{t('receive_devices.modal.title', { defaultValue: 'Select Device Condition' })}</Text>
+              <View style={styles.modalSerialChip}>
+                <Icon name="tag" size={14} color="#666" style={{ marginRight: 4 }} />
+                <Text style={styles.modalSubtitle}>
+                  {t('receive_devices.modal.serial_label', { defaultValue: 'Serial' })}: {pendingSerialNumber}
+                </Text>
+              </View>
+            </View>
 
             <ScrollView style={styles.optionsContainer} showsVerticalScrollIndicator={false}>
               {conditionOptions.map((option) => (
                 <TouchableOpacity
+                  activeOpacity={0.7}
                   key={option.id}
                   style={[
                     styles.conditionOption,
@@ -779,17 +732,18 @@ const ReceiveDevicesScreen = () => {
                     {option.label}
                   </Text>
                   {selectedCondition?.id === option.id && (
-                    <Text style={styles.checkMark}>✓</Text>
+                    <Icon name="check-circle" size={20} color="#4CAF50" />
                   )}
                 </TouchableOpacity>
               ))}
             </ScrollView>
 
             <View style={styles.modalButtons}>
-              <TouchableOpacity style={styles.cancelModalButton} onPress={cancelAddDevice}>
+              <TouchableOpacity activeOpacity={0.7} style={styles.cancelModalButton} onPress={cancelAddDevice}>
                 <Text style={styles.cancelModalButtonText}>{t('receive_devices.modal.cancel', { defaultValue: 'Cancel' })}</Text>
               </TouchableOpacity>
               <TouchableOpacity
+                activeOpacity={0.8}
                 style={[
                   styles.confirmModalButton,
                   !selectedCondition && styles.confirmModalButtonDisabled
@@ -810,254 +764,323 @@ const ReceiveDevicesScreen = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0B0C10',
+    backgroundColor: '#F8F9FA',
   },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingTop: 20,
-    paddingBottom: 15,
-    backgroundColor: '#0B0C10',
+   header: {
+    backgroundColor: '#FFFFFF',
+    paddingBottom: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#1C1E22',
+    borderBottomColor: '#F0F0F0',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
+    zIndex: 10,
+  },
+  headerTitleRow: {
+     flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingTop: 50,
+    paddingBottom: 12,
   },
   backButton: {
-    width: 40,
-    height: 40,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
     justifyContent: 'center',
     alignItems: 'center',
+    marginRight: 6,
   },
-  backButtonText: {
-    fontSize: 28,
-    color: '#FFD700',
-  },
-  headerCenter: {
+  headerTextGroup: {
     flex: 1,
-    alignItems: 'center',
   },
   headerTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#FFFFFF',
+    fontSize: 19,
+    fontWeight: '700',
+    color: '#1A1A1A',
+    letterSpacing: -0.3,
   },
   storeNameText: {
     fontSize: 12,
-    color: '#FFD700',
-    marginTop: 2,
-    fontWeight: '500',
+    color: '#FFA500',
+    marginTop: 3,
+    fontWeight: '600',
   },
-  headerRight: {
-    width: 40,
-    alignItems: 'center',
-  },
-  syncButton: {
-    width: 40,
-    height: 40,
+  headerRightActions: {
+    paddingHorizontal: 8,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  syncButtonText: {
-    fontSize: 24,
-    color: '#FFD700',
-  },
-  syncIndicator: {
-    width: 40,
-    height: 40,
+  syncButton: {
+    padding: 6,
   },
   offlineBanner: {
     backgroundColor: '#FF9800',
-    padding: 10,
-    marginHorizontal: 16,
-    marginTop: 12,
-    borderRadius: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
     alignItems: 'center',
   },
   offlineBannerText: {
     color: '#FFFFFF',
     fontSize: 12,
-    fontWeight: '500',
+    fontWeight: '600',
   },
   pendingBanner: {
     backgroundColor: '#FFF3E0',
-    padding: 10,
-    marginHorizontal: 16,
-    marginTop: 12,
-    borderRadius: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
     alignItems: 'center',
+    borderBottomWidth: 1,
+    borderBottomColor: '#FFE0B2',
   },
   pendingBannerText: {
-    color: '#FF9800',
+    color: '#E65100',
     fontSize: 12,
-    fontWeight: '500',
+    fontWeight: '600',
   },
-  scannerContainer: {
-    flex: 1,
+  scrollContainer: {
+    flexGrow: 1,
+    paddingHorizontal: 20,
+    paddingVertical: 20,
+  },
+  scannerCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 20,
     alignItems: 'center',
-    marginTop: 20,
+    borderWidth: 1,
+    borderColor: '#EAEAEA',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.02,
+    shadowRadius: 10,
+    elevation: 2,
+    marginBottom: 20,
   },
   scannerTitle: {
-    color: '#FFFFFF',
+    color: '#1A1A1A',
     fontSize: 18,
     fontWeight: '700',
     marginBottom: 4,
   },
   scannerSubtitle: {
-    color: '#A4A6AD',
-    fontSize: 14,
+    color: '#666666',
+    fontSize: 13,
     marginBottom: 20,
+    textAlign: 'center',
   },
   cameraWrapper: {
+    marginVertical: 10,
     justifyContent: 'center',
     alignItems: 'center',
   },
   cameraFrame: {
-    width: SCAN_SIZE + 20,
-    height: SCAN_SIZE + 20,
-    borderRadius: 25,
-    backgroundColor: '#1C1E22',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  camera: {
     width: SCAN_SIZE,
     height: SCAN_SIZE,
-    borderRadius: 20,
+    borderRadius: 24,
     overflow: 'hidden',
+    position: 'relative',
+    backgroundColor: '#000000',
   },
-  scanBorder: {
+  overlayContainer: {
+    ...StyleSheet.absoluteFillObject,
+    padding: 16,
+    justifyContent: 'space-between',
+  },
+  bracket: {
     position: 'absolute',
-    width: SCAN_SIZE,
-    height: SCAN_SIZE,
-    borderColor: '#FFD700',
-    borderWidth: 2,
-    borderRadius: 20,
+    width: 24,
+    height: 24,
+    borderColor: '#FFA500',
+  },
+  topLeftBracket: {
+    top: 16,
+    left: 16,
+    borderLeftWidth: 3,
+    borderTopWidth: 3,
+    borderTopLeftRadius: 12,
+  },
+  topRightBracket: {
+    top: 16,
+    right: 16,
+    borderRightWidth: 3,
+    borderTopWidth: 3,
+    borderTopRightRadius: 12,
+  },
+  bottomLeftBracket: {
+    bottom: 16,
+    left: 16,
+    borderLeftWidth: 3,
+    borderBottomWidth: 3,
+    borderBottomLeftRadius: 12,
+  },
+  bottomRightBracket: {
+    bottom: 16,
+    right: 16,
+    borderRightWidth: 3,
+    borderBottomWidth: 3,
+    borderBottomRightRadius: 12,
   },
   scannerNote: {
-    color: '#64748B',
+    color: '#888888',
     fontSize: 12,
     marginTop: 20,
-    fontStyle: 'italic',
+    fontWeight: '500',
   },
   devicesSection: {
-    backgroundColor: '#1C1E22',
-    marginHorizontal: 16,
-    marginTop: 16,
-    marginBottom: 16,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
     padding: 16,
-    borderRadius: 12,
-    maxHeight: 250,
+    borderWidth: 1,
+    borderColor: '#EAEAEA',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.02,
+    shadowRadius: 10,
+    elevation: 2,
+    marginBottom: 12,
   },
   devicesHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: 14,
+    paddingBottom: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F3F5',
   },
   devicesTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#FFD700',
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#1A1A1A',
   },
   clearAllText: {
-    fontSize: 12,
+    fontSize: 13,
     color: '#FF6B6B',
-    fontWeight: '500',
+    fontWeight: '600',
   },
   devicesList: {
-    gap: 8,
+    gap: 10,
   },
   deviceCard: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    backgroundColor: '#0B0C10',
+    backgroundColor: '#F8F9FA',
     padding: 12,
-    borderRadius: 10,
+    borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#333',
+    borderColor: '#EAEAEA',
   },
-  deviceInfo: {
-    flex: 1,
+  deviceCardLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    flex: 1,
+  },
+  deviceIconWrapper: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    backgroundColor: '#FFF8F0',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  deviceInfoTextContainer: {
+    flex: 1,
   },
   deviceSerial: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#1A1A1A',
     fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
   },
-  conditionBadge: {
-    backgroundColor: '#2E7D32',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
-  },
-  conditionText: {
-    fontSize: 10,
-    color: '#FFFFFF',
+  conditionLabelText: {
+    fontSize: 12,
+    color: '#666666',
+    marginTop: 2,
     fontWeight: '500',
   },
   removeButton: {
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: '#FFEBEE',
+    backgroundColor: '#FFEEF0',
     justifyContent: 'center',
     alignItems: 'center',
   },
-  removeButtonText: {
-    fontSize: 18,
-    color: '#FF6B6B',
-    fontWeight: '600',
+  bottomFooterPanel: {
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 20,
+    paddingVertical: 14,
+    borderTopWidth: 1,
+    borderColor: '#EAEAEA',
   },
   submitButton: {
-    backgroundColor: '#FFD700',
-    marginHorizontal: 16,
-    marginBottom: 20,
-    paddingVertical: 16,
+    backgroundColor: '#FFA500',
+    height: 48,
     borderRadius: 12,
+    justifyContent: 'center',
     alignItems: 'center',
+    shadowColor: '#FFA500',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 3,
   },
   submitButtonDisabled: {
-    backgroundColor: '#555',
+    backgroundColor: '#E2E8F0',
+    shadowOpacity: 0,
+    elevation: 0,
   },
   submitButtonText: {
-    color: '#000',
-    fontSize: 16,
+    color: '#FFFFFF',
+    fontSize: 15,
     fontWeight: '700',
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.8)',
+    backgroundColor: 'rgba(0, 0, 0, 0.4)',
     justifyContent: 'flex-end',
   },
   modalContent: {
     backgroundColor: '#FFFFFF',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    padding: 20,
-    maxHeight: '70%',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingTop: 24,
+    paddingHorizontal: 20,
+    paddingBottom: Platform.OS === 'ios' ? 34 : 24,
+    maxHeight: '80%',
+  },
+  modalHeaderBlock: {
+    marginBottom: 16,
   },
   modalTitle: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: '700',
-    color: '#000000',
+    color: '#1A1A1A',
     textAlign: 'center',
-    marginBottom: 8,
+  },
+  modalSerialChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'center',
+    backgroundColor: '#F1F3F5',
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 20,
+    marginTop: 8,
   },
   modalSubtitle: {
-    fontSize: 14,
-    color: '#000000',
-    textAlign: 'center',
-    marginBottom: 20,
+    fontSize: 13,
+    color: '#495057',
+    fontWeight: '600',
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
   },
   optionsContainer: {
-    maxHeight: 300,
-    color: '#000000'
+    marginVertical: 10,
   },
   conditionOption: {
     flexDirection: 'row',
@@ -1065,58 +1088,58 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 14,
     paddingHorizontal: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#333',
+    borderRadius: 12,
+    marginBottom: 8,
+    backgroundColor: '#F8F9FA',
+    borderWidth: 1,
+    borderColor: '#EAEAEA',
   },
   conditionOptionSelected: {
-    backgroundColor: '#FFD70020',
+    backgroundColor: '#E8F5E8',
+    borderColor: '#C8E6C9',
   },
   conditionOptionText: {
-    fontSize: 16,
-    color: '#000000',
+    fontSize: 15,
+    color: '#495057',
+    fontWeight: '500',
   },
   conditionOptionTextSelected: {
-    color: '#000000',
-    fontWeight: '600',
-  },
-  checkMark: {
-    fontSize: 18,
-    color: '#FFD700',
-    fontWeight: 'bold',
+    color: '#2E7D32',
+    fontWeight: '700',
   },
   modalButtons: {
     flexDirection: 'row',
     gap: 12,
-    marginTop: 20,
-    paddingTop: 10,
+    marginTop: 16,
   },
   cancelModalButton: {
     flex: 1,
-    paddingVertical: 14,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#FF6B6B',
+    backgroundColor: '#F1F3F5',
+    height: 48,
+    borderRadius: 12,
+    justifyContent: 'center',
     alignItems: 'center',
   },
   cancelModalButtonText: {
-    fontSize: 16,
-    color: '#FF6B6B',
+    color: '#495057',
     fontWeight: '600',
+    fontSize: 14,
   },
   confirmModalButton: {
     flex: 1,
-    paddingVertical: 14,
-    borderRadius: 10,
-    backgroundColor: '#FFD700',
+    backgroundColor: '#FFA500',
+    height: 48,
+    borderRadius: 12,
+    justifyContent: 'center',
     alignItems: 'center',
   },
   confirmModalButtonDisabled: {
-    backgroundColor: '#555',
+    backgroundColor: '#E2E8F0',
   },
   confirmModalButtonText: {
-    fontSize: 16,
-    color: '#000',
+    color: '#FFFFFF',
     fontWeight: '700',
+    fontSize: 14,
   },
 });
 

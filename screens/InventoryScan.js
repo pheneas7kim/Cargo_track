@@ -20,6 +20,7 @@ import * as Animatable from 'react-native-animatable';
 import Snackbar from 'react-native-snackbar';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import serverURL from '../config';
+import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useTranslation } from 'react-i18next';
 // ✅ Import global token refresh service
 import { refreshAccessToken, addTokenRefreshListener } from '../services/TokenService';
@@ -733,19 +734,13 @@ const InventoryScan = ({ navigation }) => {
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
 
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>{t('inventory_scan.title', { defaultValue: 'Device Inventory' })}</Text>
-        <View style={styles.headerSubtitleRow}>
-          <Text style={styles.headerSubtitle}>
-            {devices.length} {t('inventory_scan.devices_count', { defaultValue: 'devices' })} {!authToken && t('inventory_scan.local_mode', { defaultValue: '🔓 Local Mode' })}
-          </Text>
-          {/* ========== OFFLINE: Pending sync indicator ========== */}
-          {pendingSyncCount > 0 && isOnline && (
-            <TouchableOpacity onPress={manualSync} style={styles.syncBadge}>
-              <Ionicons name="sync" size={14} color="#FF9800" />
-              <Text style={styles.syncBadgeText}>{pendingSyncCount} pending</Text>
-            </TouchableOpacity>
-          )}
-          {/* ========== END OFFLINE PENDING INDICATOR ========== */}
+        <View style={styles.headerTop}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+           <Icon name="arrow-back" size={24} color="#1A1A1A" />
+         </TouchableOpacity>
+
+        <Text style={styles.headerTitle}>Device Inventory</Text>
+    
         </View>
       </View>
 
@@ -894,22 +889,36 @@ const InventoryScan = ({ navigation }) => {
 
 // Styles
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F8F9FA' },
+  container: {
+    flex: 1,
+    backgroundColor: '#F8F9FA',
+  },
   header: {
     backgroundColor: '#FFFFFF',
-    paddingTop: Platform.OS === 'ios' ? 20 : 20,
-    paddingBottom: 20,
-    paddingHorizontal: 20,
+    paddingBottom: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#E5E5E5',
+    borderBottomColor: '#F0F0F0',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
+    zIndex: 10,
+    // padding: 16,
+    // marginTop:40
+    // marginHorizontal: 20
   },
-  headerTitle: { fontSize: 28, fontWeight: 'bold', color: '#1A1A1A' },
-  headerSubtitleRow: {
+  headerTop: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    marginTop: 4,
+    paddingHorizontal: 12,
+    textAlign: 'center',
+    paddingTop: 50,
   },
+
+  headerTitle: { fontSize: 19, fontWeight: 'bold', textAlign: "center",  color: '#1A1A1A' },
+
+  
   headerSubtitle: { fontSize: 14, color: '#666' },
   syncBadge: {
     flexDirection: 'row',
@@ -921,7 +930,7 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   syncBadgeText: {
-    fontSize: 11,
+    fontSize: 8,
     color: '#FF9800',
     fontWeight: '500',
   },
@@ -940,6 +949,14 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '500',
     flex: 1,
+  },
+   backButton: {
+    width: 40,
+    height: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 20,
+    backgroundColor: '#F5F5F5',
   },
   listContainer: { padding: 16, paddingBottom: 80 },
   deviceCard: {

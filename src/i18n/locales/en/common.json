@@ -108,7 +108,8 @@
       "shipments": "Shipments",
       "stations": "Stations",
       "scan_to_add": "Scan to Add Devices",
-      "receive": "Receive"
+      "receive": "Receive",
+      "confirm_arrival": "Confirm Arrival"
     },
     "commands": {
       "check_status": "Check Status",
@@ -1525,5 +1526,6 @@
     },
     "get_started": "Get Started",
     "skip": "Skip"
+    
   }
 }

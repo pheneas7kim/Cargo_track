@@ -222,7 +222,12 @@ export default function App() {
               <Stack.Screen name="ReceiveDevicesScreen" component={ReceiveDevicesScreen} options={{ headerShown: false }}/>
 
               <Stack.Screen name="AssignedEseals" component={AssignedEseals} options={{ headerShown: false }} />
-              <Stack.Screen   name="ScanConfirmArrival" component={ScanConfirmArrival} options={{title: 'Scan to Confirm Arrival', headerBackTitle: 'Back'  }} />
+
+              <Stack.Screen name="ScanConfirmArrival" component={ScanConfirmArrival} options={{ headerShown: false }} />
+              <Stack.Screen name="InventoryScan" component={InventoryScan} options={{ headerShown: false }} />
+
+
+
 
               <Stack.Screen
                 name="RequestEsealsList"
@@ -266,22 +271,13 @@ export default function App() {
 
 
 
-              <Stack.Screen
-                name="InventoryScan"
-                component={InventoryScan}
-                options={{
-                  headerShown: true,
-                  title: 'Scan Inventory',
-                  headerLeft: () => (
-                    <TouchableOpacity
-                      onPress={() => navigationRef.goBack()}
-                      style={{ marginLeft: 16 }}
-                    >
-                      <Ionicons name="arrow-back" size={24} color="#000" />
-                    </TouchableOpacity>
-                  ),
-                }}
-              />
+             
+             
+
+
+             
+
+
 
 
             <Stack.Screen

@@ -108,7 +108,8 @@
       "shipments": "Expéditions",
       "stations": "Stations",
       "scan_to_add": "Scanner pour Ajouter des Appareils",
-      "receive": "Recevoir"
+      "receive": "Recevoir",
+      "confirm_arrival": "Confirmer l'arrivée"
     },
     "commands": {
       "check_status": "Vérifier le Statut",
@@ -203,6 +204,38 @@
     },
     "success": {
       "command_sent": "Commande envoyée avec succès"
+    }
+  },
+  "confirm_arrival": {
+    "title": "Confirmer l'arrivée",
+    "scan_title": "Scanner le code ID de l'appareil",
+    "scan_subtitle": "Aligner le code-barres d'identification à 8 chiffres entre les crochets",
+    "scan_note": "Concentrez-vous sur les étiquettes claires sous un éclairage suffisant",
+    "details_title": "Détails de confirmation",
+    "device_serial": "Numéro de série de l'appareil",
+    "remarks": "Remarques",
+    "remarks_placeholder": "Entrez des remarques (facultatif)",
+    "discard": "Annuler",
+    "confirm": "Confirmer l'arrivée",
+    "scan_next": "Scanner l'unité suivante",
+    "loading": "Téléchargement des données de vérification...",
+    "default_remarks": "Arrivée confirmée",
+    "offline_mode": "Mode hors ligne - Les envois seront mis en cache localement",
+    "back_online": "De retour en ligne !",
+    "cannot_sync_offline": "Impossible de synchroniser hors ligne",
+    "sync_complete": "Synchronisation terminée avec succès !",
+    "offline_queued": "Sauvegardé hors ligne - Se synchronisera en ligne",
+    "success": {
+      "title": "Arrivée enregistrée !",
+      "confirmed": "Arrivée confirmée avec succès"
+    },
+    "errors": {
+      "title": "Échec de l'envoi",
+      "failed": "Échec de la confirmation de l'arrivée",
+      "invalid_barcode": "ID invalide. Cadrez le code à 8 chiffres.",
+      "processing": "Échec du traitement de la confirmation",
+      "no_response": "Pas de réponse du serveur. Vérifiez le réseau.",
+      "saved_offline": "Problème réseau - Sauvegardé hors ligne"
     }
   },
   "master_slave": {
@@ -1525,5 +1558,6 @@
     },
     "get_started": "Commencer",
     "skip": "Passer"
+    
   }
 }
